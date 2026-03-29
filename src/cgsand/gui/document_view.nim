@@ -1,6 +1,7 @@
 import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
-import ../logic/[scripts]
+import pkg/toscel/[button]
+import ../logic/[scripts, config]
 import ../lib/sandbox except Mat4
 import ../lib/[geom2d]
 
@@ -154,6 +155,12 @@ method draw*(this: DocumentView, ctx: DrawContext) =
 
 
 
+proc recompileScript*(this: DocumentView) =
+  this.currentScript{} = nil
+  this.currentScript[] = compileAndRunScript("examples/script.nim", "build/script")
+
+
+
 method init*(this: DocumentView) =
   procCall this.super.init()
 
@@ -164,6 +171,11 @@ method init*(this: DocumentView) =
       layer = before root
 
     - globalKeybinding({Key.f5}):
-      on this.activated:
-        root.currentScript[] = compileAndRunScript("examples/script.nim", "build/script")
+      on this.activated: root.recompileScript()
+    
+    - Button.new:
+      text = tr"Recompile"
+      centerX = parent.center
+      bottom = parent.bottom - 10
+      on this.activated: root.recompileScript()
 

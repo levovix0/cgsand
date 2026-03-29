@@ -13,5 +13,7 @@ bin           = @["cgsand"]
 requires "nim >= 2.2.4"
 requires "sigui"
 requires "sigeo"
+requires "localize"
 requires "https://github.com/levovix0/ecs"
+requires "https://github.com/levovix0/toscel"
 

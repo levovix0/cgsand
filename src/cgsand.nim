@@ -3,6 +3,9 @@ import pkg/[vmath, ecs]
 import pkg/siwin
 import pkg/sigui/uibase
 import ./cgsand/gui/[code_editor, document_view, tool_bar]
+import ./cgsand/logic/[config]
+
+globalLocale[0] = systemLocale()
 
 when defined(useX11):
   let win = newSiwinGlobals(x11).newOpenglWindow(title = "cgsand", frameless = true, transparent = true).newUiWindow
@@ -56,4 +59,5 @@ run win
 
 when isMainModule:
   static: storeTypeids(currentSourcePath().parentDir / "cgsand/lib/typeids.txt")
+  updateTranslations()
 
