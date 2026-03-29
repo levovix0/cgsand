@@ -1,3 +1,4 @@
+import std/[locks]
 import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
 import pkg/toscel/[button]
@@ -8,7 +9,9 @@ import ../lib/[geom2d]
 
 type
   DocumentView* = ref object of Uiobj
-    currentScript*: Property[Script]
+    script*: Property[Script]
+    scriptStage*: Property[ScriptStage]
+
     documentPixels: EffectBuffer
     line: Shape  # todo: use rice
 
@@ -96,7 +99,7 @@ proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, co
 
 
 
-proc draw2dDocument(this: DocumentView, ctx: DrawContext, view, projection: Mat4) =
+proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, view, projection: Mat4) =
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
   # glEnable(GlDepthTest)
@@ -105,8 +108,6 @@ proc draw2dDocument(this: DocumentView, ctx: DrawContext, view, projection: Mat4
   # glClearDepthf(1)
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-  let w = this.currentScript[].world
-
   w[].forEach (line: LineSection):
     drawLineSection(this, ctx, line, color(1, 1, 1), view, projection)
   
@@ -114,35 +115,43 @@ proc draw2dDocument(this: DocumentView, ctx: DrawContext, view, projection: Mat4
   # glDisable(GlDepthTest)
 
 
+proc hasWorldToDraw(script: Script): bool =
+  if script == nil: return false
+  withLock script.lock:
+    if script.stage != Idle: return false
+    if script.world == nil: return false
+  true
+
+
 
 proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
-  if this.currentScript[] == nil: return  # nothing to draw
-  
-  if (let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32); this.documentPixels == nil or this.documentPixels.size != efSize):
-    if this.documentPixels != nil:
-      ctx.free this.documentPixels
-    this.documentPixels = ctx.newEffectBuffer(efSize)
+  if this.script[].hasWorldToDraw:
+    if (let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32); this.documentPixels == nil or this.documentPixels.size != efSize):
+      if this.documentPixels != nil:
+        ctx.free this.documentPixels
+      this.documentPixels = ctx.newEffectBuffer(efSize)
 
-  let view = (
-    (scale vec3(1/100, 1/100, 1))
-  )
+    let view = (
+      (scale vec3(1/100, 1/100, 1))
+    )
 
-  let projection = (
-    (if this.w[] < this.h[]: scale vec3(1, this.w[] / this.h[], 1/1000) else: scale vec3(this.h[] / this.w[], 1, 1/1000))
-  )
+    let projection = (
+      (if this.w[] < this.h[]: scale vec3(1, this.w[] / this.h[], 1/1000) else: scale vec3(this.h[] / this.w[], 1, 1/1000))
+    )
 
-  ctx.push this.documentPixels, clear = false
-  try:
-    draw2dDocument(this, ctx, view, projection)
-  finally:
-    ctx.pop this.documentPixels
+    ctx.push this.documentPixels, clear = false
+    try:
+      draw2dDocument(this, this.script[].world, ctx, view, projection)
+    finally:
+      ctx.pop this.documentPixels
 
 
-  ctx.drawImage(
-    (this.globalXy + ctx.offset).round, this.wh,
-    this.documentPixels.tex.raw, color(1, 1, 1).vec4, 0, true, 0, flipY=true,
-    imageSize = this.documentPixels.size.vec2,
-  )
+  if this.documentPixels != nil:
+    ctx.drawImage(
+      (this.globalXy + ctx.offset).round, this.wh,
+      this.documentPixels.tex.raw, color(1, 1, 1).vec4, 0, true, 0, flipY=true,
+      imageSize = this.documentPixels.size.vec2,
+    )
 
 
 
@@ -156,13 +165,22 @@ method draw*(this: DocumentView, ctx: DrawContext) =
 
 
 proc recompileScript*(this: DocumentView) =
-  this.currentScript{} = nil
-  this.currentScript[] = compileAndRunScript("examples/script.nim", "build/script")
+  if this.script[] != nil:
+    withLock this.script[].lock:
+      if this.script[].stage != Idle:
+        return  # ignore recompile request while still compiling
+  this.script{} = nil  # unload current script
+  this.script[] = compileAndRunScript("examples/script.nim", "build/script")
 
 
 
 method init*(this: DocumentView) =
   procCall this.super.init()
+
+  this.parentUiRoot.onTick.connectTo this:
+    if this.script[] != nil:
+      withLock this.script[].lock:
+        this.scriptStage[] = this.script[].stage
 
   this.makeLayout:
     - UiRect.new:
@@ -178,4 +196,14 @@ method init*(this: DocumentView) =
       centerX = parent.center
       bottom = parent.bottom - 10
       on this.activated: root.recompileScript()
+    
+    - UiRect.new:
+      h = 2
+      w = binding:
+        case root.scriptStage[]
+        of Idle: parent.w[] * (0 / 2)
+        of Compiling: parent.w[] * (1 / 2)
+        of Executing: parent.w[] * (2 / 2)
+      bottom = parent.bottom
+      color = "#76b1ffff".color
 
