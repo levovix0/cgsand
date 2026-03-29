@@ -1,9 +1,13 @@
-import pkg/[vmath]
-import pkg/siwin/platforms/any/window
+import std/[os]
+import pkg/[vmath, ecs]
+import pkg/siwin
 import pkg/sigui/uibase
 import ./cgsand/gui/[code_editor, document_view, tool_bar]
 
-let win = newUiWindow(title = "cgsand", frameless = true, transparent = true)
+when defined(useX11):
+  let win = newSiwinGlobals(x11).newOpenglWindow(title = "cgsand", frameless = true, transparent = true).newUiWindow
+else:
+  let win = newUiWindow(title = "cgsand", frameless = true, transparent = true)
 
 proc onWindowResize =
   win.siwinWindow.setTitleRegion(vec2(10, 10), vec2(float32 win.siwinWindow.size.x - 10*2, 60))
@@ -48,4 +52,8 @@ win.makeLayout:
       h = 60
 
 run win
+
+
+when isMainModule:
+  static: storeTypeids(currentSourcePath().parentDir / "cgsand/lib/typeids.txt")
 
