@@ -8,5 +8,6 @@ when defined(script):
 
 
 var doc* {.exportc: "world_instance", dynlib.} = World()
+  ## in the sandbox we have an entire World!
 
 

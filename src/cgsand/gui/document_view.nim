@@ -108,8 +108,8 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, view, pr
   # glClearDepthf(1)
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-  w[].forEach (line: LineSection):
-    drawLineSection(this, ctx, line, color(1, 1, 1), view, projection)
+  w[].forEach (line: LineSection, color: Color||color(1, 1, 1)):
+    drawLineSection(this, ctx, line, color, view, projection)
   
   glDisable(GlBlend)
   # glDisable(GlDepthTest)
