@@ -3,7 +3,7 @@ import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
 import pkg/toscel/[button]
 import ../logic/[scripts, config]
-import ../lib/sandbox except Mat4
+import ../lib/sandbox except Mat4, mat4
 import ../lib/[geom2d]
 
 
