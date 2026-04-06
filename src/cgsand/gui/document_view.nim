@@ -99,7 +99,7 @@ proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, co
 
 
 
-proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, view, projection: Mat4) =
+proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, height: float32) =
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
   # glEnable(GlDepthTest)
@@ -108,9 +108,34 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, view, pr
   # glClearDepthf(1)
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
+
+  var canvasSettings = CanvasSettings()
+  w[].forEach (v: CanvasSettings): canvasSettings = v
+  
+  let cmin = min(canvasSettings.width, canvasSettings.height)
+  let cmax = max(canvasSettings.width, canvasSettings.height)
+  let canvasScale =
+    if (canvasSettings.width < canvasSettings.height) == (width / canvasSettings.width < height / canvasSettings.height):
+      cmax / cmin
+    else:
+      1
+
+  let view = (
+    (scale vec3(2/cmax, 2/cmax, 1))
+  )
+
+  let projection = (
+    if width / canvasSettings.width < height / canvasSettings.height:
+      scale vec3(canvasScale, width / height * canvasScale, 1/1000)
+    else:
+      scale vec3(height / width * canvasScale, canvasScale, 1/1000)
+  )
+
+
   w[].forEach (line: LineSection, color: Color||color(1, 1, 1)):
     drawLineSection(this, ctx, line, color, view, projection)
   
+
   glDisable(GlBlend)
   # glDisable(GlDepthTest)
 
@@ -131,17 +156,9 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
         ctx.free this.documentPixels
       this.documentPixels = ctx.newEffectBuffer(efSize)
 
-    let view = (
-      (scale vec3(1/100, 1/100, 1))
-    )
-
-    let projection = (
-      (if this.w[] < this.h[]: scale vec3(1, this.w[] / this.h[], 1/1000) else: scale vec3(this.h[] / this.w[], 1, 1/1000))
-    )
-
     ctx.push this.documentPixels, clear = false
     try:
-      draw2dDocument(this, this.script[].world, ctx, view, projection)
+      draw2dDocument(this, this.script[].world, ctx, this.w[], this.h[])
     finally:
       ctx.pop this.documentPixels
 

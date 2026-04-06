@@ -1,4 +1,5 @@
 EntityId
 DeletedEntity
+CanvasSettings
 LineSection
 Color
