@@ -6,11 +6,10 @@ type
     `-`
 
 
-let canvasSettings = CanvasSettings_A4_Vertical
-# let canvasSettings = CanvasSettings_A4_Horizontal
-doc.add canvasSettings
+doc.add CanvasSettings_A4_Vertical
+# doc.add CanvasSettings_A4_Horizontal
 
-let (w, h) = (canvasSettings.width, canvasSettings.height)
+let (w, h) = (doc[CanvasSettings].size.x, doc[CanvasSettings].size.y)
 
 
 let p = [

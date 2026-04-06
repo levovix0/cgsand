@@ -112,10 +112,10 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   var canvasSettings = CanvasSettings()
   w[].forEach (v: CanvasSettings): canvasSettings = v
   
-  let cmin = min(canvasSettings.width, canvasSettings.height)
-  let cmax = max(canvasSettings.width, canvasSettings.height)
+  let cmin = min(canvasSettings.size.x, canvasSettings.size.y)
+  let cmax = max(canvasSettings.size.x, canvasSettings.size.y)
   let canvasScale =
-    if (canvasSettings.width < canvasSettings.height) == (width / canvasSettings.width < height / canvasSettings.height):
+    if (canvasSettings.size.x < canvasSettings.size.y) == (width / canvasSettings.size.x < height / canvasSettings.size.y):
       cmax / cmin
     else:
       1
@@ -125,7 +125,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   )
 
   let projection = (
-    if width / canvasSettings.width < height / canvasSettings.height:
+    if width / canvasSettings.size.x < height / canvasSettings.size.y:
       scale vec3(canvasScale, width / height * canvasScale, 1/1000)
     else:
       scale vec3(height / width * canvasScale, canvasScale, 1/1000)
