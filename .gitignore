@@ -15,6 +15,7 @@
 /docs
 /deps
 /nim.cfg
+/atlas.lock
 nimcache
 
 local_*
