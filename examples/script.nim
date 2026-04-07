@@ -9,17 +9,15 @@ type
 doc.add CanvasSettings_A4_Vertical
 # doc.add CanvasSettings_A4_Horizontal
 
-let (w, h) = (doc[CanvasSettings].size.x, doc[CanvasSettings].size.y)
-
 
 let p = [
   `+`: [
-    `+`: point2(w/2 - 1, h/2 - 1),
-    `-`: point2(w/2 - 1, -h/2 + 1)
+    `+`: point2(50, 50),
+    `-`: point2(50, -50)
   ],
   `-`: [
-    `+`: point2(-w/2 + 1, h/2 - 1),
-    `-`: point2(-w/2 + 1, -h/2 + 1)
+    `+`: point2(-50, 50),
+    `-`: point2(-50, -50)
   ],
 ]
 

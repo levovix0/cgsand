@@ -79,6 +79,85 @@ proc drawLine*(ctx: DrawContext, lineShape: Shape, a, b: Vec3, color: Color, tra
 proc drawLine*(ctx: DrawContext, lineShape: Shape, a, b: Vec2, color: Color, transform: Mat4 = mat4()) =
   # todo: use rice
   drawLine(ctx, lineShape, vec3(a.x, a.y, 0), vec3(b.x, b.y, 0), color, transform)
+  
+
+proc fillRect*(ctx: DrawContext, pos, size: Vec2, color: Color, transform: Mat4 = mat4()) =
+  # todo: use rice
+  let transform = (
+    transform *
+    translate(pos.vec3(0)) *
+    scale(size.vec3(1))
+  )
+
+  let shader = ctx.makeShader:
+    proc vert(
+      pos: Vec2,
+      transform: Uniform[Mat4],
+    ) =
+      gl_Position = transform * vec4(pos.x, pos.y, 0, 1)
+    
+    proc frag(
+      glCol: var Vec4,
+      color: Uniform[Vec4],
+    ) =
+      glCol = color
+
+  use shader.shader
+  shader.color.uniform = color.vec4
+  shader.transform.uniform = transform
+  draw ctx.rect
+  
+
+proc fillHatchingRect*(
+  ctx: DrawContext,
+  pos, size: Vec2,
+  color1, color2: Color,
+  dir: Vec2,
+  l1, l2: float32,
+  transform: Mat4 = mat4()
+) =
+  # todo: use rice
+  let transform = (
+    transform *
+    translate(pos.vec3(0)) *
+    scale(size.vec3(1))
+  )
+
+  let shader = ctx.makeShader:
+    proc vert(
+      pos: Vec2,
+      transform: Uniform[Mat4],
+      uv: var Vec2,
+    ) =
+      gl_Position = transform * vec4(pos.x, pos.y, 0, 1)
+      uv = pos
+    
+    proc frag(
+      glCol: var Vec4,
+      uv: Vec2,
+      color1: Uniform[Vec4],
+      color2: Uniform[Vec4],
+      dir: Uniform[Vec2],
+      l1: Uniform[float32],
+      l2: Uniform[float32],
+      size: Uniform[Vec2],
+      pos: Uniform[Vec2],
+    ) =
+      if (uv * size + pos).dot(dir / dir.length) mod (l1 + l2) > l1:
+        glCol = color1
+      else:
+        glCol = color2
+
+  use shader.shader
+  shader.color1.uniform = color1.vec4
+  shader.color2.uniform = color2.vec4
+  shader.dir.uniform = dir
+  shader.l1.uniform = l1
+  shader.l2.uniform = l2
+  shader.transform.uniform = transform
+  shader.size.uniform = size
+  shader.pos.uniform = pos
+  draw ctx.rect
 
 
 proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, color: Color, view, projection: Mat4) =
@@ -108,7 +187,6 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   # glClearDepthf(1)
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-
   var canvasSettings = CanvasSettings()
   w[].forEach (v: CanvasSettings): canvasSettings = v
   
@@ -130,6 +208,18 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     else:
       scale vec3(height / width * canvasScale, canvasScale, 1/1000)
   )
+
+  glDisable(GlBlend)
+  ctx.fillHatchingRect(
+    vec2(-1, -1 * height / width), vec2(2, 2 * height / width),
+    "#252525".color, "#232323".color,
+    vec2(1, 1),
+    100 / width, 100 / width,
+    transform = scale vec3(1, width / height, 1)
+  )
+  ctx.fillRect(-canvasSettings.size/2, canvasSettings.size, color(0, 0, 0, 0), projection * view)
+  glEnable(GlBlend)
+  glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
   w[].forEach (line: LineSection, color: Color||color(1, 1, 1)):
