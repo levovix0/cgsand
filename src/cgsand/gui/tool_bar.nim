@@ -9,6 +9,11 @@ registerComponent ToolBar
 
 
 
+proc windowControlsWidth*(this: ToolBar): float32 =
+  60
+
+
+
 method init*(this: ToolBar) =
   procCall this.super.init()
 

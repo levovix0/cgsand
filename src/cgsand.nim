@@ -12,14 +12,19 @@ when defined(useX11):
 else:
   let win = newUiWindow(title = "cgsand", frameless = true, transparent = true)
 
-proc onWindowResize =
-  win.siwinWindow.setTitleRegion(vec2(10, 10), vec2(float32 win.siwinWindow.size.x - 10*2, 60))
 
 
 win.makeLayout:
   this.clearColor = "#00000000".color
   
-  onWindowResize()
+  proc onWindowResize =
+    when defined(windows):
+      win.siwinWindow.setTitleRegion(toolBar.globalXy, vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]))
+    else:
+      win.siwinWindow.setTitleRegion(toolBar.globalXy, toolBar.wh)
+    win.siwinWindow.setBorderWidth(10, 0, 40)
+
+  defer: onWindowResize()
   on this.w.changed: onWindowResize()
   on this.h.changed: onWindowResize()
 
@@ -32,6 +37,16 @@ win.makeLayout:
   - ClipRect.new:
     this.fill(parent, 10)
     radius = 7.5
+
+    this.onSignal.connectTo this, e:
+      type Ev = ref StateBoolChangedEvent
+      if e of WindowEvent and e.WindowEvent.event of Ev and e.WindowEvent.event.Ev.kind == maximized:
+        if e.WindowEvent.event.Ev.value:
+          this.fill(parent, 0)
+          this.radius[] = 0
+        else:
+          this.fill(parent, 10)
+          this.radius[] = 7.5
   
     - UiRect.new:
       this.fill(parent)
