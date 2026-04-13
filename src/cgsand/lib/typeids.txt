@@ -3,3 +3,5 @@ DeletedEntity
 CanvasSettings
 LineSection
 Color
+MbArc
+PointCount

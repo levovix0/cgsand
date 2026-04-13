@@ -3,8 +3,8 @@ import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
 import pkg/toscel/[button]
 import ../logic/[scripts, config]
-import ../lib/sandbox except Mat4, mat4
-import ../lib/[geom2d]
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
+import ../lib/[geom2d, c3d]
 
 
 type
@@ -174,7 +174,7 @@ proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, co
       ],
       kind = GL_LINES
     )
-  drawLine(ctx, this.line, obj.startPoint.Vec2, obj.endPoint.Vec2, color, projection * view)
+  drawLine(ctx, this.line, sandbox.Vec2(obj.startPoint).vec2, sandbox.Vec2(obj.endPoint).vec2, color, projection * view)
 
 
 
@@ -217,13 +217,23 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     100 / width, 100 / width,
     transform = scale vec3(1, width / height, 1)
   )
-  ctx.fillRect(-canvasSettings.size/2, canvasSettings.size, color(0, 0, 0, 0), projection * view)
+  ctx.fillRect(-canvasSettings.size.vec2/2, canvasSettings.size.vec2, color(0, 0, 0, 0), projection * view)
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
   w[].forEach (line: LineSection, color: Color||color(1, 1, 1)):
     drawLineSection(this, ctx, line, color, view, projection)
+
+
+  w[].forEach (curve: MbArc, color: Color||color(1, 1, 1), count: PointCount||20):
+    let points = curve.points(count)
+    if curve.closed:
+      for i in 0 ..< points.len:
+        drawLineSection(this, ctx, lineSection(points[i], points[(i + 1) mod points.len]), color, view, projection)
+    else:
+      for i in 0 ..< points.len-1:
+        drawLineSection(this, ctx, lineSection(points[i], points[i + 1]), color, view, projection)
   
 
   glDisable(GlBlend)
