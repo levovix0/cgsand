@@ -14,9 +14,29 @@ type
     
     size*: Vec2 = vec2(200, 200)   ## in abstract units
     mmScale*: float32 = 1  ## (paper page) millimeters per abstract unit
-  
+
+
   Foreground* = Color
   Background* = Color
+
+
+  Position2* = Point2
+    ## used for non-geometry objects that can be displayed (Text)
+  
+  PositionAt* = enum
+    PositionAtTopLeft
+    PositionAtTopRight
+    PositionAtBottomLeft
+    PositionAtBottomRight
+    PositionAtLeft
+    PositionAtRight
+    PositionAtTop
+    PositionAtBottom
+    PositionAtCenter
+  
+  
+  Text* = string
+  FontSize* = float64
 
 
 

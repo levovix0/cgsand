@@ -1,7 +1,7 @@
 import std/[locks]
 import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
-import pkg/toscel/[button]
+import pkg/toscel/[button, fonts]
 import ../logic/[scripts, config]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, c3d]
@@ -178,6 +178,29 @@ proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, co
 
 
 
+proc drawText*(
+  this: DocumentView, ctx: DrawContext,
+  text: Text, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
+  view, projection: Mat4
+) =
+  let fontSize = (projection * view * vec4(0, 1, 0, 0)).y / ctx.px.y
+  var pos = (projection * view * vec4(pos.x.float32, -pos.y.float32, 0, 1)).xy / ctx.px + vec2(ctx.wh.x, -ctx.wh.y)
+  let ts = typeset(font.withSize(fontSize), text)
+  let wh = ts.layoutBounds
+  case posAt
+  of PositionAtTopLeft: pos += vec2(0, 0)
+  of PositionAtTopRight: pos += vec2(-wh.x, 0)
+  of PositionAtBottomLeft: pos += vec2(0, -wh.y)
+  of PositionAtBottomRight: pos += vec2(-wh.x, -wh.y)
+  of PositionAtLeft: pos += vec2(0, -wh.y/2)
+  of PositionAtRight: pos += vec2(-wh.x, -wh.y/2)
+  of PositionAtTop: pos += vec2(-wh.x/2, 0)
+  of PositionAtBottom: pos += vec2(-wh.x/2, -wh.y)
+  of PositionAtCenter: pos += vec2(-wh.x/2, -wh.y/2)
+  ctx.drawText(pos, ts, color.vec4)
+
+
+
 proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, height: float32) =
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
@@ -190,10 +213,12 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   var canvasSettings = CanvasSettings()
   var foreground = color(1, 1, 1)
   var background = color(0, 0, 0, 0)
-  w[].forEach (v: CanvasSettings, opt Foreground, opt Background):
+  var fontSize = 10.0
+  w[].forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize):
     canvasSettings = v
     if has Foreground: foreground = the Foreground
     if has Background: background = the Background
+    if has FontSize: fontSize = the FontSize
   
   let cmin = min(canvasSettings.size.x, canvasSettings.size.y)
   let cmax = max(canvasSettings.size.x, canvasSettings.size.y)
@@ -239,6 +264,10 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     else:
       for i in 0 ..< points.len-1:
         drawLineSection(this, ctx, lineSection(points[i], points[i + 1]), color, view, projection)
+
+
+  w[].forEach (text: Text, pos: Position2, color: Color||foreground, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||fontSize):
+    drawText(this, ctx, text, pos, color, posAt, font, size, view, projection)
   
 
   glDisable(GlBlend)

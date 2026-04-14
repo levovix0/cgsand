@@ -1,4 +1,4 @@
-import sandbox, geom2d
+import sandbox, geom2d, strutils
 
 type
   Scheme = seq[seq[string]]
@@ -14,9 +14,8 @@ type
     wh: Vec2
 
 
-# x y z x̅ y̅ z̅
-doc.add Scheme @[@["x", "y", "z"], @["x", "y", "z̅"], @["x̅", "y", "z̅"]]
-doc.add Scheme @[@["x", "y"], @["x", "z̅"]]
+doc.add Scheme @[@["x", "y", "z"], @["x", "y", "!z"], @["!x", "y", "!z"]]
+doc.add Scheme @[@["x", "y"], @["x", "!z"]]
 
 
 # todo: allow to define (in CanvasSettings) where the "origin" (0, 0) is located (at courner or at center)
@@ -39,20 +38,20 @@ doc.forEach (scheme: Scheme):
     let p = point2(x + 3, -y)
     
     for sym in andGate:
-      andInp.add doc.spawn(Lit sym, point2(x, -y), schemeN)
+      andInp.add doc.spawn(Lit sym, Position2 point2(x, -y), schemeN)
       y += 1.5
     
-    orInp.add doc.spawn(AndGate(), p, Input andInp, schemeN)
+    orInp.add doc.spawn(AndGate(), Position2 p, Input andInp, schemeN)
     y += 1
   
   y -= 1
-  orInp.add doc.spawn(OrGate(), point2(x + 8, -(y - orInp.len.float*1.5) / 2), Input orInp, schemeN)
+  orInp.add doc.spawn(OrGate(), Position2 point2(x + 8, -(y - orInp.len.float*1.5) / 2), Input orInp, schemeN)
   
   x += 10
   h = max(h, y)
   schemeH.add y
 
-doc.forEach (p: var Point2, n: SchemeN):
+doc.forEach (p: var Position2, n: SchemeN):
   p = p + vec2(0, -(h - schemeH[n]) / 2)
 
 
@@ -63,19 +62,34 @@ doc.add:
   )
   Background color(1, 1, 1)
   Foreground color(0, 0, 0)
+  FontSize 1
 
 
-doc.forEach (p: var Point2):
+
+doc.forEach (p: var Position2):
   p = p - vec2(x, -h) / 2
 
 
-doc.forEach (Lit, p: Point2):
-  doc.add Rect(pos: p, wh: vec2(1, 1))
+doc.forEach (text: Lit, p: Position2):
+  var text = text
+  if text.startsWith("!"):
+    doc.add lineSection(p + vec2(0.2, -0.15), p + vec2(0.8, -0.15))
+
+  text.removePrefix "!"
+  
+  doc.add Text text:
+    Position2 p + vec2(0.5, -1.1)
+    PositionAtBottom
+
   doc.add lineSection(p + vec2(0, -1.25), p + vec2(3, -1.25))
 
 var rects: seq[(EntityId, Rect)]
-doc.forEach (id: EntityId, AndGate|OrGate, p: Point2, i: Input):
+doc.forEach (id: EntityId, AndGate|OrGate, p: Position2, i: Input):
   rects.add (id, Rect(pos: p, wh: vec2(2, i.len.float*1.5)))
+  doc.add Text (if has AndGate: "&" else: "1"):
+    Position2 p + vec2(1, -0.25)
+    PositionAtTop
+
 for (id, rect) in rects:
   doc.update id: add rect  # todo: allow to update inside forEach
 

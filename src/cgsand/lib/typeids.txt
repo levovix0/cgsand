@@ -3,7 +3,12 @@ DeletedEntity
 CanvasSettings
 Foreground
 Background
+FontSize
 LineSection
 Color
 MbArc
 PointCount
+Text
+Position2
+PositionAt
+Typeface
