@@ -1,5 +1,7 @@
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations]
+import pkg/toscel/lineEdit
+import ../logic/[config]
 
 
 type
@@ -48,5 +50,15 @@ method init*(this: ToolBar) =
       
       on this.mouseDownAndUpInside:
         close this.parentWindow
+    
+
+    - LineEdit.new:
+      centerY = parent.center
+      left = parent.left + 10
+      w = 300
+      text = binding: config.currentScript[]
+
+      on this.textEdited:
+        config.currentScript[] = this.text[]
 
 

@@ -1,6 +1,8 @@
 EntityId
 DeletedEntity
 CanvasSettings
+Foreground
+Background
 LineSection
 Color
 MbArc

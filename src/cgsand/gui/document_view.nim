@@ -188,7 +188,12 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
   var canvasSettings = CanvasSettings()
-  w[].forEach (v: CanvasSettings): canvasSettings = v
+  var foreground = color(1, 1, 1)
+  var background = color(0, 0, 0, 0)
+  w[].forEach (v: CanvasSettings, opt Foreground, opt Background):
+    canvasSettings = v
+    if has Foreground: foreground = the Foreground
+    if has Background: background = the Background
   
   let cmin = min(canvasSettings.size.x, canvasSettings.size.y)
   let cmax = max(canvasSettings.size.x, canvasSettings.size.y)
@@ -217,16 +222,16 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     100 / width, 100 / width,
     transform = scale vec3(1, width / height, 1)
   )
-  ctx.fillRect(-canvasSettings.size.vec2/2, canvasSettings.size.vec2, color(0, 0, 0, 0), projection * view)
+  ctx.fillRect(-canvasSettings.size.vec2/2, canvasSettings.size.vec2, background, projection * view)
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
-  w[].forEach (line: LineSection, color: Color||color(1, 1, 1)):
+  w[].forEach (line: LineSection, color: Color||foreground):
     drawLineSection(this, ctx, line, color, view, projection)
 
 
-  w[].forEach (curve: MbArc, color: Color||color(1, 1, 1), count: PointCount||20):
+  w[].forEach (curve: MbArc, color: Color||foreground, count: PointCount||20):
     let points = curve.points(count)
     if curve.closed:
       for i in 0 ..< points.len:
@@ -287,7 +292,7 @@ proc recompileScript*(this: DocumentView) =
       if this.script[].stage != Idle:
         return  # ignore recompile request while still compiling
   this.script{} = nil  # unload current script
-  this.script[] = compileAndRunScript("examples/script.nim", "build/script")
+  this.script[] = compileAndRunScript(currentScript[], "build/script")
 
 
 
