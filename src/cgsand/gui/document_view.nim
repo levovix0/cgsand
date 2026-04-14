@@ -346,6 +346,7 @@ method init*(this: DocumentView) =
       text = tr"Recompile"
       centerX = parent.center
       bottom = parent.bottom - 10
+      enabled = binding: root.scriptStage[] == Idle
       on this.activated: root.recompileScript()
     
     - UiRect.new:

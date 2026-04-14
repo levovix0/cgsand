@@ -1,11 +1,12 @@
 import pkg/siwin/platforms/any/window
-import pkg/sigui/[uibase, mouseArea, animations]
-import pkg/toscel/lineEdit
+import pkg/sigui/[uibase, mouseArea, animations, layouts]
+import pkg/toscel/[lineEdit, button]
 import ../logic/[config]
 
 
 type
   ToolBar* = ref object of Uiobj
+    codeEditor*: Uiobj
 
 registerComponent ToolBar
 
@@ -52,13 +53,23 @@ method init*(this: ToolBar) =
         close this.parentWindow
     
 
-    - LineEdit.new:
+    - Layout.row:
       centerY = parent.center
       left = parent.left + 10
-      w = 300
-      text = binding: config.currentScript[]
+      gap = 10
 
-      on this.textEdited:
-        config.currentScript[] = this.text[]
+      - Button.new:
+        text = tr"Code"
+        accent = binding: root.codeEditor.visibility[] == visible
+
+        on this.activated:
+          root.codeEditor.visibility[] = (if root.codeEditor.visibility[] == visible: collapsed else: visible)
+
+      - LineEdit.new:
+        w = 300
+        text = binding: config.currentScript[]
+
+        on this.textEdited:
+          config.currentScript[] = this.text[]
 
 

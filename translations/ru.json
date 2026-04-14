@@ -3,5 +3,10 @@
     "Recompile": {
       "": "Пересобрать"
     }
+  },
+  "src/cgsand/gui/tool_bar.nim": {
+    "Code": {
+      "": "Код"
+    }
   }
 }

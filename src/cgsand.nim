@@ -60,12 +60,14 @@ win.makeLayout:
 
     - DocumentView.new as documentView:
       w = binding: parent.w[] / 2
-      left = codeEditor.right
+      this.left = binding:
+        if codeEditor.visibility[] == collapsed: parent.left
+        else: codeEditor.right
       right = parent.right
       top = toolBar.bottom
       bottom = parent.bottom
 
-    - ToolBar.new as toolBar:
+    - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
       h = 60
 

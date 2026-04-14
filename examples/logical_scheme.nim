@@ -24,6 +24,7 @@ type
     wh: Vec2
   
   Final = object
+    cost: int
 
 
 converter toNode(name: string): Node = Node(kind: SymN, name: name)
@@ -38,6 +39,12 @@ doc.add Scheme andN(orN("x", "!z"), "y")
 
 # todo: allow to define (in CanvasSettings) where the "origin" (0, 0) is located (at courner or at center)
 # todo: allow to define (in CanvasSettings) if y is up or down
+
+
+proc cost(n: Node): int =
+  case n.kind
+  of SymN: 0
+  of AndN, OrN: n.childs.mapIt(it.cost + 1).foldl(a + b)
 
 
 proc drawNode(n: Node, pos: Point2, schemeN: SchemeN): tuple[id: EntityId, size: Vec2] =
@@ -63,7 +70,7 @@ proc drawNode(n: Node, pos: Point2, schemeN: SchemeN): tuple[id: EntityId, size:
     if n.kind == AndN:
       result.id = doc.spawn(AndGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
     else:
-      result.id = doc.spawn(AndGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
+      result.id = doc.spawn(OrGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
 
 
 var x = 0.0
@@ -73,8 +80,8 @@ var schemeH: seq[float]
 doc.forEach (scheme: Scheme):
   if x != 0: x += 4
   let (root, size) = drawNode(scheme, point2(x, 0), schemeH.len)
-  doc.update root: add Final()
-  x += size.x
+  doc.update root: add Final(cost: scheme.cost)
+  x += size.x + 3
   h = max(h, size.y)
   schemeH.add size.y
 
@@ -89,6 +96,7 @@ doc.add:
   )
   Background color(1, 1, 1)
   Foreground color(0, 0, 0)
+  # Foreground color(0.75, 0.75, 0.8)
   FontSize 1
 
 
@@ -120,6 +128,17 @@ doc.forEach (id: EntityId, AndGate|OrGate, p: Position2, i: Input):
 
 for (id, rect) in rects:
   doc.update id: add rect  # todo: allow to update inside forEach
+
+
+doc.forEach (r2: Rect, AndGate|OrGate, Final):
+  let p = r2.pos + vec2(r2.wh.x, -r2.wh.y / 2)
+  doc.add lineSection(p, p + vec2(3, 0))
+  doc.add Text "f":
+    Position2 p + vec2(1.5, 0.15)
+    PositionAtBottom
+  doc.add Text "C = " & $the(Final).cost:
+    Position2 p + vec2(1.5, -3)
+    PositionAtTop
 
 
 doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
