@@ -180,10 +180,10 @@ proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, co
 
 proc drawText*(
   this: DocumentView, ctx: DrawContext,
-  text: Text, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
+  text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
   view, projection: Mat4
 ) =
-  let fontSize = (projection * view * vec4(0, 1, 0, 0)).y / ctx.px.y
+  let fontSize = (projection * view * vec4(0, fontSize, 0, 0)).y / ctx.px.y
   var pos = (projection * view * vec4(pos.x.float32, -pos.y.float32, 0, 1)).xy / ctx.px + vec2(ctx.wh.x, -ctx.wh.y)
   let ts = typeset(font.withSize(fontSize), text)
   let wh = ts.layoutBounds
