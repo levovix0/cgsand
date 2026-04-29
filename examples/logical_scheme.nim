@@ -1,4 +1,4 @@
-import sandbox, geom2d, strutils, sequtils
+import sandbox, geom2d, strutils, sequtils, c3d
 
 type
   NodeKind = enum
@@ -8,7 +8,9 @@ type
 
   Node = object
     case kind: NodeKind
-    of AndN, OrN: childs: seq[Node]
+    of AndN, OrN:
+      childs: seq[Node]
+      inverseOut: bool
     of SymN: name: string
   
   Scheme = Node
@@ -18,6 +20,7 @@ type
   AndGate = object
   OrGate = object
   Input = seq[EntityId]
+  InverseOut = object
 
   Rect = object
     pos: Point2
@@ -27,18 +30,17 @@ type
     cost: int
 
 
-converter toNode(name: string): Node = Node(kind: SymN, name: name)
-proc orN(childs: varargs[Node]): Node = Node(kind: OrN, childs: childs.toSeq)
-proc andN(childs: varargs[Node]): Node = Node(kind: AndN, childs: childs.toSeq)
+converter toNode*(name: string): Node = Node(kind: SymN, name: name)
+proc orN*(childs: varargs[Node]): Node = Node(kind: OrN, childs: childs.toSeq)
+proc andN*(childs: varargs[Node]): Node = Node(kind: AndN, childs: childs.toSeq)
+proc norN*(childs: varargs[Node]): Node = Node(kind: OrN, childs: childs.toSeq, inverseOut: true)
+proc nandN*(childs: varargs[Node]): Node = Node(kind: AndN, childs: childs.toSeq, inverseOut: true)
 
 
 doc.add Scheme orN(andN("x", "y", "z"), andN("x", "y", "!z"), andN("!x", "y", "!z"))
 doc.add Scheme orN(andN("x", "y"), andN("y", "!z"))
 doc.add Scheme andN(orN("x", "!z"), "y")
-
-
-# todo: allow to define (in CanvasSettings) where the "origin" (0, 0) is located (at courner or at center)
-# todo: allow to define (in CanvasSettings) if y is up or down
+doc.add Scheme norN(nandN(norN(nandN("!x", "z")), "y"))
 
 
 proc cost(n: Node): int =
@@ -71,6 +73,8 @@ proc drawNode(n: Node, pos: Point2, schemeN: SchemeN): tuple[id: EntityId, size:
       result.id = doc.spawn(AndGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
     else:
       result.id = doc.spawn(OrGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
+    if n.inverseOut:
+      doc.update result.id: add InverseOut()
 
 
 var x = 0.0
@@ -108,7 +112,7 @@ doc.forEach (p: var Position2):
 doc.forEach (text: Sym, p: Position2):
   var text = text
   if text.startsWith("!"):
-    doc.add lineSection(p + vec2(0.2, -0.15), p + vec2(0.8, -0.15))
+    doc.add lineSection(p + vec2(0, -0.05), p + vec2(1, -0.05))
 
   text.removePrefix "!"
   
@@ -136,9 +140,9 @@ doc.forEach (r2: Rect, AndGate|OrGate, Final):
   doc.add Text "f":
     Position2 p + vec2(1.5, 0.15)
     PositionAtBottom
-  doc.add Text "C = " & $the(Final).cost:
-    Position2 p + vec2(1.5, -3)
-    PositionAtTop
+  # doc.add Text "C = " & $the(Final).cost:
+  #   Position2 p + vec2(1.5, -3)
+  #   PositionAtTop
 
 
 doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
@@ -155,7 +159,7 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
       x_mid = max(x_mid, p1.x + 3 + (r2.pos.x - (p1.x + 3)) / 2)
       
 
-  doc.forEach (r1: Rect, AndGate|OrGate, id: EntityId):
+  doc.forEach (r1: Rect, AndGate|OrGate, opt InverseOut, id: EntityId):
     let n = i.find(id)
     if n != -1:
       let p1 = r1.pos + vec2(r1.wh.x, -r1.wh.y / 2)
@@ -174,6 +178,9 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
       doc.add lineSection(p[0], p[1])
       doc.add lineSection(p[1], p[2])
       doc.add lineSection(p[2], p[3])
+    
+    if has(InverseOut):
+      doc.add circle(point2(r1.pos.x + r1.wh.x, r1.pos.y - r1.wh.y/2), 0.1)
       
 
   doc.forEach (p1: Position2, Sym, id: EntityId):

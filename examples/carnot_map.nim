@@ -62,27 +62,29 @@ doc.forEach (r: RectTable, pos: Position2||point2()):
     doc.add FigureBracket(a: pos + vec2(0, 0) * sz, b: pos + vec2(0.5, 0) * sz, h: vec2(0, 0.5), power: 2)
     doc.add FigureBracket(a: pos + vec2(0.5, 0) * sz, b: pos + vec2(1, 0) * sz, h: vec2(0, 0.5), power: 2)
     doc.add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz, h: vec2(0, -0.5), power: 2)
-    doc.add Text "!x2":
-      Position2 pos + vec2(0.25, 0) * sz + vec2(0, 0.5)
-      PositionAtBottom
-    doc.add Text "x2":
-      Position2 pos + vec2(0.75, 0) * sz + vec2(0, 0.5)
-      PositionAtBottom
-    doc.add Text "!x3":
-      Position2 pos + vec2(1/8, 1) * sz + vec2(0, -0.5)
-      PositionAtTop
-    doc.add Text "!x3":
-      Position2 pos + vec2(7/8, 1) * sz + vec2(0, -0.5)
-      PositionAtTop
-    doc.add Text "x3":
-      Position2 pos + vec2(0.5, 1) * sz + vec2(0, -0.5)
-      PositionAtTop
-    doc.add Text "!x1":
-      Position2 pos + vec2(0, 1/4) * sz + vec2(-0.2, 0)
-      PositionAtRight
-    doc.add Text "x1":
-      Position2 pos + vec2(0, 3/4) * sz + vec2(-0.2, 0)
-      PositionAtRight
+    let positions = {
+      "!x2": (pos + vec2(0.25, 0) * sz + vec2(0, 0.5), PositionAtBottom),
+      "!x2": (pos + vec2(0.25, 0) * sz + vec2(0, 0.5), PositionAtBottom),
+      "x2":  (pos + vec2(0.75, 0) * sz + vec2(0, 0.5), PositionAtBottom),
+      "!x3": (pos + vec2(1/8, 1) * sz + vec2(0, -0.5), PositionAtTop),
+      "!x3": (pos + vec2(7/8, 1) * sz + vec2(0, -0.5), PositionAtTop),
+      "x3":  (pos + vec2(0.5, 1) * sz + vec2(0, -0.5), PositionAtTop),
+      "!x1": (pos + vec2(0, 1/4) * sz + vec2(-0.2, 0), PositionAtRight),
+      "x1":  (pos + vec2(0, 3/4) * sz + vec2(-0.2, 0), PositionAtRight),
+    }
+    for (name, pos) in positions:
+      var name = name
+      if name.startsWith("!"):
+        let v = case pos[1]
+          of PositionAtBottom: vec2(-0.5, 1)
+          of PositionAtTop: vec2(-0.5, 0)
+          of PositionAtRight: vec2(-1, 0.5)
+          else: vec2()
+        doc.add lineSection(pos[0] + v, pos[0] + v + vec2(1, 0))
+      name.removePrefix("!")
+      doc.add Text name:
+        Position2 pos[0]
+        pos[1]
   
   for x in 0..<r.cols:
     for y in 0..<r.rows:
