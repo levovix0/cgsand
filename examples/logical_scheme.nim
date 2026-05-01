@@ -117,7 +117,7 @@ doc.forEach (text: Sym, p: Position2):
   text.removePrefix "!"
   
   doc.add Text text:
-    Position2 p + vec2(0.5, -1.1)
+    Position2 p + vec2(0.5, -1)
     PositionAtBottom
 
   doc.add lineSection(p + vec2(0, -1.25), p + vec2(3, -1.25))

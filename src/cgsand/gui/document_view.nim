@@ -2,6 +2,7 @@ import std/[locks]
 import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
 import pkg/toscel/[button, fonts]
+import pkg/rice/[primitives, primitivesAA]
 import ../logic/[scripts, config]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, c3d]
@@ -12,100 +13,9 @@ type
     script*: Property[Script]
     scriptStage*: Property[ScriptStage]
 
-    documentPixels: EffectBuffer
-    line: Shape  # todo: use rice
+    documentPixels: FrameBuffer
 
 registerComponent DocumentView
-
-
-
-proc newEffectBuffer*(ctx: DrawContext, size: IVec2): EffectBuffer =
-  ## create new effect buffer with exact size
-  ## todo: move to sigui
-  new result
-
-  template ef: untyped = result
-  ef.size = size
-  ef.fbo = newFrameBuffers(1)
-  ef.tex = newTexture()
-
-  let prevFbo =
-    if ctx.frameBufferHierarchy.len != 0: ctx.frameBufferHierarchy[^1].fbo
-    else: 0
-  
-  glBindFramebuffer(GlFramebuffer, ef.fbo[0])
-  glBindTexture(GlTexture2d, ef.tex.raw)
-  glTexImage2D(GlTexture2d, 0, GlRgba.Glint, ef.size.x, ef.size.y, 0, GlRgba, GlUnsignedByte, nil)
-  glTexParameteri(GlTexture2d, GlTextureMinFilter, GlNearest)
-  glTexParameteri(GlTexture2d, GlTextureMagFilter, GlNearest)
-  glFramebufferTexture2D(GlFramebuffer, GlColorAttachment0, GlTexture2d, ef.tex.raw, 0)
-      
-  glBindFramebuffer(GlFramebuffer, prevFbo)
-
-
-proc drawLine*(ctx: DrawContext, lineShape: Shape, a, b: Vec3, color: Color, transform: Mat4 = mat4()) =
-  # todo: use rice
-  let d = b - a
-  let transform = (
-    transform *
-    translate(a) *
-    mat4(
-      d.x, d.y, d.z, 0,
-      0,   0,   0,   0,
-      0,   0,   0,   0,
-      0,   0,   0,   1,
-    )
-  )
-
-  let shader = ctx.makeShader:
-    proc vert(
-      t: float32,
-      transform: Uniform[Mat4],
-    ) =
-      gl_Position = transform * vec4(t, 0, 0, 1)
-    
-    proc frag(
-      glCol: var Vec4,
-      color: Uniform[Vec4],
-    ) =
-      glCol = color
-
-  use shader.shader
-  shader.color.uniform = color.vec4
-  shader.transform.uniform = transform
-  draw lineShape
-
-
-proc drawLine*(ctx: DrawContext, lineShape: Shape, a, b: Vec2, color: Color, transform: Mat4 = mat4()) =
-  # todo: use rice
-  drawLine(ctx, lineShape, vec3(a.x, a.y, 0), vec3(b.x, b.y, 0), color, transform)
-  
-
-proc fillRect*(ctx: DrawContext, pos, size: Vec2, color: Color, transform: Mat4 = mat4()) =
-  # todo: use rice
-  let transform = (
-    transform *
-    translate(pos.vec3(0)) *
-    scale(size.vec3(1))
-  )
-
-  let shader = ctx.makeShader:
-    proc vert(
-      pos: Vec2,
-      transform: Uniform[Mat4],
-    ) =
-      gl_Position = transform * vec4(pos.x, pos.y, 0, 1)
-    
-    proc frag(
-      glCol: var Vec4,
-      color: Uniform[Vec4],
-    ) =
-      glCol = color
-
-  use shader.shader
-  shader.color.uniform = color.vec4
-  shader.transform.uniform = transform
-  draw ctx.rect
   
 
 proc fillHatchingRect*(
@@ -116,7 +26,7 @@ proc fillHatchingRect*(
   l1, l2: float32,
   transform: Mat4 = mat4()
 ) =
-  # todo: use rice
+  # todo: move to rice
   let transform = (
     transform *
     translate(pos.vec3(0)) *
@@ -124,80 +34,51 @@ proc fillHatchingRect*(
   )
 
   let shader = ctx.makeShader:
-    proc vert(
-      pos: Vec2,
-      transform: Uniform[Mat4],
-      uv: var Vec2,
-    ) =
-      gl_Position = transform * vec4(pos.x, pos.y, 0, 1)
+    proc vert =
+      var pos {.inp.}: Vec2
+      var uv {.out.}: Vec2
+      gl_Position = @(transform) * vec4(pos.x, pos.y, 0, 1)
       uv = pos
     
-    proc frag(
-      glCol: var Vec4,
-      uv: Vec2,
-      color1: Uniform[Vec4],
-      color2: Uniform[Vec4],
-      dir: Uniform[Vec2],
-      l1: Uniform[float32],
-      l2: Uniform[float32],
-      size: Uniform[Vec2],
-      pos: Uniform[Vec2],
-    ) =
-      if (uv * size + pos).dot(dir / dir.length) mod (l1 + l2) > l1:
-        glCol = color1
+    proc frag =
+      var glCol {.outGl.}: Vec4
+      if (uv * @(size) + @(pos)).dot(@(dir.normalize.vec2)) mod (@(l1) + @(l2)) > @(l1):
+        glCol = @(color1.vec4)
       else:
-        glCol = color2
+        glCol = @(color2.vec4)
 
-  use shader.shader
-  shader.color1.uniform = color1.vec4
-  shader.color2.uniform = color2.vec4
-  shader.dir.uniform = dir
-  shader.l1.uniform = l1
-  shader.l2.uniform = l2
-  shader.transform.uniform = transform
-  shader.size.uniform = size
-  shader.pos.uniform = pos
+  useAndPassUniforms shader
   draw ctx.rect
 
 
-proc drawLineSection*(this: DocumentView, ctx: DrawContext, obj: LineSection, color: Color, view, projection: Mat4) =
-  ## todo: port sigui to rice and use drawLine from rice
-  if this.line == nil:
-    this.line = newShape(
-      [
-        0'f32,
-        1,
-      ],
-      [
-        0'u32,
-        1
-      ],
-      kind = GL_LINES
-    )
-  drawLine(ctx, this.line, sandbox.Vec2(obj.startPoint).vec2, sandbox.Vec2(obj.endPoint).vec2, color, projection * view)
+proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, transform = mat4()) =
+  ctx.drawLine(
+    a = sandbox.Vec2(obj.startPoint).vec2,
+    b = sandbox.Vec2(obj.endPoint).vec2,
+    color = color,
+    transform = transform
+  )
 
 
 
 proc drawText*(
-  this: DocumentView, ctx: DrawContext,
+  ctx: DrawContext,
   text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
-  view, projection: Mat4
+  transform = mat4(),
 ) =
-  let fontSize = (projection * view * vec4(0, fontSize, 0, 0)).y / ctx.px.y
-  var pos = (projection * view * vec4(pos.x.float32, -pos.y.float32, 0, 1)).xy / ctx.px + vec2(ctx.wh.x, -ctx.wh.y)
+  let fontSize = (ctx.viewportToGlMatrix * vec4(0, fontSize, 0, 0)).y / ctx.px.y
   let ts = typeset(font.withSize(fontSize), text)
-  let wh = ts.layoutBounds
-  case posAt
-  of PositionAtTopLeft: pos += vec2(0, 0)
-  of PositionAtTopRight: pos += vec2(-wh.x, 0)
-  of PositionAtBottomLeft: pos += vec2(0, -wh.y)
-  of PositionAtBottomRight: pos += vec2(-wh.x, -wh.y)
-  of PositionAtLeft: pos += vec2(0, -wh.y/2)
-  of PositionAtRight: pos += vec2(-wh.x, -wh.y/2)
-  of PositionAtTop: pos += vec2(-wh.x/2, 0)
-  of PositionAtBottom: pos += vec2(-wh.x/2, -wh.y)
-  of PositionAtCenter: pos += vec2(-wh.x/2, -wh.y/2)
-  ctx.drawText(pos, ts, color.vec4)
+  let origin = case posAt
+    of PositionAtTopLeft: vec2(0, 0)
+    of PositionAtTopRight: vec2(1, 0)
+    of PositionAtBottomLeft: vec2(0, 1)
+    of PositionAtBottomRight: vec2(1, 1)
+    of PositionAtLeft: vec2(0, 1/2)
+    of PositionAtRight: vec2(1, 1/2)
+    of PositionAtTop: vec2(1/2, 0)
+    of PositionAtBottom: vec2(1/2, 1)
+    of PositionAtCenter: vec2(1/2, 1/2)
+  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform)
 
 
 
@@ -228,11 +109,17 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     else:
       1
 
-  let view = (
+  let prevView = ctx.viewportMatrix
+  let prevProj = ctx.projectionMatrix
+  defer:
+    ctx.viewport = prevView
+    ctx.projection = prevProj
+  
+  ctx.viewport = (
     (scale vec3(2/cmax, 2/cmax, 1))
   )
-
-  let projection = (
+  
+  ctx.projection = (
     if width / canvasSettings.size.x < height / canvasSettings.size.y:
       scale vec3(canvasScale, width / height * canvasScale, 1/1000)
     else:
@@ -247,27 +134,33 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     100 / width, 100 / width,
     transform = scale vec3(1, width / height, 1)
   )
-  ctx.fillRect(-canvasSettings.size.vec2/2, canvasSettings.size.vec2, background, projection * view)
+  ctx.fillRect(
+    rect(
+      -canvasSettings.size.vec2/2,
+      canvasSettings.size.vec2
+    ),
+    color = background,
+  )
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
   w[].forEach (line: LineSection, color: Color||foreground):
-    drawLineSection(this, ctx, line, color, view, projection)
+    drawLineSection(ctx, line, color)
 
 
   w[].forEach (curve: MbArc, color: Color||foreground, count: PointCount||20):
     let points = curve.points(count)
     if curve.closed:
       for i in 0 ..< points.len:
-        drawLineSection(this, ctx, lineSection(points[i], points[(i + 1) mod points.len]), color, view, projection)
+        drawLineSection(ctx, lineSection(points[i], points[(i + 1) mod points.len]), color)
     else:
       for i in 0 ..< points.len-1:
-        drawLineSection(this, ctx, lineSection(points[i], points[i + 1]), color, view, projection)
+        drawLineSection(ctx, lineSection(points[i], points[i + 1]), color)
 
 
   w[].forEach (text: Text, pos: Position2, color: Color||foreground, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||fontSize):
-    drawText(this, ctx, text, pos, color, posAt, font, size, view, projection)
+    drawText(ctx, text, pos, color, posAt, font, size)
   
 
   glDisable(GlBlend)
@@ -288,13 +181,13 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
     if (let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32); this.documentPixels == nil or this.documentPixels.size != efSize):
       if this.documentPixels != nil:
         ctx.free this.documentPixels
-      this.documentPixels = ctx.newEffectBuffer(efSize)
+      this.documentPixels = ctx.requireFrameBuffer(efSize)
 
-    ctx.push this.documentPixels, clear = false
+    let prevEf = ctx.push(this.documentPixels)
     try:
       draw2dDocument(this, this.script[].world, ctx, this.w[], this.h[])
     finally:
-      ctx.pop this.documentPixels
+      ctx.pop prevEf
 
 
   if this.documentPixels != nil:
