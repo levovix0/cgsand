@@ -1,8 +1,8 @@
 import std/[locks, options]
 import pkg/[ecs, shady]
-import pkg/sigui/[uibase, globalKeybinding]
+import pkg/sigui/[uibase, globalKeybinding, windowCreation]
 import pkg/toscel/[button, fonts]
-import pkg/rice/[primitives, antialiasing, transform]
+import pkg/rice/[primitives, antialiasing, transform, texts]
 import ../logic/[scripts, config]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, c3d]
@@ -98,7 +98,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
 
   glClearColor(0, 0, 0, 0)
   # glClearDepthf(1)
-  glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+  glClear(GL_COLOR_BUFFER_BIT #[or GL_DEPTH_BUFFER_BIT]#)
 
   var canvasSettings = CanvasSettings()
   var foreground = color(1, 1, 1)
@@ -188,16 +188,18 @@ proc hasWorldToDraw(script: Script): bool =
 proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
   if this.script[].hasWorldToDraw:
     let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32)
-    this.documentPixels.resize(efSize)
+    if this.documentPixels == nil:
+      this.documentPixels = ctx.newAntialiasedFramebuffer(efSize)
+    else:
+      ctx.resize(this.documentPixels, efSize)
 
-    let prevEf = ctx.push(this.documentPixels)
+    let psh = ctx.push(this.documentPixels)
     try:
       draw2dDocument(this, this.script[].world, ctx, this.w[], this.h[])
     finally:
-      ctx.pop this.documentPixels, prevEf
+      ctx.pop psh
 
   if this.documentPixels != nil:
-    # todo: sometimes causes crush
     ctx.draw(
       this.documentPixels,
       transform = combine(
@@ -230,7 +232,6 @@ proc recompileScript*(this: DocumentView) =
 
 method init*(this: DocumentView) =
   procCall this.super.init()
-  this.documentPixels = newAntialiasedFramebuffer(depth = true)
 
   this.parentUiRoot.onTick.connectTo this:
     if this.script[] != nil:

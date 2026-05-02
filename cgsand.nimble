@@ -20,7 +20,7 @@ requires "localize >= 0.3.5" #d1b5ae63
 
 # --- unstable dependencies ---
 
-requires "sigui#9e60da9e"
+requires "sigui#97129b33"
   ## for GUI
 
 requires "https://github.com/levovix0/sigeo#c4a8cc1f"
@@ -50,5 +50,5 @@ requires "crunchy#98eb6526"
 requires "zippy#bcb8c1e1"
 requires "flatty#07f6ba8a"
 requires "nimsimd#3f6b2668"
-requires "rice#0c81d74c"
+requires "rice#8bd50bd0"
 
