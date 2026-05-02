@@ -6,6 +6,7 @@ Background
 FontSize
 LineSection
 Color
+Thickness
 MbArc
 PointCount
 Text

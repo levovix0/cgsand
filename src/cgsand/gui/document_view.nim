@@ -1,8 +1,8 @@
-import std/[locks]
+import std/[locks, options]
 import pkg/[ecs, shady]
 import pkg/sigui/[uibase, globalKeybinding]
 import pkg/toscel/[button, fonts]
-import pkg/rice/[primitives, primitivesAA]
+import pkg/rice/[primitives, antialiasing, transform]
 import ../logic/[scripts, config]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, c3d]
@@ -13,7 +13,7 @@ type
     script*: Property[Script]
     scriptStage*: Property[ScriptStage]
 
-    documentPixels: FrameBuffer
+    documentPixels: AntialiasedFramebuffer
 
 registerComponent DocumentView
   
@@ -51,13 +51,22 @@ proc fillHatchingRect*(
   draw ctx.rect
 
 
-proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, transform = mat4()) =
-  ctx.drawLine(
-    a = sandbox.Vec2(obj.startPoint).vec2,
-    b = sandbox.Vec2(obj.endPoint).vec2,
-    color = color,
-    transform = transform
-  )
+proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
+  if thickness.isSome:
+    ctx.drawLine(
+      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
+      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
+      color = color,
+      transform = transform,
+      thickness = thickness.get,
+    )
+  else:
+    ctx.drawLine(
+      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
+      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
+      color = color,
+      transform = transform,
+    )
 
 
 
@@ -78,7 +87,7 @@ proc drawText*(
     of PositionAtTop: vec2(1/2, 0)
     of PositionAtBottom: vec2(1/2, 1)
     of PositionAtCenter: vec2(1/2, 1/2)
-  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform)
+  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true)
 
 
 
@@ -145,8 +154,8 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
-  w[].forEach (line: LineSection, color: Color||foreground):
-    drawLineSection(ctx, line, color)
+  w[].forEach (line: LineSection, color: Color||foreground, thickness: opt Thickness):
+    drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
   w[].forEach (curve: MbArc, color: Color||foreground, count: PointCount||20):
@@ -178,23 +187,24 @@ proc hasWorldToDraw(script: Script): bool =
 
 proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
   if this.script[].hasWorldToDraw:
-    if (let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32); this.documentPixels == nil or this.documentPixels.size != efSize):
-      if this.documentPixels != nil:
-        ctx.free this.documentPixels
-      this.documentPixels = ctx.requireFrameBuffer(efSize)
+    let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32)
+    this.documentPixels.resize(efSize)
 
     let prevEf = ctx.push(this.documentPixels)
     try:
       draw2dDocument(this, this.script[].world, ctx, this.w[], this.h[])
     finally:
-      ctx.pop prevEf
-
+      ctx.pop this.documentPixels, prevEf
 
   if this.documentPixels != nil:
-    ctx.drawImage(
-      (this.globalXy + ctx.offset).round, this.wh,
-      this.documentPixels.tex.raw, color(1, 1, 1).vec4, 0, true, 0, flipY=true,
-      imageSize = this.documentPixels.size.vec2,
+    # todo: sometimes causes crush
+    ctx.draw(
+      this.documentPixels,
+      transform = combine(
+        translate vec3(0, -this.documentPixels.size.y.float32, 0),
+        scale vec3(1, -1, 1),
+        translate (this.globalXy + ctx.offset).round.vec3(0),
+      )
     )
 
 
@@ -220,6 +230,7 @@ proc recompileScript*(this: DocumentView) =
 
 method init*(this: DocumentView) =
   procCall this.super.init()
+  this.documentPixels = newAntialiasedFramebuffer(depth = true)
 
   this.parentUiRoot.onTick.connectTo this:
     if this.script[] != nil:

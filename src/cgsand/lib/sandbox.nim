@@ -39,6 +39,9 @@ type
   FontSize* = float64
 
 
+  Thickness* = float32
+
+
 
 var doc* {.exportc: "world_instance", dynlib.} = World()
   ## in the sandbox we have an entire World!
