@@ -1,6 +1,7 @@
-import std/[locks, options]
+import std/[locks, options, math]
 import pkg/[ecs, shady]
-import pkg/sigui/[uibase, globalKeybinding, windowCreation]
+import pkg/siwin/platforms/any/window
+import pkg/sigui/[uibase, globalKeybinding, mouseArea]
 import pkg/toscel/[button, fonts]
 import pkg/rice/[primitives, antialiasing, transform, texts]
 import ../logic/[scripts, config]
@@ -12,6 +13,7 @@ type
   DocumentView* = ref object of Uiobj
     script*: Property[Script]
     scriptStage*: Property[ScriptStage]
+    viewport*: Property[Mat4]
 
     documentPixels: AntialiasedFramebuffer
 
@@ -90,6 +92,52 @@ proc drawText*(
   ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true)
 
 
+proc projectionMatrix(canvasSettings: CanvasSettings, width, height: float32): Mat4 =
+  ## returns a matrix to convert coordinates from document to framebuffer
+  ## if viewport matrix is mat4(), whole document will be fit into widget (assuming framebuffer takes whole space of the docuemnt view widget)
+  let cmin = min(canvasSettings.size.x, canvasSettings.size.y)
+  let cmax = max(canvasSettings.size.x, canvasSettings.size.y)
+  let canvasScale =
+    if (canvasSettings.size.x < canvasSettings.size.y) == (width / canvasSettings.size.x < height / canvasSettings.size.y):
+      cmax / cmin
+    else:
+      1
+
+  combine(
+    scale vec3(2/cmax, 2/cmax, 1),
+    (
+      if width / canvasSettings.size.x < height / canvasSettings.size.y:
+        scale vec3(canvasScale, width / height * canvasScale, 1/1000)
+      else:
+        scale vec3(height / width * canvasScale, canvasScale, 1/1000)
+    ),
+  )
+
+
+proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
+  let glPos = combine(
+    scale(vec3(2 / width, -2 / height, 1)),
+    translate(vec3(-1, 1, 0)),
+  ) * vec4(widgetPos.x, widgetPos.y, 0, 1)
+  (inverse(toGl) * glPos).vec2
+
+
+proc canvasSettings(w: ptr World): CanvasSettings =
+  result = CanvasSettings()
+  w[].forEach (v: CanvasSettings):
+    result = v
+
+
+proc projection*(this: DocumentView): Mat4 =
+  projectionMatrix(this.script[].world.canvasSettings, this.w[], this.h[])
+
+proc viewportToGlMatrix*(this: DocumentView): Mat4 =
+  combine(this.viewport, this.projection)
+
+proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
+  widgetToViewportPoint(pos, this.w[], this.h[], this.viewportToGlMatrix)
+
+
 
 proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, height: float32) =
   glEnable(GlBlend)
@@ -110,30 +158,14 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     if has Background: background = the Background
     if has FontSize: fontSize = the FontSize
   
-  let cmin = min(canvasSettings.size.x, canvasSettings.size.y)
-  let cmax = max(canvasSettings.size.x, canvasSettings.size.y)
-  let canvasScale =
-    if (canvasSettings.size.x < canvasSettings.size.y) == (width / canvasSettings.size.x < height / canvasSettings.size.y):
-      cmax / cmin
-    else:
-      1
-
   let prevView = ctx.viewportMatrix
   let prevProj = ctx.projectionMatrix
   defer:
     ctx.viewport = prevView
     ctx.projection = prevProj
   
-  ctx.viewport = (
-    (scale vec3(2/cmax, 2/cmax, 1))
-  )
-  
-  ctx.projection = (
-    if width / canvasSettings.size.x < height / canvasSettings.size.y:
-      scale vec3(canvasScale, width / height * canvasScale, 1/1000)
-    else:
-      scale vec3(height / width * canvasScale, canvasScale, 1/1000)
-  )
+  ctx.viewport = this.viewport[]
+  ctx.projection = this.projection
 
   glDisable(GlBlend)
   ctx.fillHatchingRect(
@@ -232,6 +264,9 @@ proc recompileScript*(this: DocumentView) =
 
 method init*(this: DocumentView) =
   procCall this.super.init()
+  this.viewport[] = mat4()
+
+  var prevDragPos = vec2(0, 0)
 
   this.parentUiRoot.onTick.connectTo this:
     if this.script[] != nil:
@@ -243,6 +278,38 @@ method init*(this: DocumentView) =
       this.fill(parent)
       color = "#282828".color
       layer = before root
+
+    - MouseArea.new as cameraMouse:
+      this.fill(parent)
+      acceptedButtons = {MouseButton.middle}
+
+      this.mouseButton.connectTo root, e:
+        if e.button == MouseButton.middle and e.pressed:
+          prevDragPos = this.mouseXy[]
+
+      this.moved.connectTo root, e:
+        if root.script[].hasWorldToDraw.not: return
+        if this.pressed[]:
+          let currentMousePos = this.mouseXy[]
+          let currentPos = root.widgetToViewportPoint(currentMousePos)
+          let previousPos = root.widgetToViewportPoint(prevDragPos)
+          root.viewport[] = combine(
+            translate((currentPos - previousPos).vec3(0)),  # pan
+            root.viewport[]
+          )
+          prevDragPos = currentMousePos
+
+      this.scrolled.connectTo root, delta:
+        if root.script[].hasWorldToDraw.not: return
+        if delta.y != 0:
+          let anchor = root.widgetToViewportPoint(this.mouseXy[])
+          let zoomFactor = pow(1.1'f32, delta.y)
+          root.viewport[] = combine(
+            translate(-anchor.vec3(0)),
+            scale(vec3(zoomFactor, zoomFactor, 1)),  # zoom
+            translate((anchor).vec3(0)),
+            root.viewport[],
+          )
 
     - globalKeybinding({Key.f5}):
       on this.activated: root.recompileScript()
@@ -263,4 +330,3 @@ method init*(this: DocumentView) =
         of Executing: parent.w[] * (2 / 2)
       bottom = parent.bottom
       color = "#76b1ffff".color
-
