@@ -34,7 +34,7 @@ proc projectionMatrix(pageBounds: Bounds2, width, height: float32, originAt: Pos
 
   combine(
     translate(-pageBounds.center.vec3(0)),
-    translate(-pageAnchor(pageSize, originAt).vec3(0)),
+    translate(pageAnchor(pageSize, originAt).vec3(0)),
     scale vec3(2/cmax, 2/cmax, 1),
     (
       if width / pageSize.x < height / pageSize.y:

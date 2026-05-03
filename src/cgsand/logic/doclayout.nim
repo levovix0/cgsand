@@ -67,7 +67,7 @@ proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
 
   result.documentTransform = combine(
     transform,
-    translate(pageAnchor(result.pageBounds.size, globals.originAt).vec3(0)),
+    translate(-pageAnchor(result.pageBounds.size, globals.originAt).vec3(0)),
   )
 
 
