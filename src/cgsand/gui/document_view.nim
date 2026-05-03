@@ -300,7 +300,7 @@ method init*(this: DocumentView) =
         if root.script[].hasWorldToDraw.not: return
         if delta.y != 0:
           let anchor = root.widgetToViewportPoint(this.mouseXy[])
-          let zoomFactor = pow(1.1'f32, delta.y)
+          let zoomFactor = pow(1.1'f32, -delta.y)
           root.viewport[] = combine(
             translate(-anchor.vec3(0)),
             scale(vec3(zoomFactor, zoomFactor, 1)),  # zoom
