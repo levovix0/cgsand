@@ -4,7 +4,7 @@ import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea]
 import pkg/toscel/[button, fonts]
 import pkg/rice/[primitives, antialiasing, transform, texts]
-import ../logic/[scripts, config]
+import ../logic/[scripts, config, bounds, doclayout]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, c3d]
 
@@ -18,7 +18,51 @@ type
     documentPixels: AntialiasedFramebuffer
 
 registerComponent DocumentView
-  
+
+
+proc projectionMatrix(pageBounds: Bounds2, width, height: float32, originAt: PositionAt): Mat4 =
+  ## returns a matrix to convert coordinates from document to framebuffer
+  ## if viewport matrix is mat4(), whole document will be fit into widget (assuming framebuffer takes whole space of the docuemnt view widget)
+  let pageSize = pageBounds.size
+  let cmin = min(pageSize.x, pageSize.y)
+  let cmax = max(pageSize.x, pageSize.y)
+  let canvasScale =
+    if (pageSize.x < pageSize.y) == (width / pageSize.x < height / pageSize.y):
+      cmax / cmin
+    else:
+      1
+
+  combine(
+    translate(-pageBounds.center.vec3(0)),
+    translate(-pageAnchor(pageSize, originAt).vec3(0)),
+    scale vec3(2/cmax, 2/cmax, 1),
+    (
+      if width / pageSize.x < height / pageSize.y:
+        scale vec3(canvasScale, width / height * canvasScale, 1/1000)
+      else:
+        scale vec3(height / width * canvasScale, canvasScale, 1/1000)
+    ),
+  )
+
+
+proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
+  let glPos = combine(
+    scale(vec3(2 / width, -2 / height, 1)),
+    translate(vec3(-1, 1, 0)),
+  ) * vec4(widgetPos.x, widgetPos.y, 0, 1)
+  (inverse(toGl) * glPos).vec2
+
+
+proc projection*(this: DocumentView): Mat4 =
+  let globals = this.script[].world.documentGlobals
+  projectionMatrix(this.script[].world.documentLayout(globals).pageBounds, this.w[], this.h[], globals.originAt)
+
+proc viewportToGlMatrix*(this: DocumentView): Mat4 =
+  combine(this.viewport, this.projection)
+
+proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
+  widgetToViewportPoint(pos, this.w[], this.h[], this.viewportToGlMatrix)
+
 
 proc fillHatchingRect*(
   ctx: DrawContext,
@@ -79,63 +123,8 @@ proc drawText*(
 ) =
   let fontSize = (ctx.viewportToGlMatrix * vec4(0, fontSize, 0, 0)).y / ctx.px.y
   let ts = typeset(font.withSize(fontSize), text)
-  let origin = case posAt
-    of PositionAtTopLeft: vec2(0, 0)
-    of PositionAtTopRight: vec2(1, 0)
-    of PositionAtBottomLeft: vec2(0, 1)
-    of PositionAtBottomRight: vec2(1, 1)
-    of PositionAtLeft: vec2(0, 1/2)
-    of PositionAtRight: vec2(1, 1/2)
-    of PositionAtTop: vec2(1/2, 0)
-    of PositionAtBottom: vec2(1/2, 1)
-    of PositionAtCenter: vec2(1/2, 1/2)
+  let origin = posAt.factor().vec2
   ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true)
-
-
-proc projectionMatrix(canvasSettings: CanvasSettings, width, height: float32): Mat4 =
-  ## returns a matrix to convert coordinates from document to framebuffer
-  ## if viewport matrix is mat4(), whole document will be fit into widget (assuming framebuffer takes whole space of the docuemnt view widget)
-  let cmin = min(canvasSettings.size.x, canvasSettings.size.y)
-  let cmax = max(canvasSettings.size.x, canvasSettings.size.y)
-  let canvasScale =
-    if (canvasSettings.size.x < canvasSettings.size.y) == (width / canvasSettings.size.x < height / canvasSettings.size.y):
-      cmax / cmin
-    else:
-      1
-
-  combine(
-    scale vec3(2/cmax, 2/cmax, 1),
-    (
-      if width / canvasSettings.size.x < height / canvasSettings.size.y:
-        scale vec3(canvasScale, width / height * canvasScale, 1/1000)
-      else:
-        scale vec3(height / width * canvasScale, canvasScale, 1/1000)
-    ),
-  )
-
-
-proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
-  let glPos = combine(
-    scale(vec3(2 / width, -2 / height, 1)),
-    translate(vec3(-1, 1, 0)),
-  ) * vec4(widgetPos.x, widgetPos.y, 0, 1)
-  (inverse(toGl) * glPos).vec2
-
-
-proc canvasSettings(w: ptr World): CanvasSettings =
-  result = CanvasSettings()
-  w[].forEach (v: CanvasSettings):
-    result = v
-
-
-proc projection*(this: DocumentView): Mat4 =
-  projectionMatrix(this.script[].world.canvasSettings, this.w[], this.h[])
-
-proc viewportToGlMatrix*(this: DocumentView): Mat4 =
-  combine(this.viewport, this.projection)
-
-proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
-  widgetToViewportPoint(pos, this.w[], this.h[], this.viewportToGlMatrix)
 
 
 
@@ -148,15 +137,8 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   # glClearDepthf(1)
   glClear(GL_COLOR_BUFFER_BIT #[or GL_DEPTH_BUFFER_BIT]#)
 
-  var canvasSettings = CanvasSettings()
-  var foreground = color(1, 1, 1)
-  var background = color(0, 0, 0, 0)
-  var fontSize = 10.0
-  w[].forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize):
-    canvasSettings = v
-    if has Foreground: foreground = the Foreground
-    if has Background: background = the Background
-    if has FontSize: fontSize = the FontSize
+  let globals = w.documentGlobals
+  let layout = w.documentLayout(globals)
   
   let prevView = ctx.viewportMatrix
   let prevProj = ctx.projectionMatrix
@@ -164,8 +146,9 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     ctx.viewport = prevView
     ctx.projection = prevProj
   
-  ctx.viewport = this.viewport[]
-  ctx.projection = this.projection
+  ctx.viewport = combine(layout.documentTransform, this.viewport[])
+  ctx.projection = projectionMatrix(layout.pageBounds, width, height, globals.originAt)
+
 
   glDisable(GlBlend)
   ctx.fillHatchingRect(
@@ -177,20 +160,25 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   )
   ctx.fillRect(
     rect(
-      -canvasSettings.size.vec2/2,
-      canvasSettings.size.vec2
+      layout.pageBounds.min,
+      layout.pageBounds.size
     ),
-    color = background,
+    color = globals.background,
   )
   glEnable(GlBlend)
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
-  w[].forEach (line: LineSection, color: Color||foreground, thickness: opt Thickness):
+  if globals.settings.autoSize:
+    ctx.viewport = combine(layout.documentTransform, this.viewport[])
+  else:
+    ctx.viewport = this.viewport[]
+
+  w[].forEach (line: LineSection, color: Color||globals.foreground, thickness: opt Thickness):
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
-  w[].forEach (curve: MbArc, color: Color||foreground, count: PointCount||20):
+  w[].forEach (curve: MbArc, color: Color||globals.foreground, count: PointCount||20):
     let points = curve.points(count)
     if curve.closed:
       for i in 0 ..< points.len:
@@ -200,7 +188,14 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
         drawLineSection(ctx, lineSection(points[i], points[i + 1]), color)
 
 
-  w[].forEach (text: Text, pos: Position2, color: Color||foreground, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||fontSize):
+  w[].forEach (
+    text: Text,
+    pos: Position2,
+    color: Color||globals.foreground,
+    posAt: PositionAt||PositionAtTopLeft,
+    font: Typeface||font_default,
+    size: FontSize||globals.fontSize,
+  ):
     drawText(ctx, text, pos, color, posAt, font, size)
   
 
@@ -232,6 +227,7 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
       ctx.pop psh
 
   if this.documentPixels != nil:
+    glEnable(GlBlend)
     ctx.draw(
       this.documentPixels,
       transform = combine(
@@ -240,6 +236,7 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
         translate (this.globalXy + ctx.offset).round.vec3(0),
       )
     )
+    glDisable(GlBlend)
 
 
 

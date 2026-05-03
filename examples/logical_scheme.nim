@@ -43,6 +43,14 @@ doc.add Scheme andN(orN("x", "!z"), "y")
 doc.add Scheme norN(nandN(norN(nandN("!x", "z")), "y"))
 
 
+
+doc.add CanvasSettings(autoSize: true, margin: vec2(2)):
+  Background color(1, 1, 1)
+  Foreground color(0, 0, 0)
+  # Foreground color(0.75, 0.75, 0.8)
+  FontSize 1
+
+
 proc cost(n: Node): int =
   case n.kind
   of SymN: 0
@@ -92,21 +100,6 @@ doc.forEach (scheme: Scheme):
 doc.forEach (p: var Position2, n: SchemeN):
   p = p + vec2(0, -(h - schemeH[n]) / 2)
 
-
-doc.add:
-  CanvasSettings(
-    size: vec2(x + 2, h + 2),
-    mmScale: 1,
-  )
-  Background color(1, 1, 1)
-  Foreground color(0, 0, 0)
-  # Foreground color(0.75, 0.75, 0.8)
-  FontSize 1
-
-
-
-doc.forEach (p: var Position2):
-  p = p - vec2(x, -h) / 2
 
 
 doc.forEach (text: Sym, p: Position2):

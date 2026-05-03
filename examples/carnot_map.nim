@@ -1,4 +1,4 @@
-import sandbox, geom2d, strutils, sequtils
+import sandbox, geom2d, strutils
 
 
 type
@@ -18,28 +18,17 @@ let data = @[
   @[1, 1, 0, 1],
 ]
 let margin = 3'f32
-let rt = RectTable(size: vec2(4*4, 2*2), cols: 4, rows: 2)
-doc.add:
-  rt
-  Position2 point2() + vec2(margin, -margin)
+
+doc.add RectTable(size: vec2(4*4, 2*2), cols: 4, rows: 2):
+  Position2 point2()
 
 
-let ca = CanvasSettings(
-  size: rt.size + vec2(margin*2),
-  mmScale: 1,
-)
-
-doc.add:
-  ca
+doc.add CanvasSettings(autoSize: true, margin: vec2(1)):
   Background color(1, 1, 1)
   Foreground color(0, 0, 0)
   # Foreground color(0.75, 0.75, 0.8)
   FontSize 1
 
-
-
-doc.forEach (p: var Position2):
-  p = p - vec2(ca.size.x, -ca.size.y) / 2
 
 
 doc.forEach (r: RectTable, pos: Position2||point2()):

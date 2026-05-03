@@ -6,7 +6,8 @@ type
     `-`
 
 
-doc.add CanvasSettings_A4_Vertical
+# doc.add CanvasSettings(autoSize: true, margin: vec2(10))
+# doc.add CanvasSettings_A4_Vertical
 # doc.add CanvasSettings_A4_Horizontal
 
 

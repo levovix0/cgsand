@@ -4,12 +4,13 @@ CanvasSettings
 Foreground
 Background
 FontSize
+AxisYDirection
+PositionAt
 LineSection
-Color
 Thickness
 MbArc
 PointCount
 Text
 Position2
-PositionAt
 Typeface
+Color

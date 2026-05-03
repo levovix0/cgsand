@@ -14,6 +14,7 @@ type
 
 proc withSize*(font: Typeface, size: float64 = 1): Font =
   result = newFont(font)
+  result.size = size
 
 
 when isMainModule:
