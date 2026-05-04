@@ -20,11 +20,25 @@ type
     isEmpty*: bool
     foldable*: bool
     isHidden*: bool
-    lineHeight*: float32
+
+  CursorPos* = object
+    line*: int
+    col*: int
+    snapCol*: int
+    isDuplicate*: bool
+      ## when, for example, multiple cursors moved to the empty line
+      ## if cursor isDuplicate, it should not participate in text editing, but still be available if cursors is then moved
 
   CodeArrangement* = ref object
     lines*: seq[CodeArrangementLine]
     foldedLines*: HashSet[int]
+    cursors*: seq[CursorPos]
+    font*: Font
+
+
+
+proc lineHeightPixels*(font: Font): float32 =
+  font.size * ((font.typeface.ascent / font.typeface.scale) + max(font.typeface.lineGap / font.typeface.scale, 0.25))
 
 
 
@@ -38,17 +52,16 @@ proc writeCodeFile*(filename: string, v: CodeFile) =
 
 
 
-proc lineIndent(line: CodeLine): int =
+proc indent(line: CodeLine): int =
   for r in line:
     if r == Rune(' '): inc result
     elif r == Rune('\t'): result += 2
     else: break
 
-proc lineIsEmpty(line: CodeLine): bool =
+proc isEmpty(line: CodeLine): bool =
   for r in line:
     if not r.isWhiteSpace: return false
   return true
-  
 
 
 proc visibleRect*(line: CodeArrangementLine): Rect =
@@ -82,9 +95,10 @@ proc updateRects*(arrangement: CodeArrangement) =
     else:
       line.isHidden = foldStack.len > 0
 
+    line.rect = rect(vec2(0, y), line.rect.wh)
+    
     if not line.isHidden:
-      line.rect = rect(vec2(0, y), line.rect.wh)
-      y += line.lineHeight
+      y += line.arrangement.lines.len.max(1).float32 * arrangement.font.lineHeightPixels
       if i in arrangement.foldedLines and line.foldable:
         foldStack.add line.indentLevel
 
@@ -92,7 +106,7 @@ proc updateRects*(arrangement: CodeArrangement) =
 proc visibleHeight*(arrangement: CodeArrangement): float32 =
   for line in arrangement.lines:
     if not line.isHidden:
-      result += line.lineHeight
+      result += line.arrangement.lines.len.max(1).float32 * arrangement.font.lineHeightPixels
 
 
 proc toggleFold*(arrangement: CodeArrangement, lineIdx: int) =
@@ -105,17 +119,133 @@ proc toggleFold*(arrangement: CodeArrangement, lineIdx: int) =
   arrangement.updateRects()
 
 
+proc colToPos*(line: CodeArrangementLine, col: int): Vec2 =
+  if line.arrangement.selectionRects.len == 0:
+    vec2()
+  elif col < line.arrangement.selectionRects.len:
+    line.arrangement.selectionRects[col].xy
+  else:
+    line.arrangement.selectionRects[^1].xy + vec2(line.arrangement.selectionRects[^1].w, 0)
+
+proc posToCol*(line: CodeArrangementLine, pos: Vec2): int =
+  for lineI, span in line.arrangement.lines:
+    for i in span[0]..span[1]:
+      let r = line.arrangement.selectionRects[i]
+      if (
+        (lineI == 0 or pos.y >= r.y) and
+        (lineI == line.arrangement.lines.high or pos.y <= (r.y + r.h)) and
+        pos.x < r.x + r.w / 2
+      ): return i
+  return line.arrangement.selectionRects.len
+
+
+proc prevVisibleLine*(arrangement: CodeArrangement, lineIdx: int): int =
+  result = lineIdx
+  for i in countdown(lineIdx - 1, 0):
+    if not arrangement.lines[i].isHidden: return i
+
+proc nextVisibleLine*(arrangement: CodeArrangement, lineIdx: int): int =
+  result = lineIdx
+  for i in lineIdx + 1 ..< arrangement.lines.len:
+    if not arrangement.lines[i].isHidden: return i
+
+
+proc collapseDuplicatedCursors*(arrangement: CodeArrangement) =
+  arrangement.cursors = deduplicate arrangement.cursors
+  var positions: HashSet[tuple[line, col: int]]
+  for c in arrangement.cursors.mitems:
+    c.isDuplicate = (c.line, c.col) in positions
+    positions.incl (c.line, c.col)
+
+
+proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int) =
+  var c = arrangement.cursors[cursorIdx]
+  if c.col > 0:
+    dec c.col
+  elif c.line > 0:
+    let prev = arrangement.prevVisibleLine(c.line)
+    if prev != c.line:
+      c.line = prev
+      c.col = arrangement.lines[prev].arrangement.runes.len
+  c.snapCol = c.col
+  arrangement.cursors[cursorIdx] = c
+
+proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int) =
+  var c = arrangement.cursors[cursorIdx]
+  let lineLen = arrangement.lines[c.line].arrangement.runes.len
+  if c.col < lineLen:
+    inc c.col
+  else:
+    let next = arrangement.nextVisibleLine(c.line)
+    if next != c.line:
+      c.line = next
+      c.col = 0
+  c.snapCol = c.col
+  arrangement.cursors[cursorIdx] = c
+
+proc moveCursorUp*(arrangement: CodeArrangement, cursorIdx: int) =
+  var c = arrangement.cursors[cursorIdx]
+  let prev = arrangement.prevVisibleLine(c.line)
+  if prev != c.line:
+    let prevLineLen = arrangement.lines[prev].arrangement.runes.len
+    c.line = prev
+    c.col = min(c.snapCol, prevLineLen)
+  arrangement.cursors[cursorIdx] = c
+
+proc moveCursorDown*(arrangement: CodeArrangement, cursorIdx: int) =
+  var c = arrangement.cursors[cursorIdx]
+  let next = arrangement.nextVisibleLine(c.line)
+  if next != c.line:
+    let nextLineLen = arrangement.lines[next].arrangement.runes.len
+    c.line = next
+    c.col = min(c.snapCol, nextLineLen)
+  arrangement.cursors[cursorIdx] = c
+
+
+proc moveCursorLeft*(arrangement: CodeArrangement) =
+  for i in 0..<arrangement.cursors.len:
+    moveCursorLeft(arrangement, i)
+  arrangement.collapseDuplicatedCursors()
+
+proc moveCursorRight*(arrangement: CodeArrangement) =
+  for i in 0..<arrangement.cursors.len:
+    moveCursorRight(arrangement, i)
+  arrangement.collapseDuplicatedCursors()
+
+proc moveCursorUp*(arrangement: CodeArrangement) =
+  for i in 0..<arrangement.cursors.len:
+    moveCursorUp(arrangement, i)
+  arrangement.collapseDuplicatedCursors()
+
+proc moveCursorDown*(arrangement: CodeArrangement) =
+  for i in 0..<arrangement.cursors.len:
+    moveCursorDown(arrangement, i)
+  arrangement.collapseDuplicatedCursors()
+
+
+proc setCursorPos*(arrangement: CodeArrangement, line, col: int, append = false) =
+  if append:
+    var i = arrangement.cursors.findIt(it.line == line and it.col == col)
+    if i == -1:
+      arrangement.cursors.add CursorPos(line: line, col: col, snapCol: col)
+    else:
+      while i != -1:
+        arrangement.cursors.delete i
+        i = arrangement.cursors.findIt(it.line == line and it.col == col)
+  
+  else:
+    arrangement.cursors = @[CursorPos(line: line, col: col, snapCol: col)]
+
+
 proc toArrangement*(cf: CodeFile, font: Font, width: float32): CodeArrangement =
-  new result
+  result = CodeArrangement(font: font)
 
   for line in cf.lines:
     var cline = CodeArrangementLine(arrangement: typeset(font, $line, bounds=vec2(width, 0)))
-    cline.rect = rect(vec2(0, 0), cline.arrangement.layoutBounds)
+    cline.rect = rect(0, 0, cline.arrangement.layoutBounds.x, cline.arrangement.lines.len.max(1).float32 * font.lineHeightPixels)
     cline.kinds = parseNimCode(line, NimParseState(), line.len).segments
-    cline.indentLevel = lineIndent(line)
-    cline.isEmpty = lineIsEmpty(line)
-    let lineCount = max(cline.arrangement.lines.len.float32, 1)
-    cline.lineHeight = lineCount * font.size * (font.typeface.ascent / font.typeface.scale + max(font.typeface.lineGap / font.typeface.scale, 0.25))
+    cline.indentLevel = indent(line)
+    cline.isEmpty = isEmpty(line)
     result.lines.add cline
 
   for i in 0 ..< result.lines.len:
@@ -127,4 +257,5 @@ proc toArrangement*(cf: CodeFile, font: Font, width: float32): CodeArrangement =
         result.lines[i].foldable = true
       break
 
+  result.cursors = @[CursorPos()]
   result.updateRects()

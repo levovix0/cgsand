@@ -1,5 +1,5 @@
 import std/[os]
-import pkg/[vmath, ecs]
+import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/uibase
 import ./cgsand/gui/[code_editor, document_view, tool_bar]

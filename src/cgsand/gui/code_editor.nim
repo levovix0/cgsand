@@ -3,6 +3,7 @@ import pkg/[vmath, chroma]
 import pkg/rice/[texts, contexts, gl, primitives]
 import pkg/toscel/fonts
 import pkg/sigui/[uibase, scrollArea, mouseArea]
+import pkg/sigui/window
 import ../logic/[config, code_editor]
 
 
@@ -16,6 +17,7 @@ type
     changesBarWidth*: Property[float32] = 5'f32.property
     arrowBarWidth*: Property[float32] = 20'f32.property
 
+    active*: Property[bool]
     nonFoldedArrowsVisible: Property[bool]
 
     arrangement: CodeArrangement
@@ -95,7 +97,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
     for i, line in this.arrangement.lines:
       if line.isHidden: continue
 
-      if this.globalY + line.rect.y + line.lineHeight < winRect.y: continue
+      if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
       if this.globalY + line.rect.y > winRect.y + winRect.h: continue
 
       ctx.drawText(
@@ -122,6 +124,16 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
         line.kinds,
       )
 
+      if this.active[]:
+        for cursor in this.arrangement.cursors:
+          if cursor.line == i:
+            const cursorW = 1.5'f32
+            let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
+            ctx.fillRect(
+              rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
+              color(1'f32, 1'f32, 1'f32),
+            )
+
       if line.foldable and i in this.arrangement.foldedLines:
         const lineH = 1'f32
         let rect = line.visibleRect
@@ -135,6 +147,36 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
         )
 
   this.drawAfter(ctx)
+
+
+method recieve*(this: CodeEditorContent, signal: Signal) =
+  procCall this.super.recieve(signal)
+  if signal of WindowEvent and signal.WindowEvent.event of KeyEvent and signal.WindowEvent.handled == false:
+    let e = (ref KeyEvent)signal.WindowEvent.event
+    if e.pressed and this.active[] and this.arrangement != nil:
+      case e.key
+      of Key.left:
+        this.arrangement.moveCursorLeft()
+        redraw(this)
+      
+      of Key.right:
+        this.arrangement.moveCursorRight()
+        redraw(this)
+      
+      of Key.up:
+        this.arrangement.moveCursorUp()
+        redraw(this)
+      
+      of Key.down:
+        this.arrangement.moveCursorDown()
+        redraw(this)
+      
+      of Key.escape:
+        if this.arrangement.cursors.len > 1:
+          this.arrangement.cursors = @[this.arrangement.cursors[0]]
+          redraw(this)
+      
+      else: discard
 
 
 proc updateArrangement(this: CodeEditorContent) =
@@ -162,14 +204,31 @@ method init*(this: CodeEditorContent) =
         let clickY = this.mouseY[]
         for i, line in root.arrangement.lines:
           if line.isHidden: continue
-          if clickY >= line.rect.y and clickY < line.rect.y + line.lineHeight:
+          if clickY >= line.rect.y and clickY < line.rect.y + line.rect.h:
             if line.foldable:
               root.arrangement.toggleFold(i)
               root.updateHeight()
               redraw(root)
             break
 
+    - MouseArea.new:
+      this.fillVertical(parent)
+      x = binding: parent.textOffsetX
+      w = binding: parent.w[] - parent.textOffsetX
 
+      allowEventFallthrough = true
+
+      on this.clicked:
+        root.active[] = true
+        let clickY = this.mouseY[]
+        let clickX = this.mouseX[]
+        for i, line in root.arrangement.lines:
+          if line.isHidden: continue
+          if clickY >= line.rect.y and clickY < line.rect.y + line.rect.h:
+            let col = line.posToCol(vec2(clickX, clickY - line.rect.y))
+            root.arrangement.setCursorPos(i, col, append = (Key.lalt in e.window.keyboard.pressed or Key.ralt in e.window.keyboard.pressed))
+            redraw(root)
+            break
 
 
 proc updateContent(this: CodeEditor) =
