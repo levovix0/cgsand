@@ -50,5 +50,5 @@ requires "crunchy#98eb6526"
 requires "zippy#bcb8c1e1"
 requires "flatty#07f6ba8a"
 requires "nimsimd#3f6b2668"
-requires "rice#8bd50bd0"
+requires "rice#576ed1fe"
 
