@@ -16,14 +16,17 @@ type
     lineNumberBarWidth*: Property[float32] = 20'f32.property
     changesBarWidth*: Property[float32] = 5'f32.property
     arrowBarWidth*: Property[float32] = 20'f32.property
-
+    
     active*: Property[bool]
     nonFoldedArrowsVisible: Property[bool]
 
     arrangement: CodeArrangement
+    dragingCursorI: int
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
+
+const MinSelectionWidth = 6'f32
 
 
 proc updateArrangement(this: CodeEditorContent)
@@ -100,6 +103,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
       if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
       if this.globalY + line.rect.y > winRect.y + winRect.h: continue
 
+      # line number
       ctx.drawText(
         (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
         typeset(this.font, $(i + 1)),
@@ -110,6 +114,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
       if line.foldable:
         let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
         if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
+          # fold arrow
           ctx.drawText(
             (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
             typeset(this.font, arrowChar),
@@ -117,6 +122,48 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
             origin=vec2(0.5, 0),
           )
 
+      let lineH = this.font[].lineHeightPixels
+      for c_idx in 0..<this.arrangement.cursors.len:
+        if this.arrangement.cursors[c_idx].isDuplicate: continue
+        let sel = this.arrangement.selectionRangeForLine(c_idx, i)
+        if sel.len <= 0: continue
+        let arr = line.arrangement
+
+        if arr.runes.len == 0:
+          # selection rect
+          ctx.fillRect(
+            rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+            color(0.2'f32, 0.4'f32, 0.7'f32),
+          )
+        
+        else:
+          for subRowIdx, span in arr.lines:
+            let rowFirst = span[0]
+            let rowLast = span[1]
+            if rowFirst > rowLast: continue
+            if sel.a > rowLast: continue
+            if sel.b <= rowFirst: continue
+            let subRowY = line.rect.y + arr.selectionRects[rowFirst].y
+            let leftRune = max(sel.a, rowFirst)
+            let startX = arr.selectionRects[leftRune].x
+            let rightRune = min(sel.b - 1, rowLast)
+            let endX = arr.selectionRects[rightRune].x + arr.selectionRects[rightRune].w
+            let extraW: float32 =
+              if sel.b >= arr.runes.len and subRowIdx == arr.lines.high: MinSelectionWidth
+              else: 0.0'f32
+            let selW = max(endX - startX, 0.0'f32) + extraW
+            if selW <= 0: continue
+
+            # selection rect
+            ctx.fillRect(
+              rect(
+                this.globalXy + ctx.offset + vec2(textOffsetX + startX, subRowY),
+                vec2(selW, lineH),
+              ),
+              color(0.2'f32, 0.4'f32, 0.7'f32),
+            )
+
+      # the code
       drawHighlightedText(
         ctx,
         (this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y)).vec3(0),
@@ -129,6 +176,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
           if cursor.line == i:
             const cursorW = 1.5'f32
             let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
+            # text cursor
             ctx.fillRect(
               rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
               color(1'f32, 1'f32, 1'f32),
@@ -138,6 +186,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
         const lineH = 1'f32
         let rect = line.visibleRect
         
+        # line for folded line
         ctx.fillRect(
           rect(
             this.globalXy + ctx.offset + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
@@ -154,26 +203,35 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
   if signal of WindowEvent and signal.WindowEvent.event of KeyEvent and signal.WindowEvent.handled == false:
     let e = (ref KeyEvent)signal.WindowEvent.event
     if e.pressed and this.active[] and this.arrangement != nil:
+      let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
+      let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
       case e.key
       of Key.left:
-        this.arrangement.moveCursorLeft()
+        this.arrangement.moveCursorLeft(extend = shift)
         redraw(this)
       
       of Key.right:
-        this.arrangement.moveCursorRight()
+        this.arrangement.moveCursorRight(extend = shift)
         redraw(this)
       
       of Key.up:
-        this.arrangement.moveCursorUp()
+        this.arrangement.moveCursorUp(extend = shift)
         redraw(this)
       
       of Key.down:
-        this.arrangement.moveCursorDown()
+        this.arrangement.moveCursorDown(extend = shift)
         redraw(this)
       
       of Key.escape:
         if this.arrangement.cursors.len > 1:
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
+          redraw(this)
+      
+      of Key.b:
+        if ctrl:
+          this.arrangement.selectionMode = case this.arrangement.selectionMode
+            of LineSelection: BlockSelection
+            of BlockSelection: LineSelection
           redraw(this)
       
       else: discard
@@ -214,21 +272,27 @@ method init*(this: CodeEditorContent) =
     - MouseArea.new:
       this.fillVertical(parent)
       x = binding: parent.textOffsetX
-      w = binding: parent.w[] - parent.textOffsetX
+      w = binding: parent.w[] - parent.textOffsetX - 5
 
       allowEventFallthrough = true
 
-      on this.clicked:
-        root.active[] = true
-        let clickY = this.mouseY[]
-        let clickX = this.mouseX[]
-        for i, line in root.arrangement.lines:
-          if line.isHidden: continue
-          if clickY >= line.rect.y and clickY < line.rect.y + line.rect.h:
-            let col = line.posToCol(vec2(clickX, clickY - line.rect.y))
-            root.arrangement.setCursorPos(i, col, append = (Key.lalt in e.window.keyboard.pressed or Key.ralt in e.window.keyboard.pressed))
-            redraw(root)
-            break
+      on this.mouseButton:
+        if e.button == MouseButton.left and e.pressed:
+          root.active[] = true
+          for i, line in root.arrangement.lines:
+            if line.isHidden: continue
+            if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
+              let col = line.posToCol(vec2(this.mouseX[], this.mouseY[] - line.rect.y))
+              let append = Key.lalt in e.window.keyboard.pressed or Key.ralt in e.window.keyboard.pressed
+              root.arrangement.setCursorPos(i, col, append)
+              root.dragingCursorI = root.arrangement.cursors.high
+              redraw(root)
+              break
+
+      on this.moved:
+        if this.pressed[]:
+          root.arrangement.selectToPos(root.dragingCursorI, this.mouseXy[])
+          redraw(root)
 
 
 proc updateContent(this: CodeEditor) =
