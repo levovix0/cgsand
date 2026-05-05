@@ -1,4 +1,4 @@
-import std/[locks, options, math]
+import std/[locks, options, math, unicode]
 import pkg/[ecs, shady]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea]
@@ -121,7 +121,7 @@ proc drawText*(
   text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
   transform = mat4(),
 ) =
-  let fontSize = (ctx.viewportToGlMatrix * vec4(0, fontSize, 0, 0)).y / ctx.px.y
+  let fontSize = abs((ctx.viewportToGlMatrix * vec4(0, fontSize, 0, 0)).y) / ctx.px.y
   let ts = typeset(font.withSize(fontSize), text)
   let origin = posAt.factor().vec2
   ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true)
