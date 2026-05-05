@@ -1,4 +1,4 @@
-import std/[locks, options, math, unicode]
+import std/[locks, options, math]
 import pkg/[ecs, shady]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea]
