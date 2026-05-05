@@ -359,3 +359,10 @@ proc parseNimCode*(s: openArray[Rune], state: NimParseState, len = 100): tuple[s
   for _ in 1..len:
     if result.state.pos > s.high: return
     s.parseNext(result.state, result.segments)
+
+
+proc nextLineParseState*(state: NimParseState): NimParseState =
+  ## returns parse state for the start of the next line (resets position, preserves multi-line flags)
+  result.inQuote = state.inQuote
+  result.inComment = state.inComment
+  result.inMultiline = state.inMultiline

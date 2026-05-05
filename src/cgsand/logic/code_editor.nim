@@ -1,4 +1,4 @@
-import std/[unicode, strutils, sequtils, sets]
+import std/[unicode, sequtils, sets, algorithm, strutils]
 import pkg/[vmath, bumpy]
 import pkg/pixie/fonts
 import ./[syntax_highlighting]
@@ -6,14 +6,6 @@ export CodeKind
 
 
 type
-  CodeLine* = seq[Rune]
-    ## todo: looks useless
-
-  CodeFile* = ref object
-    ## todo: looks useless
-    lines*: seq[CodeLine]
-
-
   SelectionMode* = enum
     LineSelection
     BlockSelection
@@ -24,14 +16,14 @@ type
       ## visual rect of a line in pixels, relative to top-left courner of whole CodeArrangement
       ## .xy recalculated on updateRects
 
+    runes*: seq[Rune]
+      ## actual text of this line of the file
+
     arrangement*: Arrangement
 
     kinds*: seq[CodeKind]
       ## syntax highlighting for a line of code, per rune
-    
-    isEmpty*: bool
-      ## true if line contains nothing or only spaces
-    
+
     indentLevel*: int
       ## the ammount of logical block of indentation (space count can be diffirent per logical indentation block)
       ## recalculated on updateRects
@@ -44,10 +36,14 @@ type
       ## true if the line is a part of folded block
       ## recalculated on updateRects
 
+    parseEndState*: NimParseState
+      ## parse state at end of this line
+      ## used to derive next line's start state for incremental highlighting
+
 
   CursorPos* = object
     line*, col*: int
-    
+
     snapCol*: int
       ## when cursor is at end of the line, then moved up to a smaller line, then moved again to same size line,
       ## cursor will be at the end of the line (at snapCol), instead of at [prev line len]-th position
@@ -57,7 +53,7 @@ type
       ## when, for example, multiple cursors moved to the empty line
       ## if cursor isDuplicate, it should not participate in text editing, but still be available if cursors is then moved
       ## recalculated on collapseDuplicatedCursors
-    
+
     hasSelection*: bool
     anchorLine*, anchorCol*: int
       ## the start of the selection (end is at regular line:col)
@@ -69,6 +65,7 @@ type
     cursors*: seq[CursorPos]
     font*: Font
     selectionMode*: SelectionMode
+    width*: float32
 
 
 
@@ -77,24 +74,24 @@ proc lineHeightPixels*(font: Font): float32 =
 
 
 
-proc readCodeFile*(filename: string): CodeFile =
-  new result
-  result.lines = filename.readFile.splitLines.mapIt(it.toRunes)
+proc fileContent*(cf: CodeArrangement): string =
+  for i, line in cf.lines:
+    if i != 0: result.add "\n"
+    result.add $line.runes
+
+proc writeCodeFile*(filename: string, v: CodeArrangement) =
+  writeFile filename, v.fileContent
 
 
-proc writeCodeFile*(filename: string, v: CodeFile) =
-  writeFile filename, v.lines.join("\n")
 
-
-
-proc indent(line: CodeLine): int =
-  for r in line:
+proc indent(line: CodeArrangementLine): int =
+  for r in line.runes:
     if r == Rune(' '): inc result
     elif r == Rune('\t'): result += 2
     else: break
 
-proc isEmpty(line: CodeLine): bool =
-  for r in line:
+proc isEmpty(line: CodeArrangementLine): bool =
+  for r in line.runes:
     if not r.isWhiteSpace: return false
   return true
 
@@ -225,7 +222,7 @@ proc selectionRangeForLine*(arrangement: CodeArrangement, cursorI: int, lineI: i
         0..ac
       else:
         0..lineLen
-  
+
   of BlockSelection:
     if lineI < min(al, cl) or lineI > max(al, cl): return 0..<0
     min(ac, cc)..max(ac, cc)
@@ -250,7 +247,7 @@ proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
   var foundCol = 0
   var firstVisible = -1
   var lastVisible = -1
-  
+
   for i, line in arrangement.lines:
     if line.isHidden: continue
     if firstVisible == -1: firstVisible = i
@@ -259,7 +256,7 @@ proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
       foundLine = i
       foundCol = line.posToCol(vec2(mouseXy.x, mouseXy.y - line.rect.y))
       break
-  
+
   if foundLine == -1 and firstVisible != -1:
     if mouseXy.y < arrangement.lines[firstVisible].rect.y:
       foundLine = firstVisible
@@ -267,7 +264,7 @@ proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
     else:
       foundLine = lastVisible
       foundCol = arrangement.lines[lastVisible].arrangement.runes.len
-  
+
   if foundLine != -1 and cursorI < arrangement.cursors.len:
     arrangement.setSelection(
       cursorI,
@@ -304,7 +301,7 @@ proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool
       c.hasSelection = true
   else:
     c.hasSelection = false
-  
+
   let lineLen = arrangement.lines[c.line].arrangement.runes.len
   if c.col < lineLen:
     inc c.col
@@ -325,7 +322,7 @@ proc moveCursorUp*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = 
       c.hasSelection = true
   else:
     c.hasSelection = false
-  
+
   let prev = arrangement.prevVisibleLine(c.line)
   if prev != c.line:
     let prevLineLen = arrangement.lines[prev].arrangement.runes.len
@@ -381,20 +378,310 @@ proc setCursorPos*(arrangement: CodeArrangement, line, col: int, append = false)
       while i != -1:
         arrangement.cursors.delete i
         i = arrangement.cursors.findIt(it.line == line and it.col == col)
-  
+
   else:
     arrangement.cursors = @[CursorPos(line: line, col: col, snapCol: col, anchorLine: line, anchorCol: col)]
 
 
-proc toArrangement*(cf: CodeFile, font: Font, width: float32): CodeArrangement =
-  result = CodeArrangement(font: font)
+# --- incremental arrangement update ---
 
-  for line in cf.lines:
-    var cline = CodeArrangementLine(arrangement: typeset(font, $line, bounds=vec2(width, 0)))
+proc refreshArrangementLine*(arr: CodeArrangement, lineI: int) =
+  ## Rebuild typeset and basic metadata for a single line in-place
+  let line = arr.lines[lineI]
+  line.arrangement = typeset(arr.font, $line.runes, bounds=vec2(arr.width, 0))
+  let rowCount = line.arrangement.lines.len.max(1)
+  line.rect = rect(
+    0, line.rect.y, line.arrangement.layoutBounds.x,
+    rowCount.float32 * arr.font.lineHeightPixels
+  )
+  line.indentLevel = indent(line)
+
+
+proc updateSyntaxFrom*(arr: CodeArrangement, startLineI: int) =
+  ## Incrementally re-highlight from startLineI forward.
+  ## Stops early when the cross-line parse state no longer changes.
+  for i in startLineI ..< arr.lines.len:
+    let startState =
+      if i == 0: NimParseState()
+      else: nextLineParseState(arr.lines[i - 1].parseEndState)
+
+    let line = arr.lines[i]
+    let oldEndState = line.parseEndState
+    let res = parseNimCode(line.runes, startState, line.runes.len)
+    line.kinds = res.segments
+    line.parseEndState = res.state
+
+    if i > startLineI and nextLineParseState(res.state) == nextLineParseState(oldEndState):
+      break
+
+
+proc updateFoldable*(arr: CodeArrangement) =
+  ## Recompute foldable flags for all lines
+  for i in 0 ..< arr.lines.len:
+    arr.lines[i].foldable = false
+    if arr.lines[i].isEmpty: continue
+    let myIndent = arr.lines[i].indentLevel
+    for j in i + 1 ..< arr.lines.len:
+      if arr.lines[j].isEmpty: continue
+      if arr.lines[j].indentLevel > myIndent:
+        arr.lines[i].foldable = true
+      break
+
+
+proc shiftFoldedLines(arr: CodeArrangement, fromLine, delta: int) =
+  ## Shift foldedLines entries: entries >= fromLine are shifted by delta
+  var newFolded: HashSet[int]
+  for lineI in arr.foldedLines:
+    if lineI < fromLine: newFolded.incl lineI
+    elif lineI + delta >= 0: newFolded.incl lineI + delta
+  arr.foldedLines = newFolded
+
+
+# --- cursor adjustment helpers ---
+
+proc adjustCursorPoint(line, col: var int, editLine, editCol, colDelta: int) =
+  if line == editLine and col >= editCol:
+    col += colDelta
+
+proc adjustCursorsAfterInsert(arr: CodeArrangement, editLine, editCol, insertedCols: int) =
+  for i in 0 ..< arr.cursors.len:
+    adjustCursorPoint(arr.cursors[i].line, arr.cursors[i].col, editLine, editCol, insertedCols)
+    adjustCursorPoint(arr.cursors[i].anchorLine, arr.cursors[i].anchorCol, editLine, editCol, insertedCols)
+    arr.cursors[i].snapCol = arr.cursors[i].col
+
+proc adjustCursorsAfterDelete(arr: CodeArrangement, editLine, editCol, deletedCols: int) =
+  for i in 0 ..< arr.cursors.len:
+    var c = arr.cursors[i]
+    if c.line == editLine:
+      if c.col > editCol + deletedCols: c.col -= deletedCols
+      elif c.col > editCol: c.col = editCol
+    if c.hasSelection and c.anchorLine == editLine:
+      if c.anchorCol > editCol + deletedCols: c.anchorCol -= deletedCols
+      elif c.anchorCol > editCol: c.anchorCol = editCol
+    c.snapCol = c.col
+    arr.cursors[i] = c
+
+proc adjustCursorsAfterLineSplit(arr: CodeArrangement, splitLine, splitCol: int) =
+  for i in 0 ..< arr.cursors.len:
+    var c = arr.cursors[i]
+    if c.line == splitLine and c.col > splitCol:
+      c.line += 1; c.col -= splitCol
+    elif c.line > splitLine:
+      c.line += 1
+    if c.hasSelection:
+      if c.anchorLine == splitLine and c.anchorCol > splitCol:
+        c.anchorLine += 1; c.anchorCol -= splitCol
+      elif c.anchorLine > splitLine:
+        c.anchorLine += 1
+    c.snapCol = c.col
+    arr.cursors[i] = c
+
+proc adjustCursorsAfterMultiLineDeletion(arr: CodeArrangement, startLine, startCol, endLine, endCol: int) =
+  let mergedLen = startCol
+  for i in 0 ..< arr.cursors.len:
+    var c = arr.cursors[i]
+
+    proc fixPoint(ln: var int, col: var int) =
+      if ln > endLine:
+        ln -= endLine - startLine
+      elif ln == endLine:
+        col = if col >= endCol: mergedLen + (col - endCol) else: mergedLen
+        ln = startLine
+      elif ln > startLine:
+        ln = startLine; col = mergedLen
+
+    fixPoint(c.line, c.col)
+    if c.hasSelection: fixPoint(c.anchorLine, c.anchorCol)
+    c.snapCol = c.col
+    arr.cursors[i] = c
+
+
+# --- editing primitives ---
+
+proc insertAt*(arr: CodeArrangement, line, col: int, runes: seq[Rune]) =
+  ## Insert runes at (line, col). '\n' in runes splits lines. Adjusts all cursors.
+  var lineI = line
+  var colI = col
+  var chunkStart = 0
+  for i in 0..runes.len:
+    let atNl = i < runes.len and runes[i] == Rune('\n')
+    if atNl or i == runes.len:
+      if i > chunkStart:
+        let chunk = runes[chunkStart..<i]
+        let lr = arr.lines[lineI].runes
+        arr.lines[lineI].runes = lr[0..<colI] & chunk & lr[colI..<lr.len]
+        adjustCursorsAfterInsert(arr, lineI, colI, chunk.len)
+        colI += chunk.len
+      if atNl:
+        let lr = arr.lines[lineI].runes
+        arr.lines[lineI].runes = lr[0..<colI]
+        arr.lines.insert(CodeArrangementLine(runes: lr[colI..<lr.len]), lineI + 1)
+        shiftFoldedLines(arr, lineI + 1, 1)
+        adjustCursorsAfterLineSplit(arr, lineI, colI)
+        lineI += 1
+        colI = 0
+      chunkStart = i + 1
+
+
+proc deleteAt*(arr: CodeArrangement, sl, sc, el, ec: int) =
+  ## Delete from (sl, sc) to (el, ec). Adjusts all cursors.
+  if sl > el or (sl == el and sc >= ec): return
+  if sl == el:
+    arr.lines[sl].runes.delete(sc..ec - 1)
+    adjustCursorsAfterDelete(arr, sl, sc, ec - sc)
+  else:
+    let kept = arr.lines[sl].runes[0..<sc] & arr.lines[el].runes[ec..<arr.lines[el].runes.len]
+    arr.lines[sl].runes = kept
+    arr.lines.delete(sl + 1..el)
+    shiftFoldedLines(arr, sl + 1, -(el - sl))
+    adjustCursorsAfterMultiLineDeletion(arr, sl, sc, el, ec)
+
+
+# --- selection deletion ---
+
+proc selectionBounds(c: CursorPos, mode: SelectionMode): tuple[sl, sc, el, ec: int] =
+  case mode
+  of LineSelection:
+    if c.anchorLine < c.line or (c.anchorLine == c.line and c.anchorCol <= c.col):
+      (c.anchorLine, c.anchorCol, c.line, c.col)
+    else:
+      (c.line, c.col, c.anchorLine, c.anchorCol)
+  of BlockSelection:
+    (min(c.line, c.anchorLine), min(c.col, c.anchorCol),
+     max(c.line, c.anchorLine), max(c.col, c.anchorCol))
+
+
+proc deleteSelectionOf(arr: CodeArrangement, cursorI: int): int =
+  ## Delete cursor cursorI's selection. Move cursor to selection start. Clear hasSelection.
+  ## Returns first affected line.
+  if not arr.cursors[cursorI].hasSelection:
+    return arr.cursors[cursorI].line
+  let (sl, sc, el, ec) = selectionBounds(arr.cursors[cursorI], arr.selectionMode)
+  case arr.selectionMode
+  of LineSelection:
+    arr.deleteAt(sl, sc, el, ec)
+  of BlockSelection:
+    for lineI in countdown(el, sl):
+      let a = min(sc, arr.lines[lineI].runes.len)
+      let b = min(ec, arr.lines[lineI].runes.len)
+      if a < b: arr.deleteAt(lineI, a, lineI, b)
+  arr.cursors[cursorI].line = sl
+  arr.cursors[cursorI].col = min(sc, arr.lines[sl].runes.len)
+  arr.cursors[cursorI].snapCol = arr.cursors[cursorI].col
+  arr.cursors[cursorI].hasSelection = false
+  return sl
+
+
+# --- helpers ---
+
+proc finishEdit(arr: CodeArrangement, minLine: int) =
+  let lo = max(0, minLine)
+  let hi = arr.lines.len - 1
+  if lo > hi: return
+  for i in lo..hi:
+    refreshArrangementLine(arr, i)
+  updateSyntaxFrom(arr, lo)
+  updateFoldable(arr)
+  arr.updateRects()
+
+
+proc sortedCursorIndices(arr: CodeArrangement): seq[int] =
+  var order: seq[tuple[line, col, idx: int]]
+  for i, c in arr.cursors:
+    if not c.isDuplicate:
+      order.add (c.line, c.col, i)
+  order.sort(SortOrder.Descending)
+  result = order.mapIt(it.idx)
+
+
+# --- integrated editing procs ---
+
+proc insert*(arr: CodeArrangement, text: string) =
+  ## Insert text at every active cursor.
+  let runes = text.toRunes
+  if runes.len == 0: return
+  var minLine = int.high
+  for cursorI in arr.sortedCursorIndices():
+    minLine = min(minLine, deleteSelectionOf(arr, cursorI))
+    let c = arr.cursors[cursorI]
+    arr.insertAt(c.line, c.col, runes)
+    arr.cursors[cursorI].snapCol = arr.cursors[cursorI].col
+    minLine = min(minLine, c.line)
+  arr.collapseDuplicatedCursors()
+  finishEdit(arr, minLine)
+
+
+proc deleteBack*(arr: CodeArrangement) =
+  ## Backspace: delete char before cursor or selection.
+  var minLine = int.high
+  for cursorI in arr.sortedCursorIndices():
+    let c = arr.cursors[cursorI]
+    if c.hasSelection:
+      minLine = min(minLine, deleteSelectionOf(arr, cursorI))
+    elif c.col > 0:
+      arr.deleteAt(c.line, c.col - 1, c.line, c.col)
+      minLine = min(minLine, c.line)
+    elif c.line > 0:
+      arr.deleteAt(c.line - 1, arr.lines[c.line - 1].runes.len, c.line, 0)
+      minLine = min(minLine, c.line - 1)
+  arr.collapseDuplicatedCursors()
+  finishEdit(arr, minLine)
+
+
+proc deleteForward*(arr: CodeArrangement) =
+  ## Delete key: delete char after cursor or selection.
+  var minLine = int.high
+  for cursorI in arr.sortedCursorIndices():
+    let c = arr.cursors[cursorI]
+    if c.hasSelection:
+      minLine = min(minLine, deleteSelectionOf(arr, cursorI))
+    else:
+      let lineLen = arr.lines[c.line].runes.len
+      if c.col < lineLen:
+        arr.deleteAt(c.line, c.col, c.line, c.col + 1)
+        minLine = min(minLine, c.line)
+      elif c.line < arr.lines.len - 1:
+        arr.deleteAt(c.line, lineLen, c.line + 1, 0)
+        minLine = min(minLine, c.line)
+  arr.collapseDuplicatedCursors()
+  finishEdit(arr, minLine)
+
+
+proc insertNewline*(arr: CodeArrangement) =
+  ## Enter: split current line at cursor, auto-indent to match current line.
+  var minLine = int.high
+  for cursorI in arr.sortedCursorIndices():
+    discard deleteSelectionOf(arr, cursorI)
+    let c = arr.cursors[cursorI]
+    var indentRunes: seq[Rune]
+    for r in arr.lines[c.line].runes:
+      if r == Rune(' ') or r == Rune('\t'): indentRunes.add r
+      else: break
+    arr.insertAt(c.line, c.col, @[Rune('\n')] & indentRunes)
+    arr.cursors[cursorI].line = c.line + 1
+    arr.cursors[cursorI].col = indentRunes.len
+    arr.cursors[cursorI].snapCol = indentRunes.len
+    arr.cursors[cursorI].hasSelection = false
+    minLine = min(minLine, c.line)
+  arr.collapseDuplicatedCursors()
+  finishEdit(arr, minLine)
+
+
+# --- constructor ---
+
+proc toArrangement*(text: string, font: Font, width: float32): CodeArrangement =
+  result = CodeArrangement(font: font, width: width)
+
+  var parseState = NimParseState()
+  for line in text.splitLines:
+    var cline = CodeArrangementLine(arrangement: typeset(font, line, bounds=vec2(width, 0)))
     cline.rect = rect(0, 0, cline.arrangement.layoutBounds.x, cline.arrangement.lines.len.max(1).float32 * font.lineHeightPixels)
-    cline.kinds = parseNimCode(line, NimParseState(), line.len).segments
-    cline.indentLevel = indent(line)
-    cline.isEmpty = isEmpty(line)
+    let parsed = parseNimCode(line.toRunes, parseState, line.runeLen)
+    cline.runes = line.toRunes
+    cline.kinds = parsed.segments
+    cline.parseEndState = parsed.state
+    cline.indentLevel = indent(cline)
+    parseState = nextLineParseState(parsed.state)
     result.lines.add cline
 
   for i in 0 ..< result.lines.len:
@@ -408,4 +695,3 @@ proc toArrangement*(cf: CodeFile, font: Font, width: float32): CodeArrangement =
 
   result.cursors = @[CursorPos()]
   result.updateRects()
-

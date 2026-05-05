@@ -1,39 +1,32 @@
-import std/[unicode, sets]
+import std/[sets]
 import pkg/[vmath, chroma]
 import pkg/rice/[texts, contexts, gl, primitives]
-import pkg/toscel/fonts
+import pkg/toscel/[fonts, focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
 import pkg/sigui/window
-import ../logic/[config, code_editor]
+import ../logic/[config, code_editor, asyncio]
 
 
 type
   CodeEditorContent* = ref object of Uiobj
-    file*: Property[CodeFile]
     font*: Property[Font]
-
     breakpointBarWidth*: Property[float32] = 20'f32.property
     lineNumberBarWidth*: Property[float32] = 20'f32.property
     changesBarWidth*: Property[float32] = 5'f32.property
     arrowBarWidth*: Property[float32] = 20'f32.property
-    
-    active*: Property[bool]
+
     nonFoldedArrowsVisible: Property[bool]
 
     arrangement: CodeArrangement
     dragingCursorI: int
+
+    filename: string   ## path to save on disk (empty = read-only)
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
 
 const MinSelectionWidth = 6'f32
 
-
-proc updateArrangement(this: CodeEditorContent)
-
-addFirstHandHandler CodeEditorContent, "file":
-  updateArrangement(this)
-  autoredraw(this)
 
 registerComponent CodeEditor
 registerComponent CodeEditorContent
@@ -130,12 +123,12 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
         let arr = line.arrangement
 
         if arr.runes.len == 0:
-          # selection rect
+          # selection rect for empty line
           ctx.fillRect(
             rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
             color(0.2'f32, 0.4'f32, 0.7'f32),
           )
-        
+
         else:
           for subRowIdx, span in arr.lines:
             let rowFirst = span[0]
@@ -171,7 +164,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
         line.kinds,
       )
 
-      if this.active[]:
+      if currentFocus[] == this:
         for cursor in this.arrangement.cursors:
           if cursor.line == i:
             const cursorW = 1.5'f32
@@ -185,7 +178,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
       if line.foldable and i in this.arrangement.foldedLines:
         const lineH = 1'f32
         let rect = line.visibleRect
-        
+
         # line for folded line
         ctx.fillRect(
           rect(
@@ -198,51 +191,87 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
   this.drawAfter(ctx)
 
 
+proc saveFile(this: CodeEditorContent) =
+  if this.filename.len == 0: return
+  if this.arrangement == nil: return
+  scheduleFileSave(this.filename, this.arrangement.fileContent())
+
+
 method recieve*(this: CodeEditorContent, signal: Signal) =
   procCall this.super.recieve(signal)
-  if signal of WindowEvent and signal.WindowEvent.event of KeyEvent and signal.WindowEvent.handled == false:
-    let e = (ref KeyEvent)signal.WindowEvent.event
-    if e.pressed and this.active[] and this.arrangement != nil:
-      let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
-      let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
-      case e.key
-      of Key.left:
-        this.arrangement.moveCursorLeft(extend = shift)
+  if signal of WindowEvent and signal.WindowEvent.handled == false:
+    if signal.WindowEvent.event of TextInputEvent:
+      let e = (ref TextInputEvent)signal.WindowEvent.event
+      if currentFocus[] == this and this.arrangement != nil and not e.repeated:
+        this.arrangement.insert(e.text)
+        this.updateHeight()
         redraw(this)
-      
-      of Key.right:
-        this.arrangement.moveCursorRight(extend = shift)
-        redraw(this)
-      
-      of Key.up:
-        this.arrangement.moveCursorUp(extend = shift)
-        redraw(this)
-      
-      of Key.down:
-        this.arrangement.moveCursorDown(extend = shift)
-        redraw(this)
-      
-      of Key.escape:
-        if this.arrangement.cursors.len > 1:
-          this.arrangement.cursors = @[this.arrangement.cursors[0]]
+        this.saveFile()
+        signal.WindowEvent.handled = true
+
+    elif signal.WindowEvent.event of KeyEvent:
+      let e = (ref KeyEvent)signal.WindowEvent.event
+      if e.pressed and currentFocus[] == this and this.arrangement != nil:
+        let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
+        let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
+        case e.key
+        of Key.left:
+          this.arrangement.moveCursorLeft(extend = shift)
           redraw(this)
-      
-      of Key.b:
-        if ctrl:
-          this.arrangement.selectionMode = case this.arrangement.selectionMode
-            of LineSelection: BlockSelection
-            of BlockSelection: LineSelection
+
+        of Key.right:
+          this.arrangement.moveCursorRight(extend = shift)
           redraw(this)
-      
-      else: discard
+
+        of Key.up:
+          this.arrangement.moveCursorUp(extend = shift)
+          redraw(this)
+
+        of Key.down:
+          this.arrangement.moveCursorDown(extend = shift)
+          redraw(this)
+
+        of Key.backspace:
+          deleteBack(this.arrangement)
+          this.updateHeight()
+          redraw(this)
+          this.saveFile()
+
+        of Key.del:
+          deleteForward(this.arrangement)
+          this.updateHeight()
+          redraw(this)
+          this.saveFile()
+
+        of Key.enter:
+          insertNewline(this.arrangement)
+          this.updateHeight()
+          redraw(this)
+          this.saveFile()
+
+        of Key.escape:
+          if this.arrangement.cursors.len > 1:
+            this.arrangement.cursors = @[this.arrangement.cursors[0]]
+            redraw(this)
+
+        of Key.b:
+          if ctrl:
+            this.arrangement.selectionMode = case this.arrangement.selectionMode
+              of LineSelection: BlockSelection
+              of BlockSelection: LineSelection
+            redraw(this)
+
+        else: discard
 
 
-proc updateArrangement(this: CodeEditorContent) =
-  let lineNumberMaxWidth = typeset(this.font, $this.file[].lines.len).layoutBounds.x
-  this.lineNumberBarWidth[] = lineNumberMaxWidth
-
-  this.arrangement = this.file[].toArrangement(this.font[], this.w[] - this.textOffsetX)
+proc setArrangement(this: CodeEditorContent, text: string) =
+  # todo: if only the width changed, update arrangement instead of regenerating it
+  this.arrangement = text.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.updateHeight()
+
+  let lineNumberMaxWidth = typeset(this.font, $this.arrangement.lines.len).layoutBounds.x
+  this.lineNumberBarWidth[] = lineNumberMaxWidth
+  redraw(this)
 
 
 method init*(this: CodeEditorContent) =
@@ -278,7 +307,7 @@ method init*(this: CodeEditorContent) =
 
       on this.mouseButton:
         if e.button == MouseButton.left and e.pressed:
-          root.active[] = true
+          setFocus root
           for i, line in root.arrangement.lines:
             if line.isHidden: continue
             if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
@@ -296,10 +325,13 @@ method init*(this: CodeEditorContent) =
 
 
 proc updateContent(this: CodeEditor) =
+  let path = currentScript[]
   try:
-    this.content.file[] = readCodeFile(currentScript[])
+    this.content.filename = path
+    this.content.setArrangement(readFile(path))
   except CatchableError as exc:
-    this.content.file[] = CodeFile(lines: @[("Unable to read script: " & currentScript[] & "\n" & exc.msg).toRunes])
+    this.content.filename = ""
+    this.content.setArrangement("Unable to read script: " & path & "\n" & exc.msg)
 
 
 
