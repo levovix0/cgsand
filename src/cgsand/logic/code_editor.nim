@@ -24,9 +24,9 @@ type
     kinds*: seq[CodeKind]
       ## syntax highlighting for a line of code, per rune
 
-    indentLevel*: int
-      ## the ammount of logical block of indentation (space count can be diffirent per logical indentation block)
-      ## recalculated on updateRects
+    indentOffsets*: seq[int]
+      ## virtual-column positions of each indent-level boundary inside this line (e.g. [2, 4, 8])
+      ## recalculated on updateIndentOffsets
 
     foldable*: bool
       ## is the line a "header" of an indented block
@@ -114,14 +114,14 @@ proc updateRects*(arrangement: CodeArrangement) =
 
   for i, line in arrangement.lines:
     if not line.isEmpty:
-      while foldStack.len > 0 and line.indentLevel <= foldStack[^1]:
+      while foldStack.len > 0 and line.indentOffsets.len <= foldStack[^1]:
         discard foldStack.pop()
 
     if line.isEmpty and foldStack.len > 0:
       var nextIndent = -1
       for j in i+1 ..< arrangement.lines.len:
         if not arrangement.lines[j].isEmpty:
-          nextIndent = arrangement.lines[j].indentLevel
+          nextIndent = arrangement.lines[j].indentOffsets.len
           break
       line.isHidden = nextIndent > foldStack[^1]
     else:
@@ -132,7 +132,7 @@ proc updateRects*(arrangement: CodeArrangement) =
     if not line.isHidden:
       y += line.arrangement.lines.len.max(1).float32 * arrangement.font.lineHeightPixels
       if i in arrangement.foldedLines and line.foldable:
-        foldStack.add line.indentLevel
+        foldStack.add line.indentOffsets.len
 
 
 proc visibleHeight*(arrangement: CodeArrangement): float32 =
@@ -385,16 +385,42 @@ proc setCursorPos*(arrangement: CodeArrangement, line, col: int, append = false)
 
 # --- incremental arrangement update ---
 
+proc typesetWithIndent*(font: Font, width: float32, line: CodeArrangementLine) =
+  ## Typeset line.runes with hanging-indent wrapping:
+  ## measures the leading-whitespace pixel width (indentX), then re-typesets
+  ## at (width - indentX) and shifts all continuation rows right by indentX
+  ## so wrapped content aligns with the line's own indent level.
+  var indentRunes = 0
+  for r in line.runes:
+    if r == Rune(' ') or r == Rune('\t'): inc indentRunes
+    else: break
+
+  line.arrangement = typeset(font, $line.runes, bounds = vec2(width, 0))
+
+  if line.arrangement.lines.len <= 1 or indentRunes == 0 or
+      indentRunes >= line.runes.len:
+    return
+
+  let sr = line.arrangement.selectionRects
+  let indentX = sr[indentRunes - 1].x + sr[indentRunes - 1].w
+
+  line.arrangement = typeset(font, $line.runes, bounds = vec2((width - indentX).max(1'f32), 0))
+
+  for rowIdx in 1 ..< line.arrangement.lines.len:
+    let span = line.arrangement.lines[rowIdx]
+    for i in span[0] .. span[1]:
+      line.arrangement.selectionRects[i].x += indentX
+
+
 proc refreshArrangementLine*(arr: CodeArrangement, lineI: int) =
   ## Rebuild typeset and basic metadata for a single line in-place
   let line = arr.lines[lineI]
-  line.arrangement = typeset(arr.font, $line.runes, bounds=vec2(arr.width, 0))
+  typesetWithIndent(arr.font, arr.width, line)
   let rowCount = line.arrangement.lines.len.max(1)
   line.rect = rect(
     0, line.rect.y, line.arrangement.layoutBounds.x,
     rowCount.float32 * arr.font.lineHeightPixels
   )
-  line.indentLevel = indent(line)
 
 
 proc updateSyntaxFrom*(arr: CodeArrangement, startLineI: int) =
@@ -420,12 +446,42 @@ proc updateFoldable*(arr: CodeArrangement) =
   for i in 0 ..< arr.lines.len:
     arr.lines[i].foldable = false
     if arr.lines[i].isEmpty: continue
-    let myIndent = arr.lines[i].indentLevel
+    let myIndent = arr.lines[i].indentOffsets.len
     for j in i + 1 ..< arr.lines.len:
       if arr.lines[j].isEmpty: continue
-      if arr.lines[j].indentLevel > myIndent:
+      if arr.lines[j].indentOffsets.len > myIndent:
         arr.lines[i].foldable = true
       break
+
+
+proc updateIndentOffsets*(arr: CodeArrangement) =
+  ## Rebuild indentOffsets for every line using a virtual-column indent stack.
+  ## Each entry is the LEFT edge of an indent block (= column where the parent
+  ## level's content starts), so guide lines appear on the left side of the indent.
+  ## Empty lines initially inherit the stack; a second pass trims guides that
+  ## belong to blocks that have already closed before the empty line.
+  var stack: seq[int] = @[0]
+  for line in arr.lines:
+    if not line.isEmpty:
+      let vi = indent(line)
+      if vi > stack[^1]:
+        stack.add vi
+      elif vi < stack[^1]:
+        while stack.len > 1 and stack[^1] > vi:
+          discard stack.pop()
+        if stack[^1] != vi:
+          stack.add vi
+    line.indentOffsets = if stack.len > 1: stack[0 .. stack.high - 1] else: @[]
+
+  for i, line in arr.lines:
+    if not line.isEmpty: continue
+    var nextLen = 0
+    for j in i + 1 ..< arr.lines.len:
+      if not arr.lines[j].isEmpty:
+        nextLen = arr.lines[j].indentOffsets.len
+        break
+    if nextLen < line.indentOffsets.len:
+      line.indentOffsets = line.indentOffsets[0 ..< nextLen]
 
 
 proc shiftFoldedLines(arr: CodeArrangement, fromLine, delta: int) =
@@ -581,6 +637,7 @@ proc finishEdit(arr: CodeArrangement, minLine: int) =
   for i in lo..hi:
     refreshArrangementLine(arr, i)
   updateSyntaxFrom(arr, lo)
+  updateIndentOffsets(arr)
   updateFoldable(arr)
   arr.updateRects()
 
@@ -674,24 +731,17 @@ proc toArrangement*(text: string, font: Font, width: float32): CodeArrangement =
 
   var parseState = NimParseState()
   for line in text.splitLines:
-    var cline = CodeArrangementLine(arrangement: typeset(font, line, bounds=vec2(width, 0)))
-    cline.rect = rect(0, 0, cline.arrangement.layoutBounds.x, cline.arrangement.lines.len.max(1).float32 * font.lineHeightPixels)
+    var cline = CodeArrangementLine()
     let parsed = parseNimCode(line.toRunes, parseState, line.runeLen)
     cline.runes = line.toRunes
     cline.kinds = parsed.segments
     cline.parseEndState = parsed.state
-    cline.indentLevel = indent(cline)
+    typesetWithIndent(font, width, cline)
+    cline.rect = rect(0, 0, cline.arrangement.layoutBounds.x, cline.arrangement.lines.len.max(1).float32 * font.lineHeightPixels)
     parseState = nextLineParseState(parsed.state)
     result.lines.add cline
 
-  for i in 0 ..< result.lines.len:
-    if result.lines[i].isEmpty: continue
-    let myIndent = result.lines[i].indentLevel
-    for j in i+1 ..< result.lines.len:
-      if result.lines[j].isEmpty: continue
-      if result.lines[j].indentLevel > myIndent:
-        result.lines[i].foldable = true
-      break
-
+  result.updateIndentOffsets()
+  result.updateFoldable()
   result.cursors = @[CursorPos()]
   result.updateRects()

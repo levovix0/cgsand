@@ -90,6 +90,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
   let arrowBarCenterX = this.arrowBarOffsetX + this.arrowBarWidth[] / 2
 
   if this.visibility[] == visible:
+    let spaceW = typeset(this.font, " ").layoutBounds.x
     for i, line in this.arrangement.lines:
       if line.isHidden: continue
 
@@ -114,6 +115,16 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
             colorTheme.sLineNumber.vec4,
             origin=vec2(0.5, 0),
           )
+
+      for offset in line.indentOffsets:
+        let guideX = textOffsetX + offset.float32 * spaceW
+        ctx.fillRect(
+          rect(
+            this.globalXy + ctx.offset + vec2(guideX, line.rect.y),
+            vec2(1'f32, line.rect.h),
+          ),
+          color(0.3'f32, 0.3'f32, 0.3'f32),
+        )
 
       let lineH = this.font[].lineHeightPixels
       for c_idx in 0..<this.arrangement.cursors.len:
