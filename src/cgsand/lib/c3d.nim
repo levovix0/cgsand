@@ -78,6 +78,12 @@ proc pointsByEventParamDelta*(arc: MbArc, count: int = 20): seq[Point2] =
 proc points*(arc: MbArc, count: int = 20): seq[Point2] =
   pointsByEventParamDelta(arc, count)
 
+proc radius*(arc: MbArc): float64 =
+  cast[ptr float64](arc.data[112].addr)[]
+
+proc center*(arc: MbArc): Point2 =
+  cast[ptr Point2](arc.data[56].addr)[]
+
 
 proc closed*(curve: MbArc): bool {.importc: "_ZNK5MbArc8IsClosedEv".}
 

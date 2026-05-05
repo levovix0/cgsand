@@ -173,7 +173,8 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
       doc.add lineSection(p[2], p[3])
     
     if has(InverseOut):
-      doc.add circle(point2(r1.pos.x + r1.wh.x, r1.pos.y - r1.wh.y/2), 0.1)
+      doc.add circle(point2(r1.pos.x + r1.wh.x, r1.pos.y - r1.wh.y/2), 0.1):
+        Background color(1, 1, 1)
       
 
   doc.forEach (p1: Position2, Sym, id: EntityId):

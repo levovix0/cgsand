@@ -178,11 +178,13 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
-  w[].forEach (curve: MbArc, color: Color||globals.foreground, count: PointCount||20):
+  w[].forEach (curve: MbArc, color: Color||globals.foreground, count: PointCount||20, opt Background):
     let points = curve.points(count)
     if curve.closed:
+      if has Background:
+        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count)
       for i in 0 ..< points.len:
-        drawLineSection(ctx, lineSection(points[i], points[(i + 1) mod points.len]), color)
+        ctx.drawLineSection(lineSection(points[i], points[(i + 1) mod points.len]), color)
     else:
       for i in 0 ..< points.len-1:
         drawLineSection(ctx, lineSection(points[i], points[i + 1]), color)
