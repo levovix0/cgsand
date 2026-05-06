@@ -8,7 +8,7 @@ AxisYDirection
 PositionAt
 LineSection
 Thickness
-MbArc
+CircleArc
 PointCount
 Text
 Position2
