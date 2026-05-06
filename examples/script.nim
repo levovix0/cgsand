@@ -1,4 +1,4 @@
-import sandbox, geom2d, c3d
+import sandbox, geom2d
 
 type
   Positiveness = enum

@@ -5,7 +5,7 @@ import pkg/toscel/[fonts]
 import pkg/rice/[transform]
 import ./[bounds]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
-import ../lib/[geom2d, c3d]
+import ../lib/[geom2d]
 
 
 type
@@ -51,7 +51,7 @@ proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
   w[].forEach (line: LineSection, thickness: opt Thickness):
     result.contentBounds.add(lineBounds(line, if has Thickness: some thickness else: none Thickness))
 
-  w[].forEach (curve: MbArc, count: PointCount||20):
+  w[].forEach (curve: CircleArc, count: PointCount||20):
     result.contentBounds.add(pointsBounds(curve.points(count)))
 
   w[].forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||globals.fontSize):

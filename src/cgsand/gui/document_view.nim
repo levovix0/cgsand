@@ -6,7 +6,7 @@ import pkg/toscel/[button, fonts]
 import pkg/rice/[primitives, antialiasing, transform, texts]
 import ../logic/[scripts, config, bounds, doclayout]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
-import ../lib/[geom2d, c3d]
+import ../lib/[geom2d]
 
 
 type
@@ -178,7 +178,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
-  w[].forEach (curve: MbArc, color: Color||globals.foreground, count: PointCount||20, opt Background):
+  w[].forEach (curve: CircleArc, color: Color||globals.foreground, count: PointCount||20, opt Background):
     let points = curve.points(count)
     if curve.closed:
       if has Background:

@@ -1,5 +1,5 @@
 import std/[sequtils, tables, hashes, sets, algorithm]
-import sandbox, geom2d, c3d
+import sandbox, geom2d
 import pkg/bumpy
 
 type

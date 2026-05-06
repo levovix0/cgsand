@@ -1,4 +1,4 @@
-import sandbox, geom2d, strutils, sequtils, c3d
+import sandbox, geom2d, strutils, sequtils
 
 type
   NodeKind = enum
