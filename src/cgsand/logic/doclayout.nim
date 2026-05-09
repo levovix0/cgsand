@@ -65,9 +65,16 @@ proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
     let size = globals.settings.size.vec2
     result.pageBounds = bounds2(-size / 2, size / 2)
 
-  result.documentTransform = combine(
-    transform,
-    translate(-pageAnchor(result.pageBounds.size, globals.originAt).vec3(0)),
-  )
+  if globals.axisYDirection == AxisYDown:
+    result.documentTransform = combine(
+      transform,
+      translate(-pageAnchor(result.pageBounds.size, globals.originAt).vec3(0)),
+      translate(vec3(0, result.pageBounds.size.y, 0)),
+    )
+  else:
+    result.documentTransform = combine(
+      transform,
+      translate(-pageAnchor(result.pageBounds.size, globals.originAt).vec3(0)),
+    )
 
 

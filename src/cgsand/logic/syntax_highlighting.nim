@@ -53,9 +53,10 @@ proc parseNimCode*(s: openArray[Rune], state: NimParseState, len = 100): tuple[s
     template exist(n: int): bool =
       state.pos + n < s.len
     
-    template add(kind: CodeKind, len: int = 1) =
-      let i = len
+    template add(kind: CodeKind, llen: int = 1) =
+      let i = llen
       for j in state.pos ..< state.pos + i:
+        if j >= res.len: return
         res[j] = kind
       skip i
     

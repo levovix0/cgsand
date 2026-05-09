@@ -62,8 +62,18 @@ type
 
 
 
-var doc* {.exportc: "world_instance", dynlib.} = World()
-  ## in the sandbox we have an entire World!
+when defined(script):
+  var doc* {.exportc: "world_instance", dynlib.} = World()
+    ## in the sandbox we have an entire World!
+  
+  proc handleErrorAfterNimMain: bool {.exportc, dynlib.} =
+    try: discard
+    except Defect:
+      echo "script defect: ", getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+      result = true
+    except:
+      echo "script error: ", getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+      result = true
 
 
 

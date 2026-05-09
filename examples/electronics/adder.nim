@@ -76,10 +76,10 @@ let lines = (
     gap: 0,
   ),
 
-  Bus(origin: point2(xx[1] - 3, 0),  input: A[1], outputs: l2, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[1] + 0.5 - 3, 0),  input: B[1], outputs: l2, color: color(0, 0, 0)),
+  Bus(origin: point2(xx[1], 0),  input: A[1], outputs: l2, color: color(0, 0, 0)),
+  Bus(origin: point2(xx[1] + 0.5, 0),  input: B[1], outputs: l2, color: color(0, 0, 0)),
   Line(
-    origin: point2(xx[1] + 2 - 3, 7),
+    origin: point2(xx[1] + 2, 7),
     nodes: l2,
     gap: 0,
   ),
@@ -96,10 +96,10 @@ let lines = (
     gap: 0,
   ),
 
-  Bus(origin: point2(xx[2] - 3, 0),  input: A[2], outputs: l3, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[2] + 0.5 - 3, 0),  input: B[2], outputs: l3, color: color(0, 0, 0)),
+  Bus(origin: point2(xx[2], 0),  input: A[2], outputs: l3, color: color(0, 0, 0)),
+  Bus(origin: point2(xx[2] + 0.5, 0),  input: B[2], outputs: l3, color: color(0, 0, 0)),
   Line(
-    origin: point2(xx[2] + 2 - 3, 12),
+    origin: point2(xx[2] + 2, 12),
     nodes: l3,
     gap: 0,
   ),
