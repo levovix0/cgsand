@@ -109,6 +109,12 @@ proc `[]=`*[T](w: var World, t: typedesc[T], v: T) =
 
 
 
+proc excl*[T](arr: var seq[T], v: T) =
+  let i = arr.find(v)
+  if i != -1: arr.delete i
+
+
+
 proc factor*(posAt: PositionAt): Vec2 =
   case posAt
   of PositionAtTopLeft: vec2(0, 0)
