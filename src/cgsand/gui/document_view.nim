@@ -1,9 +1,10 @@
 import std/[locks, options, math]
 import pkg/[ecs, shady]
+import pkg/pixie/paths
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea]
 import pkg/toscel/[button, fonts]
-import pkg/rice/[primitives, antialiasing, transform, texts]
+import pkg/rice/[primitives, antialiasing, transform, texts, paths]
 import ../logic/[scripts, config, bounds, doclayout]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d]
@@ -188,6 +189,19 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     else:
       for i in 0 ..< points.len-1:
         drawLineSection(ctx, lineSection(points[i], points[i + 1]), color)
+  
+
+  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background):
+    if has Background:
+      ctx.fillPath(path, color = the Background)
+    if has Foreground:
+      ctx.strokePath(path, color = the Foreground, strokeWidth=thickness)
+    elif has Color:
+      ctx.strokePath(path, color = the Color, strokeWidth=thickness)
+    elif not(has Background):
+      ctx.fillPath(path, color = globals.foreground)
+
+
 
 
   w[].forEach (
@@ -195,7 +209,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     pos: Position2,
     color: Color||globals.foreground,
     posAt: PositionAt||PositionAtTopLeft,
-    font: Typeface||font_default,
+    font: Typeface||globals.font,
     size: FontSize||globals.fontSize,
   ):
     drawText(ctx, text, pos, color, posAt, font, size)

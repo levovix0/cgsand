@@ -62,7 +62,7 @@ type
 
 
 
-when defined(script):
+when defined(script) or defined(nimcheck):
   var doc* {.exportc: "world_instance", dynlib.} = World()
     ## in the sandbox we have an entire World!
   
