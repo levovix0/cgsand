@@ -10,6 +10,7 @@ type
   Port* = object
     n: Node
     port*: int
+    delayed*: bool
 
   Node* = ref object
     kind*: NodeKind
@@ -85,6 +86,8 @@ converter toNode*(name: string): Node = Node(kind: SymN, name: name)
 converter toPort*(name: string): Port = Port(n: Node name, port: 0)
 converter toPort*(n: Node): Port = Port(n: n, port: 0)
 converter toPort*(n: (Node, int)): Port = Port(n: n[0], port: n[1])
+
+proc delayed*(n: Node, port = 0): Port = Port(n: n, port: port, delayed: true)
 
 proc `$`*(n: Node): string = n.name
 
@@ -364,9 +367,9 @@ proc drawComponents* =
         doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness 0.05
 
 
-proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node]): Value =
-  if n in vals: return vals[n]
-  if n in computing:
+proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node]): Value =
+  if n in vals and (n.inputs.len == 0 or n in skipSim): return vals[n]
+  if n in computing:  # force delay
     return prevVals.getOrDefault(n, Value(power: 0.0))
   if n.inputs.len == 0:
     vals[n] = Value(power: 0.0)
@@ -374,17 +377,23 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
 
   computing.incl n
 
+  template resolveInp(inpP: Port): Value =
+    let inp = inpP
+    if inp.delayed:
+      prevVals.getOrDefault(inp.n, Value(power: 0.0))
+    else:
+      simulateNode(inp.n, vals, prevVals, computing, skipSim)
+
   case n.kind
   of SymN:
-    let v = simulateNode(n.inputs[0].n, vals, prevVals, computing)
-    vals[n] = v
+    vals[n] = resolveInp(n.inputs[0])
 
   of BoxN:
     case n.name
     of "&", "1":
       var res = if n.name == "&": 1.0 else: 0.0
       for inp in n.inputs:
-        let iv = simulateNode(inp.n, vals, prevVals, computing).power
+        let iv = resolveInp(inp).power
         if n.name == "&":
           if iv < res: res = iv
         else:
@@ -396,7 +405,7 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
     of "=1":
       var res = false
       for inp in n.inputs:
-        let iv = simulateNode(inp.n, vals, prevVals, computing).power
+        let iv = resolveInp(inp).power
         res = res xor (iv > 0.5)
       if n.outputs.len > 0 and not n.outputs[0]:
         res = not res
@@ -414,24 +423,30 @@ proc draw*(plot: Plot) =
   var stamps = plot.timestamps
   stamps.sort(proc(a, b: PlotTimestamp): int = cmp(a.time, b.time))
   if stamps.len == 0: return
-  let firstTime = stamps[0].time
 
+  # todo: concat changes from timestamps on same time
+
+  let firstTime = stamps[0].time
   var nodeValues: Table[Node, seq[tuple[time: float, v: Value]]]
-  var cumVals: Table[Node, Value]
-  var prevSimVals: Table[Node, Value]
+  var accumVals: Table[Node, Value]
   for stamp in stamps:
+    var skipSim: HashSet[Node]
     for change in stamp.changes:
-      cumVals[change.node] = change.value
-    var simVals = cumVals
+      accumVals[change.node] = change.value
+      skipSim.incl change.node
+
+    var simVals = accumVals
     var computing = initHashSet[Node]()
     for group in plot.data:
       for node in group:
-        discard simulateNode(node, simVals, prevSimVals, computing)
-    prevSimVals = simVals
+        discard simulateNode(node, simVals, accumVals, computing, skipSim)
+    
     for group in plot.data:
       for node in group:
         if node in simVals:
           nodeValues.mgetOrPut(node, @[]).add (time: stamp.time, v: simVals[node])
+    
+    accumVals = simVals
 
   var y = plot.origin.y
   for groupIdx, group in plot.data:
@@ -439,9 +454,14 @@ proc draw*(plot: Plot) =
       let rowY = y
       let vals = nodeValues.getOrDefault(node)
 
-      doc.add Text node.name:
+      var name = node.name
+      let negate = name.startsWith("!")
+      name.removePrefix("!")
+      doc.add Text name:
         Position2 point2(plot.origin.x - 0.2, rowY + signalH/2)
         PositionAtRight
+      if negate:
+        doc.add lineSection(point2(plot.origin.x - 0.1, rowY), point2(plot.origin.x - 1, rowY)), Thickness 0.05
 
       doc.add lineSection(point2(plot.origin.x, rowY), point2(plot.origin.x, rowY + signalH))
 

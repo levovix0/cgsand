@@ -4,19 +4,18 @@ import electronics/schemes
 addDefaultElectronicsGlobals()
 
 
-let I = @[Node "!R", "!S"]
+let I = @[Node "!S", "!R"]
 let M = @[Node "", Node ""]
 let O = @[Node "Q", "!Q"]
 
 for i in 0..<O.len: O[i].inputs.add M[i]
 
-let T = @[nandN(I[0], M[1]), nandN(M[0], I[1])]
+let T = @[nandN(I[0], delayed(M[1])), nandN(delayed(M[0]), I[1])]
 for i in 0..<O.len: M[i].inputs.add T[i]
 
 
-let R {.used.} = I[0]
-let S {.used.} = I[1]
-let Q {.used.} = O[0]
+let S {.used.} = I[0]
+let R {.used.} = I[1]
 
 
 let lines = placementRules(
@@ -57,19 +56,28 @@ drawComponents()
 
 
 var timestamps = @[
-  PlotTimestamp(time: 0, changes: @[setVal(S, 1), setVal(R, 1)]),
-  PlotTimestamp(time: 1),
-  PlotTimestamp(time: 2, changes: @[setVal(S, 0), setVal(R, 1)]),
-  PlotTimestamp(time: 3),
-  PlotTimestamp(time: 4, changes: @[setVal(S, 1), setVal(R, 1)]),
-  PlotTimestamp(time: 5),
+  PlotTimestamp(time: 0, changes: @[setVal(S, 1), setVal(R, 1), setVal(T[0], 0), setVal(T[1], 1)]),
+  PlotTimestamp(time: 0.3),
+  PlotTimestamp(time: 1, changes: @[setVal(S, 0)]),
+  PlotTimestamp(time: 1.3),
+  PlotTimestamp(time: 2, changes: @[setVal(S, 1)]),
+  PlotTimestamp(time: 2.3),
+  PlotTimestamp(time: 3, changes: @[setVal(R, 0)]),
+  PlotTimestamp(time: 3.3),
+  PlotTimestamp(time: 4, changes: @[setVal(R, 1)]),
+  PlotTimestamp(time: 4.3),
+  # PlotTimestamp(time: 5, changes: @[setVal(S, 0), setVal(R, 0)]),
+  # PlotTimestamp(time: 5.25),
+  # PlotTimestamp(time: 5.5),
+  # PlotTimestamp(time: 5.75),
+  # PlotTimestamp(time: 6),
 ]
 
 draw Plot(
   data: @[I, O],
   gap: 0.5,
   groupGap: 0.5,
-  timeScale: 1,
+  timeScale: 2,
   timestamps: timestamps,
   origin: point2(10, 0),
 )
