@@ -133,6 +133,7 @@ proc placementRules*(rules: varargs[PlacementRule]): seq[PlacementRule] = @rules
 
 
 proc hash*(n: Node): Hash = hash(cast[pointer](n))
+proc hash*(p: Point2): Hash = !$(0.Hash !& hash(p.x) !& hash(p.y))
 
 
 
@@ -163,6 +164,7 @@ proc setVal*(node: Node, value: Value): ValChange =
 
 proc placeComponents*(rules: seq[PlacementRule]) =
   var nodeRects = initTable[Node, Rect]()
+  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool]]
 
   type ConnKey = tuple[n: pointer, port: int]
   var busHandled = initHashSet[ConnKey]()
@@ -237,7 +239,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         nodeRects[node] = r
         doc.add node, r
 
-  # Pass 3: place Connection and Branch
+  # Pass 3: place Connection and collect for branch detection
   for rule in rules:
     case rule.kind
     of LineR:
@@ -249,25 +251,23 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             let inRect = nodeRects[inp.n]
             if node.height != 0 and inp.n.outputs.len == 1:
               let fromY = outputPortY(inp.n, inRect, inp.port)
-              let p1 = point2(inRect.x + inRect.w, fromY)
-              let p2 = point2(r.x, fromY)
-              doc.add Connection(@[p1, p2])
+              let pts = Connection(@[point2(inRect.x + inRect.w, fromY), point2(r.x, fromY)])
+              doc.add pts
+              allConns.add (pts, color(0, 0, 0), true)
             else:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let toY = inputPortY(node, r, portIdx)
               let p1 = point2(inRect.x + inRect.w, fromY)
               let p2 = point2(r.x, toY)
               if abs(fromY - toY) < Eps:
-                doc.add Connection(@[p1, p2])
+                let pts = Connection(@[p1, p2])
+                doc.add pts
+                allConns.add (pts, color(0, 0, 0), true)
               else:
                 let midX = (p1.x + p2.x) / 2.0
-                doc.add Connection(@[
-                  p1,
-                  point2(midX, fromY),
-                  point2(midX, toY),
-                  p2,
-                ])
-                doc.add Branch point2(midX, fromY)  # todo
+                let pts = Connection(@[p1, point2(midX, fromY), point2(midX, toY), p2])
+                doc.add pts
+                allConns.add (pts, color(0, 0, 0), true)
 
     of BusR:
       let elem {.cursor.} = rule.bus
@@ -301,25 +301,55 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             minBusY = min(minBusY, portY)
             maxBusY = max(maxBusY, portY)
 
-          doc.add Connection(leadPts), elem.color
+          let lead = Connection(leadPts)
+          doc.add lead, elem.color
+          allConns.add (lead, elem.color, true)
 
-          doc.add Connection(@[
-            point2(busX, minBusY),
-            point2(busX, maxBusY),
-          ]), elem.color
+          let vertBus = Connection(@[point2(busX, minBusY), point2(busX, maxBusY)])
+          doc.add vertBus, elem.color
+          allConns.add (vertBus, elem.color, false)
 
-          for i, bc in busConns:
+          for bc in busConns:
             let outRect = nodeRects[bc.n]
             let portY = inputPortY(bc.n, outRect, bc.port)
+            let stub = Connection(@[point2(busX, portY), point2(outRect.x, portY)])
+            doc.add stub, elem.color
+            allConns.add (stub, elem.color, false)
 
-            doc.add Connection(@[point2(busX, portY), point2(outRect.x, portY)]):
-              elem.color
+  # Pass 4: if 2+ Connection start from the same point, add a Branch
+  var starters: seq[tuple[p: Point2, dir: Vec2, count: int, color: Color]]
+  for i, conn in allConns:
+    if conn.pts.len < 2: continue
+    block hasStarter:
+      for starter in starters.mitems:
+        if starter.p ~== conn.pts[0] and not isParallel(conn.pts[1] - conn.pts[0], starter.dir):
+          inc starter.count
+          if starter.color == color(0, 0, 0):
+            starter.color = conn.color
+          break hasStarter
+      # not hasStarter
+      starters.add (conn.pts[0], conn.pts[1] - conn.pts[0], (if conn.startsFromElement: 1 else: 0), conn.color)
+  
+  for starter in starters:
+    if starter.count > 1:
+      doc.add Branch starter.p, starter.color
 
-            if (i != 0 or pathEndY <= minBusY) and (i != busConns.high or pathEndY >= maxBusY):
-              doc.add Branch point2(busX, portY), elem.color
+  # Pass 5: detect T-junction branch points
+  var seenBranches: HashSet[Point2]
+  for i, conn1 in allConns:
+    for v in conn1.pts:
+      for j, conn2 in allConns:
+        if i == j: continue
+        for si in 0..<conn2.pts.high:
+          let a = conn2.pts[si]
+          let b = conn2.pts[si + 1]
+          if v ~== a or v ~== b: continue
 
-          if pathEndY > minBusY and pathEndY < maxBusY:
-            doc.add Branch point2(busX, pathEndY), elem.color
+          if hasPoint(lineSection(a, b), v):
+            if v notin seenBranches:
+              seenBranches.incl v
+              doc.add Branch v, conn2.color
+            break
 
 
 
