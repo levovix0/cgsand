@@ -1,4 +1,4 @@
-import std/[sequtils, tables, hashes, sets, algorithm]
+import std/[sequtils, tables, hashes, sets, algorithm, strutils]
 import sandbox, geom2d
 import pkg/bumpy
 
@@ -18,18 +18,33 @@ type
     name*: string
     height*: float  # if equals 0, the calculated automatically: 1 for SymN, min(2, n.inputs.len) for BoxN
   
+  ElementAlignment* = enum
+    None     # place items using origin, element heights and gap
+    Inputs   # align all nodes to their inputs, so connection does not need to bend (and ignore gap)
+    Outputs  # align all nodes to their outputs, so connection does not need to bend (and ignore gap)
+  
   Line* = object
     nodes*: seq[Node]
     gap*: float32
-    align*: bool  # if true, align all nodes to their inputs, so connection does not need to bend (and ignore gap)
+    align*: ElementAlignment
     origin*: Point2
   
   Bus* = object
     input*: Node
     outputs*: seq[Node]
     origin*: Point2
+    path*: seq[Point2]
     color*: Color = color(0, 0, 0)
-  
+
+  PlacementRuleKind* = enum
+    LineR
+    BusR
+
+  PlacementRule* = object
+    case kind*: PlacementRuleKind
+    of LineR: line*: Line
+    of BusR: bus*: Bus
+
   Value* = object
     power*: float
 
@@ -100,6 +115,20 @@ proc symN*(name: string, inputs: varargs[Port]): Node =
 
 
 
+converter toPlacementRule*(l: Line): PlacementRule = PlacementRule(kind: LineR, line: l)
+converter toPlacementRule*(b: Bus): PlacementRule = PlacementRule(kind: BusR, bus: b)
+
+proc bus*(path: openArray[Point2], input: Node, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+  Bus(path: @path, input: input, outputs: @outputs, color: color)
+
+proc bus*(origin: Point2, input: Node, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+  Bus(origin: origin, input: input, outputs: @outputs, color: color)
+
+
+proc placementRules*(rules: varargs[PlacementRule]): seq[PlacementRule] = @rules
+
+
+
 proc hash*(n: Node): Hash = hash(cast[pointer](n))
 
 
@@ -121,47 +150,95 @@ proc outputPortY*(n: Node, r: Rect, portIdx: int): float32 =
 
 
 
+converter toValue*(power: float): Value = Value(power: power)
+converter toValue*(power: int): Value = Value(power: power.float)
+
 proc setVal*(node: Node, value: Value): ValChange =
   ValChange(node: node, value: value)
 
 
 
-proc placeComponents*(lines: tuple) =
+proc placeComponents*(rules: seq[PlacementRule]) =
   var nodeRects = initTable[Node, Rect]()
 
   type ConnKey = tuple[n: pointer, port: int]
   var busHandled = initHashSet[ConnKey]()
 
   # Pass 1: collect which (node, portIdx) pairs are connected via buses
-  for elem in lines.fields:
-    when elem is Bus:
+  for rule in rules:
+    if rule.kind == BusR:
+      let elem = rule.bus
       for outNode in elem.outputs:
         for portIdx, inp in outNode.inputs:
           if inp.n == elem.input:
             busHandled.incl (cast[pointer](outNode), portIdx)
 
-  # Pass 2: place (Node, Rect)
-  for elem in lines.fields:
-    when elem is Line:
+  # Build successor table: node -> [(consuming node, port index)]
+  var successors = initTable[Node, seq[tuple[n: Node, port: int]]]()
+  for rule in rules:
+    case rule.kind
+    of LineR:
+      for n in rule.line.nodes:
+        for portIdx, inp in n.inputs:
+          successors.mgetOrPut(inp.n, @[]).add (n, portIdx)
+    of BusR:
+      for outNode in rule.bus.outputs:
+        for portIdx, inp in outNode.inputs:
+          successors.mgetOrPut(inp.n, @[]).add (outNode, portIdx)
+
+  # Pass 2a: place nodes from Lines with no alignment (no inter-node dependencies)
+  for rule in rules:
+    if rule.kind == LineR and rule.line.align == None:
+      let elem = rule.line
       var pos = elem.origin
       for node in elem.nodes:
         let sz = nodeSize(node)
-        var r: Rect
-        if elem.align and node.inputs.len > 0:
-          let inp0 = node.inputs[0]
-          if nodeRects.hasKey(inp0.n):
-            let inRect = nodeRects[inp0.n]
-            let connectY = outputPortY(inp0.n, inRect, inp0.port)
-            r = rect(pos.x.float32, connectY, sz.x.float32, sz.y.float32)
-        else:
-          r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
+        let r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
+        pos.y += sz.y + elem.gap.float
+        nodeRects[node] = r
+        doc.add node, r
+
+  # Pass 2b: place nodes from Lines with alignment, preserving original order
+  for rule in rules:
+    if rule.kind == LineR and rule.line.align != None:
+      let elem = rule.line
+      var pos = elem.origin
+      for node in elem.nodes:
+        let sz = nodeSize(node)
+        let zeroRect = rect(0f32, 0f32, sz.x.float32, sz.y.float32)
+        var r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
+        var positioned = false
+
+        case elem.align
+        of Inputs:
+          if node.inputs.len > 0:
+            let inp0 = node.inputs[0]
+            if nodeRects.hasKey(inp0.n):
+              let connectY = outputPortY(inp0.n, nodeRects[inp0.n], inp0.port)
+              r = rect(pos.x.float32, connectY - inputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
+              positioned = true
+        of Outputs:
+          if successors.hasKey(node):
+            for succ in successors[node]:
+              if succ.n in nodeRects:
+                let targetY = inputPortY(succ.n, nodeRects[succ.n], succ.port)
+                r = rect(pos.x.float32, targetY - outputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
+                positioned = true
+                break
+        of None:
+          discard
+
+        if not positioned:
           pos.y += sz.y + elem.gap.float
+
         nodeRects[node] = r
         doc.add node, r
 
   # Pass 3: place Connection and Branch
-  for elem in lines.fields:
-    when elem is Line:
+  for rule in rules:
+    case rule.kind
+    of LineR:
+      let elem {.cursor.} = rule.line
       for node in elem.nodes:
         let r = nodeRects[node]
         for portIdx, inp in node.inputs:
@@ -189,12 +266,23 @@ proc placeComponents*(lines: tuple) =
                 ])
                 doc.add Branch point2(midX, fromY)  # todo
 
-    when elem is Bus:
+    of BusR:
+      let elem {.cursor.} = rule.bus
       let inNode = elem.input
       if inNode in nodeRects:
         let inRect = nodeRects[inNode]
-        let busX = elem.origin.x.float32
         let startY = outputPortY(inNode, inRect, 0)
+
+        let (busX, pathEndY, leadPts) =
+          if elem.path.len >= 1:
+            let bx = elem.path[^1].x.float32
+            let py = elem.path[^1].y.float32
+            var pts: seq[Point2] = @[point2(inRect.x + inRect.w, startY)]
+            pts.add elem.path
+            (bx, py, pts)
+          else:
+            let bx = elem.origin.x.float32
+            (bx, startY, @[point2(inRect.x + inRect.w, startY), point2(bx, startY)])
 
         var busConns: seq[tuple[n: Node, port: int]]
         for outNode in elem.outputs:
@@ -203,38 +291,32 @@ proc placeComponents*(lines: tuple) =
               busConns.add (outNode, portIdx)
 
         if busConns.len > 0:
-          var minBusY = startY
-          var maxBusY = startY
+          var minBusY = pathEndY
+          var maxBusY = pathEndY
           for bc in busConns:
             let portY = inputPortY(bc.n, nodeRects[bc.n], bc.port)
             minBusY = min(minBusY, portY)
             maxBusY = max(maxBusY, portY)
 
-          # horizontal wire from input node output to bus
-          doc.add Connection(@[
-            point2(inRect.x + inRect.w, startY),
-            point2(busX, startY),
-          ]), elem.color
+          doc.add Connection(leadPts), elem.color
 
-          # vertical bus wire
           doc.add Connection(@[
             point2(busX, minBusY),
             point2(busX, maxBusY),
           ]), elem.color
 
-          # horizontal branches from bus to each gate input port
           for i, bc in busConns:
             let outRect = nodeRects[bc.n]
             let portY = inputPortY(bc.n, outRect, bc.port)
-            
+
             doc.add Connection(@[point2(busX, portY), point2(outRect.x, portY)]):
               elem.color
-            
-            if (i != 0 or startY <= minBusY) and (i != busConns.high or startY >= maxBusY):
+
+            if (i != 0 or pathEndY <= minBusY) and (i != busConns.high or pathEndY >= maxBusY):
               doc.add Branch point2(busX, portY), elem.color
-          
-          if startY > minBusY and startY < maxBusY:
-              doc.add Branch point2(busX, startY), elem.color
+
+          if pathEndY > minBusY and pathEndY < maxBusY:
+            doc.add Branch point2(busX, pathEndY), elem.color
 
 
 
@@ -269,30 +351,40 @@ proc drawComponents* =
             Background color(1, 1, 1)
     
     of SymN:
+      var name = n.name
+      let negate = name.startsWith("!")
+      name.removePrefix("!")
+
       doc.add lineSection(point2(r.x, r.y), point2(r.x + r.w, r.y))
-      doc.add Text n.name:
+      doc.add Text name:
         Position2 point2(r.x + r.w/2, r.y - 0.2)
         PositionAtBottom
+      
+      if negate:
+        doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness 0.05
 
 
-proc simulateNode(n: Node, vals: var Table[Node, Value]): Value =
+proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node]): Value =
   if n in vals: return vals[n]
+  if n in computing:
+    return prevVals.getOrDefault(n, Value(power: 0.0))
   if n.inputs.len == 0:
     vals[n] = Value(power: 0.0)
     return vals[n]
 
+  computing.incl n
+
   case n.kind
   of SymN:
-    let v = simulateNode(n.inputs[0].n, vals)
+    let v = simulateNode(n.inputs[0].n, vals, prevVals, computing)
     vals[n] = v
-    return v
-  
+
   of BoxN:
     case n.name
     of "&", "1":
       var res = if n.name == "&": 1.0 else: 0.0
       for inp in n.inputs:
-        let iv = simulateNode(inp.n, vals).power
+        let iv = simulateNode(inp.n, vals, prevVals, computing).power
         if n.name == "&":
           if iv < res: res = iv
         else:
@@ -304,16 +396,17 @@ proc simulateNode(n: Node, vals: var Table[Node, Value]): Value =
     of "=1":
       var res = false
       for inp in n.inputs:
-        let iv = simulateNode(inp.n, vals).power
+        let iv = simulateNode(inp.n, vals, prevVals, computing).power
         res = res xor (iv > 0.5)
       if n.outputs.len > 0 and not n.outputs[0]:
         res = not res
       vals[n] = Value(power: res.float)
 
     else:
-      ## some unknown operator, leave unchanged
-    
-    return vals[n]
+      discard
+
+  computing.excl n
+  return vals.getOrDefault(n, Value(power: 0.0))
 
 
 proc draw*(plot: Plot) =
@@ -325,13 +418,16 @@ proc draw*(plot: Plot) =
 
   var nodeValues: Table[Node, seq[tuple[time: float, v: Value]]]
   var cumVals: Table[Node, Value]
+  var prevSimVals: Table[Node, Value]
   for stamp in stamps:
     for change in stamp.changes:
       cumVals[change.node] = change.value
     var simVals = cumVals
+    var computing = initHashSet[Node]()
     for group in plot.data:
       for node in group:
-        discard simulateNode(node, simVals)
+        discard simulateNode(node, simVals, prevSimVals, computing)
+    prevSimVals = simVals
     for group in plot.data:
       for node in group:
         if node in simVals:
@@ -416,18 +512,18 @@ when isMainModule:
 
   var outputNames = (0..<outputs.len).mapIt(symN("y" & $it, outputs[it]))
 
-  let lines = (
-    Line(origin: point2(0, 3),    nodes: inputs, gap: 7),
+  let lines = @[
+    PlacementRule Line(origin: point2(0, 3),    nodes: inputs, gap: 7),
     Line(origin: point2(4, 0),    nodes: inverted, gap: 6),
-    Bus( origin: point2(8, 0),    input: inputs[0], outputs: outputs, color: color(0.6, 0, 0)),
-    Bus( origin: point2(8.5, 0),  input: inverted[0], outputs: outputs, color: color(0, 0, 0)),
-    Bus( origin: point2(10, 0),   input: inputs[1], outputs: outputs, color: color(0, 0.6, 0)),
-    Bus( origin: point2(10.5, 0), input: inverted[1], outputs: outputs, color: color(0, 0, 0)),
-    Bus( origin: point2(12, 0),   input: inputs[2], outputs: outputs, color: color(0, 0, 0.6)),
-    Bus( origin: point2(12.5, 0), input: inverted[2], outputs: outputs, color: color(0, 0, 0)),
+    bus(point2(8,    0), input = inputs[0],    outputs = outputs, color = color(0.6, 0, 0)),
+    bus(point2(8.5,  0), input = inverted[0],  outputs = outputs, color = color(0, 0, 0)),
+    bus(point2(10,   0), input = inputs[1],    outputs = outputs, color = color(0, 0.6, 0)),
+    bus(point2(10.5, 0), input = inverted[1],  outputs = outputs, color = color(0, 0, 0)),
+    bus(point2(12,   0), input = inputs[2],    outputs = outputs, color = color(0, 0, 0.6)),
+    bus(point2(12.5, 0), input = inverted[2],  outputs = outputs, color = color(0, 0, 0)),
     Line(origin: point2(16, 0),   nodes: outputs, gap: 0),
-    Line(origin: point2(20, 0),   nodes: outputNames, gap: 0, align: true),
-  )
+    Line(origin: point2(20, 0),   nodes: outputNames, gap: 0, align: Inputs),
+  ]
 
   placeComponents(lines)
   drawComponents()

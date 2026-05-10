@@ -59,6 +59,10 @@ type
 
   Thickness* = float32
     ## defines thickness of lines (attachable to 2d curves)
+  
+  PixelThickness* = float32
+    ## thickness of lines in pixels. Stays the same no matter how viewport transforms
+    ## todo
 
 
 

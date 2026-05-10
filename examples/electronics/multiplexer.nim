@@ -27,7 +27,7 @@ block:
         M[i].inputs.add { n[x3][0]:0, n[x2][1]:0, n[x1][2]:0 }.mapIt(Port it)
         inc i
 
-let lines = (
+let lines = placementRules(
   Line(
     origin: point2(0, 0),
     nodes: D,
@@ -43,23 +43,23 @@ let lines = (
     nodes: Ii,
     gap: 4,
   ),
-  Bus(origin: point2(8, 0),    input: D[7], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(8.5, 0),  input: D[6], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(9, 0),    input: D[5], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(9.5, 0),  input: D[4], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(10, 0),   input: D[3], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(10.5, 0), input: D[2], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(11, 0),   input: D[1], outputs: M, color: color(0, 0, 0)),
-  Bus(origin: point2(11.5, 0), input: D[0], outputs: M, color: color(0, 0, 0)),
+  bus(point2(8, 0),    input = D[7],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(8.5, 0),  input = D[6],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(9, 0),    input = D[5],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(9.5, 0),  input = D[4],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(10, 0),   input = D[3],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(10.5, 0), input = D[2],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(11, 0),   input = D[1],  outputs = M, color = color(0, 0, 0)),
+  bus(point2(11.5, 0), input = D[0],  outputs = M, color = color(0, 0, 0)),
 
-  Bus(origin: point2(14, 0), input: Ii[0], outputs: M, color: color(1, 0, 0).darken(0.2).spin(45)),
-  Bus(origin: point2(14.5, 0), input: I[0], outputs: M, color: color(1, 0, 0).desaturate(0.1)),
+  bus(point2(14, 0),   input = Ii[0], outputs = M, color = color(1, 0, 0).darken(0.2).spin(45)),
+  bus(point2(14.5, 0), input = I[0],  outputs = M, color = color(1, 0, 0).desaturate(0.1)),
 
-  Bus(origin: point2(16, 0), input: Ii[1], outputs: M, color: color(0, 1, 0).darken(0.2).spin(45)),
-  Bus(origin: point2(16.5, 0), input: I[1], outputs: M, color: color(0, 1, 0).desaturate(0.1)),
+  bus(point2(16, 0),   input = Ii[1], outputs = M, color = color(0, 1, 0).darken(0.2).spin(45)),
+  bus(point2(16.5, 0), input = I[1],  outputs = M, color = color(0, 1, 0).desaturate(0.1)),
 
-  Bus(origin: point2(18, 0), input: Ii[2], outputs: M, color: color(0, 0, 1).darken(0.2).spin(45)),
-  Bus(origin: point2(18.5, 0), input: I[2], outputs: M, color: color(0, 0, 1).desaturate(0.1)),
+  bus(point2(18, 0),   input = Ii[2], outputs = M, color = color(0, 0, 1).darken(0.2).spin(45)),
+  bus(point2(18.5, 0), input = I[2],  outputs = M, color = color(0, 0, 1).desaturate(0.1)),
   Line(
     origin: point2(22, 0),
     nodes: M,
@@ -73,7 +73,7 @@ let lines = (
   Line(
     origin: point2(30, 0),
     nodes: O,
-    align: true,
+    align: Inputs,
     gap: 0,
   ),
 )

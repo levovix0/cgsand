@@ -34,7 +34,7 @@ Oc.inputs.add (l3b[0], 0)
 let xx = @[4.0, 12, 20]
 
 
-let lines = (
+let lines = placementRules(
   Line(
     origin: point2(0, 3),
     nodes: @[A[0], B[0]],
@@ -56,15 +56,15 @@ let lines = (
     gap: 1,
   ),
 
-  Bus(origin: point2(xx[0], 0),  input: A[0], outputs: l1, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[0] + 0.5, 0),  input: B[0], outputs: l1, color: color(0, 0, 0)),
+  bus(point2(xx[0], 0), input = A[0], outputs = l1),
+  bus(point2(xx[0] + 0.5, 0), input = B[0], outputs = l1),
   Line(
     origin: point2(xx[0] + 2, 2),
     nodes: l1,
     gap: 0,
   ),
-  Bus(origin: point2(xx[0] + 5, 0),  input: C, outputs: l1a, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[0] + 5.5, 0),  input: l1[0], outputs: l1a, color: color(0, 0, 0)),
+  bus(point2(xx[0] + 5, 0), input = C, outputs = l1a),
+  bus(point2(xx[0] + 5.5, 0), input = l1[0], outputs = l1a),
   Line(
     origin: point2(xx[0] + 7, 0),
     nodes: l1a,
@@ -76,15 +76,15 @@ let lines = (
     gap: 0,
   ),
 
-  Bus(origin: point2(xx[1], 0),  input: A[1], outputs: l2, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[1] + 0.5, 0),  input: B[1], outputs: l2, color: color(0, 0, 0)),
+  bus(point2(xx[1], 0), input = A[1], outputs = l2),
+  bus(point2(xx[1] + 0.5, 0), input = B[1], outputs = l2),
   Line(
     origin: point2(xx[1] + 2, 7),
     nodes: l2,
     gap: 0,
   ),
-  Bus(origin: point2(xx[1] + 5, 0),  input: l1b[0], outputs: l2a, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[1] + 5.5, 0),  input: l2[0], outputs: l2a, color: color(0, 0, 0)),
+  bus(point2(xx[1] + 5, 0), input = l1b[0], outputs = l2a),
+  bus(point2(xx[1] + 5.5, 0), input = l2[0], outputs = l2a),
   Line(
     origin: point2(xx[1] + 7, 5),
     nodes: l2a,
@@ -96,15 +96,15 @@ let lines = (
     gap: 0,
   ),
 
-  Bus(origin: point2(xx[2], 0),  input: A[2], outputs: l3, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[2] + 0.5, 0),  input: B[2], outputs: l3, color: color(0, 0, 0)),
+  bus(point2(xx[2], 0), input = A[2], outputs = l3),
+  bus(point2(xx[2] + 0.5, 0), input = B[2], outputs = l3),
   Line(
     origin: point2(xx[2] + 2, 12),
     nodes: l3,
     gap: 0,
   ),
-  Bus(origin: point2(xx[2] + 5, 0),  input: l2b[0], outputs: l3a, color: color(0, 0, 0)),
-  Bus(origin: point2(xx[2] + 5.5, 0),  input: l3[0], outputs: l3a, color: color(0, 0, 0)),
+  bus(point2(xx[2] + 5, 0), input = l2b[0], outputs = l3a),
+  bus(point2(xx[2] + 5.5, 0), input = l3[0], outputs = l3a),
   Line(
     origin: point2(xx[2] + 7, 10),
     nodes: l3a,
@@ -119,13 +119,13 @@ let lines = (
   Line(
     origin: point2(35, 0),
     nodes: O,
-    align: true,
+    align: Inputs,
     gap: 1,
   ),
   Line(
     origin: point2(35, 8),
     nodes: @[Oc],
-    align: true,
+    align: Inputs,
     gap: 1,
   ),
 )

@@ -22,17 +22,17 @@ var outputNames = (0..<outputs.len).mapIt(symN("y" & $it, outputs[it]))
 
 
 
-let lines = (
+let lines = placementRules(
   Line(origin: point2(0, 3),    nodes: inputs, gap: 7.1),
   Line(origin: point2(4, 0),    nodes: inverted, gap: 6.1),
-  Bus( origin: point2(8, 0),    input: inputs[0], outputs: outputs, color: color(0.6, 0, 0)),
-  Bus( origin: point2(8.5, 0),  input: inverted[0], outputs: outputs, color: color(0, 0, 0)),
-  Bus( origin: point2(10, 0),   input: inputs[1], outputs: outputs, color: color(0, 0.6, 0)),
-  Bus( origin: point2(10.5, 0), input: inverted[1], outputs: outputs, color: color(0, 0, 0)),
-  Bus( origin: point2(12, 0),   input: inputs[2], outputs: outputs, color: color(0, 0, 0.6)),
-  Bus( origin: point2(12.5, 0), input: inverted[2], outputs: outputs, color: color(0, 0, 0)),
+  bus(point2(8, 0),    input = inputs[0],   outputs = outputs, color = color(0.6, 0, 0)),
+  bus(point2(8.5, 0),  input = inverted[0], outputs = outputs, color = color(0, 0, 0)),
+  bus(point2(10, 0),   input = inputs[1],   outputs = outputs, color = color(0, 0.6, 0)),
+  bus(point2(10.5, 0), input = inverted[1], outputs = outputs, color = color(0, 0, 0)),
+  bus(point2(12, 0),   input = inputs[2],   outputs = outputs, color = color(0, 0, 0.6)),
+  bus(point2(12.5, 0), input = inverted[2], outputs = outputs, color = color(0, 0, 0)),
   Line(origin: point2(16, 0),   nodes: outputs, gap: 0),
-  Line(origin: point2(20, 0),   nodes: outputNames, gap: 0, align: true),
+  Line(origin: point2(20, 0),   nodes: outputNames, gap: 0, align: Inputs),
 )
 
 
