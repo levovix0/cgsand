@@ -3,7 +3,7 @@ import pkg/[ecs, shady]
 import pkg/pixie/paths
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea]
-import pkg/toscel/[button, fonts]
+import pkg/toscel/[button]
 import pkg/rice/[primitives, antialiasing, transform, texts, paths]
 import ../logic/[scripts, config, bounds, doclayout]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
@@ -21,7 +21,7 @@ type
 registerComponent DocumentView
 
 
-proc projectionMatrix(pageBounds: Bounds2, width, height: float32, originAt: PositionAt): Mat4 =
+proc projectionMatrix(pageBounds: Bounds2, width, height: float32, axisYDirection: AxisYDirection): Mat4 =
   ## returns a matrix to convert coordinates from document to framebuffer
   ## if viewport matrix is mat4(), whole document will be fit into widget (assuming framebuffer takes whole space of the docuemnt view widget)
   let pageSize = pageBounds.size
@@ -35,7 +35,7 @@ proc projectionMatrix(pageBounds: Bounds2, width, height: float32, originAt: Pos
 
   combine(
     translate(-pageBounds.center.vec3(0)),
-    translate(pageAnchor(pageSize, originAt).vec3(0)),
+    scale(y = (if axisYDirection == AxisYDown: -1 else: 1)),
     scale vec3(2/cmax, 2/cmax, 1),
     (
       if width / pageSize.x < height / pageSize.y:
@@ -56,7 +56,7 @@ proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4):
 
 proc projection*(this: DocumentView): Mat4 =
   let globals = this.script[].world.documentGlobals
-  projectionMatrix(this.script[].world.documentLayout(globals).pageBounds, this.w[], this.h[], globals.originAt)
+  projectionMatrix(this.script[].world.documentLayout(globals).pageBounds, this.w[], this.h[], globals.axisYDirection)
 
 proc viewportToGlMatrix*(this: DocumentView): Mat4 =
   combine(this.viewport, this.projection)
@@ -147,8 +147,8 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     ctx.viewport = prevView
     ctx.projection = prevProj
   
-  ctx.viewport = combine(layout.documentTransform, this.viewport[])
-  ctx.projection = projectionMatrix(layout.pageBounds, width, height, globals.originAt)
+  ctx.viewport = this.viewport[]
+  ctx.projection = projectionMatrix(layout.pageBounds, width, height, globals.axisYDirection)
 
 
   glDisable(GlBlend)
@@ -170,25 +170,31 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
-  if globals.settings.autoSize:
-    ctx.viewport = combine(layout.documentTransform, this.viewport[])
-  else:
-    ctx.viewport = this.viewport[]
+  ctx.viewport = this.viewport[]
 
   w[].forEach (line: LineSection, color: Color||globals.foreground, thickness: opt Thickness):
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
-  w[].forEach (curve: CircleArc, color: Color||globals.foreground, count: PointCount||20, opt Background):
+  w[].forEach (curve: CircleArc, opt Color, count: PointCount||20, opt Background, opt Foreground):
     let points = curve.points(count)
+    let fg =
+      if has Foreground: the Foreground
+      elif has Color: the Color
+      else: globals.foreground
+    
     if curve.closed:
       if has Background:
         ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count)
-      for i in 0 ..< points.len:
-        ctx.drawLineSection(lineSection(points[i], points[(i + 1) mod points.len]), color)
+      
+      if Background.has.not or Color.has or Foreground.has:
+        for i in 0 ..< points.len:
+          ctx.drawLineSection(lineSection(points[i], points[(i + 1) mod points.len]), fg)
+    
     else:
-      for i in 0 ..< points.len-1:
-        drawLineSection(ctx, lineSection(points[i], points[i + 1]), color)
+      if Foreground.has or Color.has or Background.has.not:
+        for i in 0 ..< points.len-1:
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg)
   
 
   w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background):
@@ -207,12 +213,17 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
   w[].forEach (
     text: Text,
     pos: Position2,
-    color: Color||globals.foreground,
+    # todo: color: Foreground|Color||globals.foreground,
+    opt Foreground, opt Color,
     posAt: PositionAt||PositionAtTopLeft,
     font: Typeface||globals.font,
     size: FontSize||globals.fontSize,
   ):
-    drawText(ctx, text, pos, color, posAt, font, size)
+    let fg =
+      if has Foreground: the Foreground
+      elif has Color: the Color
+      else: globals.foreground
+    drawText(ctx, text, pos, fg, posAt, font, size)
   
 
   glDisable(GlBlend)
