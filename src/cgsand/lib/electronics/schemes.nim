@@ -69,6 +69,7 @@ type
     origin*: Point2
     timeScale*: float = 1.0
     axiesColor*: Color = color(0, 0, 0, 0.1)
+    skipUnchangedAxes*: bool = false
 
 const Eps = 1e-4
 
@@ -130,6 +131,16 @@ proc bus*(origin: Point2, input: Node, outputs: openArray[Node], color = color(0
 
 proc placementRules*(rules: varargs[PlacementRule]): seq[PlacementRule] = @rules
 
+proc move*(rules: var seq[PlacementRule], v: Vec2) =
+  for x in rules.mitems:
+    case x.kind
+    of LineR:
+      x.line.origin += v
+    of BusR:
+      x.bus.origin += v
+      for x in x.bus.path.mitems:
+        x += v
+
 
 
 proc hash*(n: Node): Hash = hash(cast[pointer](n))
@@ -159,6 +170,9 @@ converter toValue*(power: int): Value = Value(power: power.float)
 
 proc setVal*(node: Node, value: Value): ValChange =
   ValChange(node: node, value: value)
+
+proc `not`*(v: Value): Value =
+  Value(power: 1 - v.power)
 
 
 
@@ -316,6 +330,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             doc.add stub, elem.color
             allConns.add (stub, elem.color, false)
 
+  # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch
   var starters: seq[tuple[p: Point2, dir: Vec2, count: int, color: Color]]
   for i, conn in allConns:
@@ -361,7 +376,7 @@ proc drawComponents* =
 
   doc.forEach (b: Branch, color: Color||color(0, 0, 0)):
     doc.add circle(center = b.Point2, radius = 0.1):
-      color
+      Foreground color
       Background color
 
   doc.forEach (n: Node, r: Rect):
@@ -381,6 +396,7 @@ proc drawComponents* =
         let p = point2(r.x + r.w, outputPortY(n, r, i))
         if not o:
           doc.add circle(center = p, radius = 0.1):
+            Foreground color(0, 0, 0)
             Background color(1, 1, 1)
     
     of SymN:
@@ -454,7 +470,14 @@ proc draw*(plot: Plot) =
   stamps.sort(proc(a, b: PlotTimestamp): int = cmp(a.time, b.time))
   if stamps.len == 0: return
 
-  # todo: concat changes from timestamps on same time
+  block mergeStamps:
+    var merged: seq[PlotTimestamp]
+    for stamp in stamps:
+      if merged.len > 0 and merged[^1].time == stamp.time:
+        merged[^1].changes.add stamp.changes
+      else:
+        merged.add stamp
+    stamps = merged
 
   let firstTime = stamps[0].time
   var nodeValues: Table[Node, seq[tuple[time: float, v: Value]]]
@@ -477,6 +500,15 @@ proc draw*(plot: Plot) =
           nodeValues.mgetOrPut(node, @[]).add (time: stamp.time, v: simVals[node])
     
     accumVals = simVals
+
+  var changedTimes: HashSet[float]
+  if plot.skipUnchangedAxes:
+    for group in plot.data:
+      for node in group:
+        let vals = nodeValues.getOrDefault(node)
+        for i in 1..<vals.len:
+          if vals[i].v != vals[i-1].v:
+            changedTimes.incl vals[i].time
 
   var y = plot.origin.y
   for groupIdx, group in plot.data:
@@ -529,11 +561,12 @@ proc draw*(plot: Plot) =
     if groupIdx < plot.data.high:
       y += plot.groupGap
   
-  for t in plot.timestamps[1..^1]:
-    doc.add lineSection(
-      point2(plot.origin.x + t.time * plot.timeScale, plot.origin.y),
-      point2(plot.origin.x + t.time * plot.timeScale, y - plot.gap)
-    ), plot.axiesColor
+  for t in stamps[1..^1]:
+    if not plot.skipUnchangedAxes or t.time in changedTimes:
+      doc.add lineSection(
+        point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, plot.origin.y),
+        point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, y - plot.gap)
+      ), plot.axiesColor
   
   when false:
     let t = plot.timestamps[^1]
