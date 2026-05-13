@@ -2,7 +2,6 @@ import std/[options, math]
 import pkg/[ecs, vmath]
 import pkg/pixie/[fonts]
 import pkg/toscel/[fonts]
-import pkg/rice/[transform]
 import ./[bounds]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d]
@@ -14,13 +13,13 @@ type
     foreground*: Color = color(1, 1, 1)
     background*: Color = color(0, 0, 0, 0)
     fontSize*: float64 = 10
+    font*: Typeface
     axisYDirection*: AxisYDirection = AxisYUp
     originAt*: PositionAt = PositionAtCenter
  
   DocumentLayout* = object
     contentBounds*: Bounds2
     pageBounds*: Bounds2
-    documentTransform*: Mat4
 
   
 
@@ -34,19 +33,19 @@ proc pageAnchor*(size: Vec2, originAt: PositionAt): Vec2 =
 
 proc documentGlobals*(w: ptr World): DocumentGlobals =
   result = DocumentGlobals(settings: CanvasSettings(autoSize: true))
-  w[].forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize, opt AxisYDirection, opt PositionAt):
+  result.font = font_default
+  w[].forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize, opt AxisYDirection, opt PositionAt, opt Typeface):
     result.settings = v
     if has Foreground: result.foreground = the Foreground
     if has Background: result.background = the Background
     if has FontSize: result.fontSize = the FontSize
     if has AxisYDirection: result.axisYDirection = the AxisYDirection
     if has PositionAt: result.originAt = the PositionAt
+    if has Typeface: result.font = the Typeface
 
 
 proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
   result = DocumentLayout()
-  let yScale = if globals.axisYDirection == AxisYDown: -1'f32 else: 1'f32
-  let transform = scale(vec3(1, yScale, 1))
 
   w[].forEach (line: LineSection, thickness: opt Thickness):
     result.contentBounds.add(lineBounds(line, if has Thickness: some thickness else: none Thickness))
@@ -64,10 +63,5 @@ proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
   else:
     let size = globals.settings.size.vec2
     result.pageBounds = bounds2(-size / 2, size / 2)
-
-  result.documentTransform = combine(
-    transform,
-    translate(-pageAnchor(result.pageBounds.size, globals.originAt).vec3(0)),
-  )
 
 

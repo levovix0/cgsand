@@ -6,11 +6,12 @@ Background
 FontSize
 AxisYDirection
 PositionAt
+Typeface
 LineSection
 Thickness
 CircleArc
 PointCount
 Text
 Position2
-Typeface
 Color
+Path

@@ -21,22 +21,22 @@ for i in 0..<O.len:
 
 
 
-let lines = (
+let lines = placementRules(
   Line(
     origin: point2(0, 0),
     nodes: I,
     gap: 1,
   ),
-  Bus(origin: point2(4, 0), input: I[0], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(5, 0), input: I[1], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(6, 0), input: I[2], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(7, 0), input: I[3], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(8, 0), input: I[4], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(9, 0), input: I[5], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(10, 0), input: I[6], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(11, 0), input: I[7], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(12, 0), input: I[8], outputs: Ou, color: color(0, 0, 0)),
-  Bus(origin: point2(13, 0), input: I[9], outputs: Ou, color: color(0, 0, 0)),
+  bus(point2(4, 0),  input = I[0], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(5, 0),  input = I[1], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(6, 0),  input = I[2], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(7, 0),  input = I[3], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(8, 0),  input = I[4], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(9, 0),  input = I[5], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(10, 0), input = I[6], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(11, 0), input = I[7], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(12, 0), input = I[8], outputs = Ou, color = color(0, 0, 0)),
+  bus(point2(13, 0), input = I[9], outputs = Ou, color = color(0, 0, 0)),
   Line(
     origin: point2(14, -10),
     nodes: Ou,
@@ -45,7 +45,7 @@ let lines = (
   Line(
     origin: point2(17, 0),
     nodes: O,
-    align: true,
+    align: Inputs,
     gap: 0,
   ),
 )

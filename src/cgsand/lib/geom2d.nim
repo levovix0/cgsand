@@ -28,5 +28,5 @@ proc arc*(
     radius: radius,
     startAngle: arctan2(p1.x - center.x, p1.y - center.y),
     endAngle: arctan2(p2.x - center.x, p2.y - center.y),
-    direction: counterclockwise
+    direction: (if ccw: counterclockwise else: clockwise)
   )

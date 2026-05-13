@@ -37,6 +37,11 @@ proc withDllExtension(path: string): string =
 
 
 
+proc wrapScript(code: string): string =
+  result.add code
+  result.add "\n\n{.emit: \"/*VARSECTION*/ #define nimTestErrorFlag() bool was_excpt__ = *nimErrorFlag(); *nimErrorFlag() = false; nimTestErrorFlag(); *nimErrorFlag() = was_excpt__;\".}"
+
+
 proc compileAndRunScript*(filename: string, outfile: string = "script"): Script =
   new result
   initLock result.lock
@@ -44,24 +49,36 @@ proc compileAndRunScript*(filename: string, outfile: string = "script"): Script 
 
   proc worker(info: tuple[script: ptr ScriptObj, filename, outfile: string]) =
     template result: untyped = info.script[]
-
-    let outfile = info.outfile.withDllExtension
-    if (execShellCmd &"nim c --app:lib -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0:
-      withLock result.lock: result.stage = Idle
-      return
-    
-    withLock result.lock: result.stage = Executing
-    result.lib = loadLib(outfile)
-    if result.lib == nil:
-      withLock result.lock: result.stage = Idle
-      return
-
-    let w = result.lib.symAddr("world_instance")
-    if w == nil:
-      unloadLib(result.lib)
+    template fail {.dirty.} =
+      if result.lib != nil: unloadLib(result.lib)
       result.lib = nil
       withLock result.lock: result.stage = Idle
       return
+
+    let wrapperPath = "build/script_wrapper.nim"
+    let outfile = info.outfile.withDllExtension
+    
+    try:
+      writeFile wrapperPath, wrapScript(readFile(info.filename))
+    except:
+      echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+    if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
+    
+    result.lib = loadLib(outfile)
+    if result.lib == nil: fail()
+
+    let nimMain = cast[proc() {.cdecl, gcsafe.}](result.lib.symAddr("NimMain"))
+    if nimMain == nil: fail()
+
+    withLock result.lock: result.stage = Executing
+    nimMain()
+
+    let scriptHandleError = cast[proc: bool {.cdecl, gcsafe.}](result.lib.symAddr("handleErrorAfterNimMain"))
+    if scriptHandleError != nil:
+      if scriptHandleError(): fail()
+
+    let w = result.lib.symAddr("world_instance")
+    if w == nil: fail()
   
     result.world = cast[ptr World](w)
     withLock result.lock: result.stage = Idle

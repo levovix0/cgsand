@@ -59,11 +59,25 @@ type
 
   Thickness* = float32
     ## defines thickness of lines (attachable to 2d curves)
+  
+  PixelThickness* = float32
+    ## thickness of lines in pixels. Stays the same no matter how viewport transforms
+    ## todo
 
 
 
-var doc* {.exportc: "world_instance", dynlib.} = World()
-  ## in the sandbox we have an entire World!
+when defined(script) or defined(nimcheck):
+  var doc* {.exportc: "world_instance", dynlib.} = World()
+    ## in the sandbox we have an entire World!
+  
+  proc handleErrorAfterNimMain: bool {.exportc, dynlib.} =
+    try: discard
+    except Defect:
+      echo "script defect: ", getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+      result = true
+    except:
+      echo "script error: ", getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+      result = true
 
 
 
@@ -96,6 +110,12 @@ proc `[]=`*[T](w: var World, t: typedesc[T], v: T) =
     got = true
   if not got:
     w.add v
+
+
+
+proc excl*[T](arr: var seq[T], v: T) =
+  let i = arr.find(v)
+  if i != -1: arr.delete i
 
 
 

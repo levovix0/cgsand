@@ -1,4 +1,12 @@
 {
+  "src/cgsand/lib/tutorial/l1_basics.nim": {
+    "Call `checkLevel()` to check for completion": {
+      "": "Вызовите `checkLevel()` для завершения уровня"
+    },
+    "Create a square on points above": {
+      "": "Создайте квадрат по точкам выше"
+    }
+  },
   "src/cgsand/gui/document_view.nim": {
     "Recompile": {
       "": "Пересобрать"
@@ -7,6 +15,11 @@
   "src/cgsand/gui/tool_bar.nim": {
     "Code": {
       "": "Код"
+    }
+  },
+  "src/cgsand/lib/tutorial/levelmap.nim": {
+    "Basics": {
+      "": "Основы"
     }
   }
 }
