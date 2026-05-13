@@ -273,7 +273,7 @@ proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
     )
 
 
-proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false) =
+proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false, prevWord: bool = false) =
   var c = arrangement.cursors[cursorIdx]
   if extend:
     if not c.hasSelection:
@@ -284,6 +284,9 @@ proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool 
     c.hasSelection = false
   if c.col > 0:
     dec c.col
+    if prevWord:
+      while not arrangement.lines[c.line].arrangement.runes[c.col - 1].isWhiteSpace and c.col > 0:
+        dec c.col
   elif c.line > 0:
     let prev = arrangement.prevVisibleLine(c.line)
     if prev != c.line:
@@ -292,7 +295,7 @@ proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool 
   c.snapCol = c.col
   arrangement.cursors[cursorIdx] = c
 
-proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false) =
+proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false, nextWord: bool = false) =
   var c = arrangement.cursors[cursorIdx]
   if extend:
     if not c.hasSelection:
@@ -305,6 +308,9 @@ proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool
   let lineLen = arrangement.lines[c.line].arrangement.runes.len
   if c.col < lineLen:
     inc c.col
+    if nextWord:
+      while not arrangement.lines[c.line].arrangement.runes[c.col].isWhiteSpace and c.col < lineLen:
+        inc c.col
   else:
     let next = arrangement.nextVisibleLine(c.line)
     if next != c.line:
@@ -348,14 +354,14 @@ proc moveCursorDown*(arrangement: CodeArrangement, cursorIdx: int, extend: bool 
   arrangement.cursors[cursorIdx] = c
 
 
-proc moveCursorLeft*(arrangement: CodeArrangement, extend: bool = false) =
+proc moveCursorLeft*(arrangement: CodeArrangement, extend: bool = false, prevWord: bool = false) =
   for i in 0..<arrangement.cursors.len:
-    moveCursorLeft(arrangement, i, extend)
+    moveCursorLeft(arrangement, i, extend, prevWord)
   arrangement.collapseDuplicatedCursors()
 
-proc moveCursorRight*(arrangement: CodeArrangement, extend: bool = false) =
+proc moveCursorRight*(arrangement: CodeArrangement, extend: bool = false, nextWord: bool = false) =
   for i in 0..<arrangement.cursors.len:
-    moveCursorRight(arrangement, i, extend)
+    moveCursorRight(arrangement, i, extend, nextWord)
   arrangement.collapseDuplicatedCursors()
 
 proc moveCursorUp*(arrangement: CodeArrangement, extend: bool = false) =
