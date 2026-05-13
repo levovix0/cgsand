@@ -1,5 +1,6 @@
 import sandbox
 import electronics/schemes
+import ./trigger_rs
 
 when isMainModule: addDefaultElectronicsGlobals()
 
@@ -8,8 +9,8 @@ type
     I*: seq[Node]
     O*: seq[Node]
     placement*: seq[PlacementRule]
-
-    T: seq[Node]
+    rs*: RsTrigger
+    rsN*: Node
 
 
 proc S*(t: RcsTrigger): var Node = t.I.addr[][0]
@@ -23,45 +24,38 @@ proc rcsTrigger*: RcsTrigger =
   template S: untyped = result.S
   template C: untyped = result.C
   template R: untyped = result.R
+  # template I: untyped = result.I
   template O: untyped = result.O
   result.I = @[Node "S", "C", "R"]
-  let I = @[nandN(S, C), nandN(C, R)]
-  let M = @[Node "", Node ""]
-  result.O = @[Node "Q", Node "!Q"]
+  result.O = @[Node "Q", "!Q"]
 
-  for i in 0..<O.len: O[i].inputs.add M[i]
+  let M = @[andN(S, C), andN(C, R)]
 
-  let T = @[nandN(I[0], delayed(M[1])), nandN(delayed(M[0]), I[1])]
-  result.T = T
-  for i in 0..<O.len: M[i].inputs.add T[i]
+  result.rs = rsTrigger()
+  result.rsN = result.rs.pack.packN("T", M[0], M[1])
+  for i in 0..<O.len: O[i].inputs.add (result.rsN, i)
+
 
   result.placement = placementRules(
     Line(
-      origin: point2(0, 1/3),
+      origin: point2(0, 2/3),
       nodes: @[S, C, R],
-      gap: 2 - 1/3,
+      gap: 0 + 1/3,
     ),
     Line(
-      origin: point2(2, 1),
-      nodes: I,
-      align: Outputs,
-    ),
-    Line(
-      origin: point2(6, 0),
-      nodes: T,
-      gap: 2,
-    ),
-    Line(
-      origin: point2(8, 1),
+      origin: point2(4, 0),
       nodes: M,
-      align: Inputs,
+    ),
+    Line(
+      origin: point2(8, 0),
+      nodes: @[result.rsN],
     ),
     
-    bus(@[point2(9, 2), point2(5, 4)], input = M[0], outputs = T),
-    bus(@[point2(9, 4), point2(5, 2)], input = M[1], outputs = T),
+    # bus(@[point2(9, 2), point2(5, 4)], input = M[0], outputs = T),
+    # bus(@[point2(9, 4), point2(5, 2)], input = M[1], outputs = T),
 
     Line(
-      origin: point2(10, 1),
+      origin: point2(16, 1),
       nodes: O,
       align: Inputs,
     ),
@@ -69,7 +63,7 @@ proc rcsTrigger*: RcsTrigger =
 
 
 proc startup*(t: RcsTrigger, v: Value = 0): seq[ValChange] =
-  @[setVal(t.S, 0), setVal(t.R, 0), setVal(t.T[0], v), setVal(t.T[1], not v)]
+  @[setVal(t.S, 0), setVal(t.R, 0), setVal(t.rs.T[0], v), setVal(t.rs.T[1], not v)]
 
 
 
@@ -107,6 +101,6 @@ when isMainModule:
     groupGap: 0.5,
     timeScale: 2,
     timestamps: timestamps,
-    origin: point2(13, 0),
+    origin: point2(20, 0),
   )
 
