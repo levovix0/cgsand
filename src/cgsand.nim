@@ -19,7 +19,7 @@ win.makeLayout:
   
   proc onWindowResize =
     when defined(windows):
-      win.siwinWindow.setTitleRegion(toolBar.globalXy, vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]))
+      win.siwinWindow.setTitleRegion(toolBar.globalXy + vec2(400,0), vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]) -  vec2(400,0))
     else:
       win.siwinWindow.setTitleRegion(toolBar.globalXy, toolBar.wh)
     win.siwinWindow.setBorderWidth(10, 0, 40)

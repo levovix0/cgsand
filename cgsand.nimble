@@ -32,3 +32,7 @@ requires "https://github.com/levovix0/ecs"
 requires "https://github.com/levovix0/toscel"
   ## for basic GUI widgets
 
+requires "https://github.com/levovix0/rice"
+
+requires "winim"
+
