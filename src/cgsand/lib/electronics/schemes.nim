@@ -476,7 +476,9 @@ proc drawComponents* =
           PositionAtCenter
         if negate:
           doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness 0.05
-          doc.add circle
+          doc.add circle(point2(r.x + 6, y + outH/2), radius = 0.1):
+            Foreground color(0, 0, 0)
+            Background color(1, 1, 1)
 
 
 proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node]): Value =

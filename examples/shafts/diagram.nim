@@ -1,38 +1,10 @@
 import std/[sequtils, strutils]
-import pkg/pixie/paths
 import sandbox, geom2d
-
-const useCustomFont = not defined(nimcheck)
-
-when useCustomFont:
-  import text
+import annotations/[dimensions]
+import ./[shafts]
 
 
 type
-  SectionShape* = enum
-    Circle
-    Rectangle
-
-  Material* = object
-    tension_limit*: float  ## in pascals
-
-  Section* = object
-    case shape*: SectionShape
-    of Circle:
-      circle*: tuple[
-        radius: float  # in meters
-      ]
-    
-    of Rectangle:
-      rectangle*: tuple[
-        w, h: float  # in meters
-      ]
-    
-    material*: Material
-    unknownDimensions*: bool
-
-
-
   DistributedLoad* = object
     x*: Slice[float]  ## in meters
     load*: float  ## in newtons/meters, positive means ̲↓ from top, negative means ̅↑ from bottom
@@ -59,43 +31,12 @@ type
 
     origin*: Point2
     meterSize*: float = 4  ## units in 1 meter
-  
 
 
-  LinearDimension2* = object
-    a*, b*: Point2
-    dir*: Vec2
-    dimline*: Point2
-
-  DimensionText* = string
-  ArrowSize* = float
-
-
-let darkTheme = true
-
-
-let globals {.used.} = doc.spawn(
-  CanvasSettings(
-    autoSize: true,
-    margin: vec2(2, 2),
-  ),
-  AxisYDown,
-  (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0)),
-  FontSize 1,
-)
-if not darkTheme:
-  doc.update globals: add Background color(1, 1, 1)
-
-
-when useCustomFont:
-  let font = findSystemFont(@["firacode", "tinos", "timesnewroman", "dejavuserif"] & defaultSystemFonts)
-  doc.update globals: add font
-
-let textMargin = 0.2
 let dimensionFontSize = FontSize 0.5
-var loadColor: Color = doc[globals, Foreground]
-var forceColor: Color = doc[globals, Foreground]
-var momentColor: Color = doc[globals, Foreground]
+var loadColor: Color = doc.foreground
+var forceColor: Color = doc.foreground
+var momentColor: Color = doc.foreground
 if darkTheme:
   loadColor = parseHtmlHex "#ff9b28"
   forceColor = parseHtmlHex "#1e8fff"
@@ -137,35 +78,6 @@ proc addName(x: string, name: string): string =
   if x == "1": result = name
   else: result = x & " " & name
 
-
-
-proc addArrow(to: Point2, dir: NormalVec2, size: float, color = doc[globals, Foreground]) =
-  # todo: add something like paths to sigeo
-  let p = newPath()
-  p.moveTo vmath.vec2 to.Vec2
-  p.lineTo vmath.vec2 (to - (dir * size).rotate(Pi / 16)).Vec2
-  p.lineTo vmath.vec2 (to - (dir * size).rotate(-Pi / 16)).Vec2
-  p.closePath()
-  doc.add p, Background color
-
-
-
-proc drawDimensions* =
-  doc.forEach (dim: LinearDimension2, text: opt DimensionText, arrowSize: ArrowSize||0.5, fontSize: FontSize||doc[globals, FontSize]):
-    let dimline_a = dim.dimline + projectToAxis(dim.a - dim.dimline, dim.dir)
-    let dimline_b = dim.dimline + projectToAxis(dim.b - dim.dimline, dim.dir)
-    doc.add lineSection(dim.a, dimline_a)
-    doc.add lineSection(dim.b, dimline_b)
-    doc.add lineSection(dimline_a, dimline_b)
-
-    if has DimensionText:
-      doc.add Text text:
-        PositionAtBottom
-        Position2 lineSection(dimline_a, dimline_b).center + vec2(0, -textMargin)
-        fontSize
-    
-    addArrow(dimline_a, dimline_a - dimline_b, arrowSize)
-    addArrow(dimline_b, dimline_b - dimline_a, arrowSize)
 
 
 proc draw*(beam: Beam) =
@@ -297,5 +209,5 @@ proc draw*(beam: Beam) =
 
 
 draw beam
-drawDimensions()
+doc.drawDimensions()
 

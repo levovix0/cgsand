@@ -12,7 +12,7 @@ type
     settings*: CanvasSettings
     foreground*: Color = color(1, 1, 1)
     background*: Color = color(0, 0, 0, 0)
-    fontSize*: float64 = 10
+    fontSize*: float64 = 1
     font*: Typeface
     axisYDirection*: AxisYDirection = AxisYUp
     originAt*: PositionAt = PositionAtCenter

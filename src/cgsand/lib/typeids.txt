@@ -1,8 +1,8 @@
 EntityId
 DeletedEntity
 CanvasSettings
-Foreground
 Background
+Foreground
 FontSize
 AxisYDirection
 PositionAt

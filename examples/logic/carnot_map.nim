@@ -17,7 +17,6 @@ let data = @[
   @[0, 1, 1, 1],
   @[1, 1, 0, 1],
 ]
-let margin = 3'f32
 
 doc.add RectTable(size: vec2(4*4, 2*2), cols: 4, rows: 2):
   Position2 point2()
@@ -52,24 +51,24 @@ doc.forEach (r: RectTable, pos: Position2||point2()):
     doc.add FigureBracket(a: pos + vec2(0.5, 0) * sz, b: pos + vec2(1, 0) * sz, h: vec2(0, 0.5), power: 2)
     doc.add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz, h: vec2(0, -0.5), power: 2)
     let positions = {
-      "!x2": (pos + vec2(0.25, 0) * sz + vec2(0, 0.5), PositionAtBottom),
-      "!x2": (pos + vec2(0.25, 0) * sz + vec2(0, 0.5), PositionAtBottom),
-      "x2":  (pos + vec2(0.75, 0) * sz + vec2(0, 0.5), PositionAtBottom),
-      "!x3": (pos + vec2(1/8, 1) * sz + vec2(0, -0.5), PositionAtTop),
-      "!x3": (pos + vec2(7/8, 1) * sz + vec2(0, -0.5), PositionAtTop),
-      "x3":  (pos + vec2(0.5, 1) * sz + vec2(0, -0.5), PositionAtTop),
-      "!x1": (pos + vec2(0, 1/4) * sz + vec2(-0.2, 0), PositionAtRight),
-      "x1":  (pos + vec2(0, 3/4) * sz + vec2(-0.2, 0), PositionAtRight),
+      "!x": (pos + vec2(0, 1/4) * sz + vec2(-0.2, 0), PositionAtRight),
+      "x":  (pos + vec2(0, 3/4) * sz + vec2(-0.2, 0), PositionAtRight),
+      "!y": (pos + vec2(0.25, -0.05) * sz + vec2(0, 0.5), PositionAtBottom),
+      "!y": (pos + vec2(0.25, -0.05) * sz + vec2(0, 0.5), PositionAtBottom),
+      "y":  (pos + vec2(0.75, -0.05) * sz + vec2(0, 0.5), PositionAtBottom),
+      "!z": (pos + vec2(1/8, 1.05) * sz + vec2(0, -0.5), PositionAtTop),
+      "!z": (pos + vec2(7/8, 1.05) * sz + vec2(0, -0.5), PositionAtTop),
+      "z":  (pos + vec2(0.5, 1.05) * sz + vec2(0, -0.5), PositionAtTop),
     }
     for (name, pos) in positions:
       var name = name
       if name.startsWith("!"):
         let v = case pos[1]
-          of PositionAtBottom: vec2(-0.5, 1)
-          of PositionAtTop: vec2(-0.5, 0)
-          of PositionAtRight: vec2(-1, 0.5)
+          of PositionAtBottom: vec2(0, 1 - 0.1)
+          of PositionAtTop: vec2(0, 0.1)
+          of PositionAtRight: vec2(-0.3, 0.5)
           else: vec2()
-        doc.add lineSection(pos[0] + v, pos[0] + v + vec2(1, 0))
+        doc.add lineSection(pos[0] + v - vec2(0.3, 0), pos[0] + v + vec2(0.3, 0))
       name.removePrefix("!")
       doc.add Text name:
         Position2 pos[0]
@@ -83,7 +82,7 @@ doc.forEach (r: RectTable, pos: Position2||point2()):
         Position2 p
         PositionAtCenter
       doc.add Text ($y & $(x div 2) & $(((x mod 2).bool xor (x div 2).bool).int)):
-        Position2 p + vec2(2, -1)
+        Position2 p + vec2(2 - 0.1, -1 + 0.1)
         PositionAtBottomRight
         FontSize 0.4
 
