@@ -11,6 +11,7 @@ LineSection
 Thickness
 CircleArc
 PointCount
+EllipseArc
 Text
 Position2
 Color

@@ -21,18 +21,20 @@ if not darkTheme:
 
 
 var matrix = [
-  [1, 0, 0, 1],
-  [0, 1, 1, 0],
-  [0, 0, 0, 1],
-  [0, 1, 0, 0],
-  [0, 0, 1, 0],
-  [1, 0, 0, 0],
+  [0, 1, 0, 0, 0, 0, 0, 0],
+  [1, 0, 0, 1, 1, 1, 0, 1],
+  [0, 0, 1, 0, 0, 0, 1, 0],
+  [1, 1, 0, 1, 0, 1, 0, 1],
+  [0, 1, 1, 0, 0, 1, 0, 0],
+  [1, 0, 0, 0, 0, 0, 0, 0],
+  [1, 0, 0, 1, 1, 0, 1, 0],
+  [0, 1, 1, 0, 0, 0, 0, 0],
 ]
 
 let resMatrix = [
-  [1, 1, 1, 0],
-  [1, 0, 0, 1],
-  [0, 0, 1, 1],
+  [1, 1, 1, 1, 1, 1, 0, 0],
+  [1, 1, 1, 1, 0, 0, 1, 1],
+  [1, 0, 0, 0, 1, 1, 1, 1],
 ]
 
 let combined = @matrix & @resMatrix
@@ -54,7 +56,7 @@ for x in 0..<w:
       doc.add circle(point2(x.float * SZ, y.float * SZ), 0.2), Background doc.foreground
 
 
-for i, v in ["x", "y", "z"]:
+for i, v in ["x", "y", "z", "t"]:
   let y = i.float * 2 * SZ
   doc.add Text v:
     Position2 point2(-8, y)
@@ -80,5 +82,6 @@ for i, v in ["x", "y", "z"]:
   doc.add lineSection(point2(-4 + SZ/4, y + SZ/4*3), point2(-4 + SZ/4, y + SZ))
 
 
-# todo
+# todo: colums of vertical line descriptions (n = x * !z)
+# todo: resMatrix ouputs (f1, f2, f3)
 

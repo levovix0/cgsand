@@ -176,25 +176,33 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
-  w[].forEach (curve: CircleArc, opt Color, count: PointCount||20, opt Background, opt Foreground):
+  w[].forEach (curve: CircleArc, opt Color, count: PointCount||20, opt Background, opt Foreground, thickness: opt Thickness):
     let points = curve.points(count)
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    
+    let thk = if has Thickness: some thickness else: none Thickness
+
     if curve.closed:
       if has Background:
         ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count)
-      
+
       if Background.has.not or Color.has or Foreground.has:
-        for i in 0 ..< points.len:
-          ctx.drawLineSection(lineSection(points[i], points[(i + 1) mod points.len]), fg)
-    
+        for i in 0 ..< points.len - 1:
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk)
+
     else:
       if Foreground.has or Color.has or Background.has.not:
-        for i in 0 ..< points.len-1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg)
+        for i in 0 ..< points.len - 1:
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk)
+
+
+  w[].forEach (arc: EllipseArc, color: Color||globals.foreground, count: PointCount||32, thickness: opt Thickness):
+    let points = arc.points(count)
+    let thk = if has Thickness: some thickness else: none Thickness
+    for i in 0 ..< points.len - 1:
+      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk)
   
 
   w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background):
