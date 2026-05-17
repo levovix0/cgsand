@@ -32,3 +32,6 @@ requires "https://github.com/levovix0/ecs"
 requires "https://github.com/levovix0/toscel"
   ## for basic GUI widgets
 
+requires "tinyfiledialogs"
+  ## for file dialogs
+

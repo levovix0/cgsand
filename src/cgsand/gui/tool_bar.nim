@@ -1,12 +1,14 @@
+import pkg/[ecs, tinyfiledialogs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
 import pkg/toscel/[lineEdit, button]
-import ../logic/[config]
+import ../logic/[config, pdf_renderer]
 
 
 type
   ToolBar* = ref object of Uiobj
     codeEditor*: Uiobj
+    doc*: Property[ptr World]
 
 registerComponent ToolBar
 
@@ -71,5 +73,17 @@ method init*(this: ToolBar) =
 
         on this.textEdited:
           config.currentScript[] = this.text[]
+
+      - Button.new:
+        text = tr"Export PDF"
+        enabled = binding: root.doc[] != nil
+
+        on this.activated:
+          if root.doc[] == nil: return
+          let r = PdfRenerer(doc: root.doc[])
+          let filters = ["*.pdf".cstring, "*".cstring]
+          let filename = $tinyfd_saveFileDialog("Export to PDF file", "out.pdf", 2, cast[cstringArray](filters[0].addr))
+          if filename != "":
+            writePdf filename, r
 
 

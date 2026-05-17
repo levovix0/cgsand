@@ -14,7 +14,7 @@ type
     ## add any other global settings to an entity with CanvasSettings
 
     size*: Vec2             ## in abstract units
-    mmScale*: float32 = 1   ## (paper page) millimeters per abstract unit
+    mmScale*: float32 = 10  ## (paper page) millimeters per abstract unit
     autoSize*: bool = true  ## if true, `size` is ignored and calculated from document content bounds insted
     margin*: Vec2 = vec2(0, 0)  ## extra page space around auto-sized content
 
