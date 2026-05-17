@@ -20,7 +20,7 @@ requires "localize >= 0.3.5" #d1b5ae63
 
 # --- unstable dependencies ---
 
-requires "sigui >= 0.2.5.1"
+requires "sigui >= 0.2.5.2"
   ## for GUI
 
 requires "https://github.com/levovix0/sigeo"

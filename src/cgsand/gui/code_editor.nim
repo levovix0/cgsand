@@ -1,6 +1,6 @@
 import std/[sets]
 import pkg/[vmath, chroma]
-import pkg/rice/[texts, contexts, gl, primitives]
+import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[fonts, focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
 import pkg/sigui/window
@@ -55,7 +55,7 @@ proc drawHighlightedText*(
   if arrangement == nil or arrangement.fonts.len == 0:
     return
 
-  var context = ctx.startTextDrawing(arrangement.fonts[0])
+  var context = ctx.startRasterTextDrawing(arrangement.fonts[0])
 
   let pos = ctx.viewportToGlMatrix * transform * pos
   let box = arrangement.computeBounds()
@@ -69,9 +69,9 @@ proc drawHighlightedText*(
     rect.wh = rect.wh + vec2(2, 2)
 
     context.color.uniform = kinds[i].color.vec4
-    ctx.fastDrawRune(rune, rect(pos.xy + vec2(rect.x, -rect.y) * ctx.px - offset, rect.wh), context)
+    ctx.fastRasterDrawRune(rune, rect(pos.xy + vec2(rect.x, -rect.y) * ctx.px - offset, rect.wh), context)
 
-  ctx.endTextDrawing()
+  ctx.endRasterTextDrawing()
 
 
 proc updateHeight(this: CodeEditorContent) =
@@ -98,7 +98,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
       if this.globalY + line.rect.y > winRect.y + winRect.h: continue
 
       # line number
-      ctx.drawText(
+      ctx.drawRasterText(
         (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
         typeset(this.font, $(i + 1)),
         colorTheme.sLineNumber.vec4,
@@ -109,7 +109,7 @@ method draw*(this: CodeEditorContent, ctx: DrawContext) =
         let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
         if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
           # fold arrow
-          ctx.drawText(
+          ctx.drawRasterText(
             (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
             typeset(this.font, arrowChar),
             colorTheme.sLineNumber.vec4,
