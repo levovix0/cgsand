@@ -20,3 +20,5 @@ nimcache
 
 local_*
 local-*
+
+/out.pdf

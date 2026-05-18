@@ -1,9 +1,11 @@
-import std/[strutils, memfiles, importutils, unicode, tables]
+import std/[strutils, memfiles, importutils, unicode, tables, math]
 import pkg/[vmath, chroma]
 import pkg/pixie/fonts
 import pkg/pixie/fontformats/opentype
+import pkg/pixie/paths as pixiePaths
 
 privateAccess(Typeface)
+privateAccess(pixiePaths.Path)
 
 
 const mmToPt* = 72.0 / 25.4
@@ -107,12 +109,256 @@ proc stroke*(p: var PdfPage) =
   p.content.add "S\n"
 
 
+proc closePath*(p: var PdfPage) =
+  p.content.add "h\n"
+
+proc fill*(p: var PdfPage) =
+  p.content.add "f\n"
+
+proc fillStroke*(p: var PdfPage) =
+  p.content.add "B\n"
+
+
 proc drawLine*(p: var PdfPage; a, b: Vec2; color: Color; lw: float32) =
   p.setStrokeColor(color)
   p.setLineWidth(lw)
   p.moveTo(a)
   p.lineTo(b)
   p.stroke()
+
+
+proc fillRect*(p: var PdfPage; x, y, w, h: float32; color: Color) =
+  p.setFillColor(color)
+  p.content.add pdfNum(x) & " " & pdfNum(y) & " " & pdfNum(w) & " " & pdfNum(h) & " re\nf\n"
+
+
+proc drawPolyline*(p: var PdfPage; points: openArray[Vec2]; color: Color; lw: float32) =
+  if points.len < 2: return
+  p.setStrokeColor(color)
+  p.setLineWidth(lw)
+  p.moveTo(points[0])
+  for i in 1 ..< points.len:
+    p.lineTo(points[i])
+  p.stroke()
+
+
+proc fillPolygon*(p: var PdfPage; points: openArray[Vec2]; color: Color) =
+  if points.len < 2: return
+  p.setFillColor(color)
+  p.moveTo(points[0])
+  for i in 1 ..< points.len:
+    p.lineTo(points[i])
+  p.closePath()
+  p.fill()
+
+
+proc drawPolylineWithFill*(p: var PdfPage; points: openArray[Vec2]; strokeColor, fillColor: Color; lw: float32) =
+  if points.len < 2: return
+  p.setStrokeColor(strokeColor)
+  p.setFillColor(fillColor)
+  p.setLineWidth(lw)
+  p.moveTo(points[0])
+  for i in 1 ..< points.len:
+    p.lineTo(points[i])
+  p.closePath()
+  p.fillStroke()
+
+
+proc pathCubicTo*(p: var PdfPage; c1, c2, ep: Vec2) =
+  p.content.add pdfNum(c1.x) & " " & pdfNum(c1.y) & " " &
+               pdfNum(c2.x) & " " & pdfNum(c2.y) & " " &
+               pdfNum(ep.x) & " " & pdfNum(ep.y) & " c\n"
+
+
+proc arcSegmentToBeziers(cx, cy, rx, ry, phi, theta, dtheta: float32): seq[(Vec2, Vec2, Vec2)] =
+  let n = max(1, int(abs(dtheta) / (Pi * 0.5) + 0.9999))
+  let step = dtheta / float32(n)
+  let cosPhi = cos(phi)
+  let sinPhi = sin(phi)
+
+  proc pt(a: float32): Vec2 =
+    vec2(cx + rx * cosPhi * cos(a) - ry * sinPhi * sin(a),
+         cy + rx * sinPhi * cos(a) + ry * cosPhi * sin(a))
+
+  proc dt(a: float32): Vec2 =
+    vec2(-rx * cosPhi * sin(a) - ry * sinPhi * cos(a),
+         -rx * sinPhi * sin(a) + ry * cosPhi * cos(a))
+
+  var angle = theta
+  var cur = pt(angle)
+  for _ in 0 ..< n:
+    let next = angle + step
+    let tHalf = tan(step * 0.5)
+    let alpha = sin(step) * (sqrt(4 + 3 * tHalf * tHalf) - 1) / 3
+    let ep = pt(next)
+    result.add((cur + dt(angle) * alpha, ep - dt(next) * alpha, ep))
+    cur = ep
+    angle = next
+
+
+proc svgArcToBeziers(p1: Vec2; rx0, ry0, phi, fA, fS: float32; p2: Vec2): seq[(Vec2, Vec2, Vec2)] =
+  var rx = abs(rx0)
+  var ry = abs(ry0)
+  if rx == 0 or ry == 0: return
+  let cosPhi = cos(phi)
+  let sinPhi = sin(phi)
+  let dx = (p1.x - p2.x) * 0.5
+  let dy = (p1.y - p2.y) * 0.5
+  let x1p =  cosPhi * dx + sinPhi * dy
+  let y1p = -sinPhi * dx + cosPhi * dy
+  let lambda2 = (x1p / rx)^2 + (y1p / ry)^2
+  if lambda2 > 1:
+    let lam = sqrt(lambda2)
+    rx *= lam; ry *= lam
+  let num = max(0.0'f32, rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p)
+  let den = rx*rx*y1p*y1p + ry*ry*x1p*x1p
+  let sq = if den == 0: 0.0'f32 else: sqrt(num / den)
+  let sign = if (fA != 0) == (fS != 0): -1.0'f32 else: 1.0'f32
+  let cxp =  sign * sq * rx * y1p / ry
+  let cyp = -sign * sq * ry * x1p / rx
+  let cx = cosPhi * cxp - sinPhi * cyp + (p1.x + p2.x) * 0.5
+  let cy = sinPhi * cxp + cosPhi * cyp + (p1.y + p2.y) * 0.5
+
+  proc vecAngle(ux, uy, vx, vy: float32): float32 =
+    let n = sqrt(ux*ux + uy*uy) * sqrt(vx*vx + vy*vy)
+    if n == 0: return 0
+    result = arccos(clamp((ux*vx + uy*vy) / n, -1.0'f32, 1.0'f32))
+    if ux*vy - uy*vx < 0: result = -result
+
+  let theta1 = vecAngle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+  var dtheta = vecAngle((x1p - cxp) / rx, (y1p - cyp) / ry,
+                        (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+  if fS == 0 and dtheta > 0: dtheta -= 2 * Pi
+  elif fS != 0 and dtheta < 0: dtheta += 2 * Pi
+
+  arcSegmentToBeziers(cx, cy, rx, ry, phi, theta1, dtheta)
+
+
+proc drawPath*(
+  p:           var PdfPage;
+  path:        pixiePaths.Path;
+  transform:   proc(v: Vec2): Vec2;
+  doStroke:    bool;
+  doFill:      bool;
+  strokeColor: Color;
+  fillColor:   Color;
+  lw:          float32
+) =
+  if not doStroke and not doFill: return
+  if doStroke: p.setStrokeColor(strokeColor)
+  if doFill:   p.setFillColor(fillColor)
+  if doStroke: p.setLineWidth(lw)
+
+  var cur    = vec2(0'f32, 0'f32)
+  var start  = vec2(0'f32, 0'f32)
+  var lastC2 = vec2(0'f32, 0'f32)
+  var lastQ1 = vec2(0'f32, 0'f32)
+
+  template emit(pt: Vec2; op: string) =
+    let tpt = transform(pt)
+    p.content.add pdfNum(tpt.x) & " " & pdfNum(tpt.y) & " " & op & "\n"
+
+  var i = 0
+  while i < path.commands.len:
+    let cmd = int(path.commands[i])
+    inc i
+    case cmd
+    of 0:  # Close
+      p.closePath()
+      cur = start
+    of 1:  # Move
+      let pt = vec2(path.commands[i], path.commands[i+1]); i += 2
+      emit(pt, "m"); cur = pt; start = pt
+    of 2:  # Line
+      let pt = vec2(path.commands[i], path.commands[i+1]); i += 2
+      emit(pt, "l"); cur = pt
+    of 3:  # HLine
+      let pt = vec2(path.commands[i], cur.y); i += 1
+      emit(pt, "l"); cur = pt
+    of 4:  # VLine
+      let pt = vec2(cur.x, path.commands[i]); i += 1
+      emit(pt, "l"); cur = pt
+    of 5:  # Cubic
+      let c1 = vec2(path.commands[i],   path.commands[i+1])
+      let c2 = vec2(path.commands[i+2], path.commands[i+3])
+      let ep = vec2(path.commands[i+4], path.commands[i+5]); i += 6
+      p.pathCubicTo(transform(c1), transform(c2), transform(ep))
+      lastC2 = c2; cur = ep
+    of 6:  # SCubic (smooth, absolute)
+      let c1 = cur * 2 - lastC2
+      let c2 = vec2(path.commands[i],   path.commands[i+1])
+      let ep = vec2(path.commands[i+2], path.commands[i+3]); i += 4
+      p.pathCubicTo(transform(c1), transform(c2), transform(ep))
+      lastC2 = c2; cur = ep
+    of 7:  # Quad
+      let q1 = vec2(path.commands[i],   path.commands[i+1])
+      let ep = vec2(path.commands[i+2], path.commands[i+3]); i += 4
+      p.pathCubicTo(transform(cur + (q1-cur)*(2/3)), transform(ep + (q1-ep)*(2/3)), transform(ep))
+      lastQ1 = q1; cur = ep
+    of 8:  # TQuad (smooth, absolute)
+      let q1 = cur * 2 - lastQ1
+      let ep = vec2(path.commands[i], path.commands[i+1]); i += 2
+      p.pathCubicTo(transform(cur + (q1-cur)*(2/3)), transform(ep + (q1-ep)*(2/3)), transform(ep))
+      lastQ1 = q1; cur = ep
+    of 9:  # Arc
+      let rx  = path.commands[i];   let ry  = path.commands[i+1]
+      let phi = path.commands[i+2] * Pi / 180.0
+      let fA  = path.commands[i+3]; let fS  = path.commands[i+4]
+      let ep  = vec2(path.commands[i+5], path.commands[i+6]); i += 7
+      for item in svgArcToBeziers(cur, rx, ry, phi, fA, fS, ep):
+        p.pathCubicTo(transform(item[0]), transform(item[1]), transform(item[2]))
+      cur = ep
+    of 10: # RMove
+      let pt = cur + vec2(path.commands[i], path.commands[i+1]); i += 2
+      emit(pt, "m"); cur = pt; start = pt
+    of 11: # RLine
+      let pt = cur + vec2(path.commands[i], path.commands[i+1]); i += 2
+      emit(pt, "l"); cur = pt
+    of 12: # RHLine
+      let pt = cur + vec2(path.commands[i], 0'f32); i += 1
+      emit(pt, "l"); cur = pt
+    of 13: # RVLine
+      let pt = cur + vec2(0'f32, path.commands[i]); i += 1
+      emit(pt, "l"); cur = pt
+    of 14: # RCubic
+      let c1 = cur + vec2(path.commands[i],   path.commands[i+1])
+      let c2 = cur + vec2(path.commands[i+2], path.commands[i+3])
+      let ep = cur + vec2(path.commands[i+4], path.commands[i+5]); i += 6
+      p.pathCubicTo(transform(c1), transform(c2), transform(ep))
+      lastC2 = c2; cur = ep
+    of 15: # RSCubic
+      let c1 = cur * 2 - lastC2
+      let c2 = cur + vec2(path.commands[i],   path.commands[i+1])
+      let ep = cur + vec2(path.commands[i+2], path.commands[i+3]); i += 4
+      p.pathCubicTo(transform(c1), transform(c2), transform(ep))
+      lastC2 = c2; cur = ep
+    of 16: # RQuad
+      let q1 = cur + vec2(path.commands[i],   path.commands[i+1])
+      let ep = cur + vec2(path.commands[i+2], path.commands[i+3]); i += 4
+      p.pathCubicTo(transform(cur + (q1-cur)*(2/3)), transform(ep + (q1-ep)*(2/3)), transform(ep))
+      lastQ1 = q1; cur = ep
+    of 17: # RTQuad
+      let q1 = cur * 2 - lastQ1
+      let ep = cur + vec2(path.commands[i], path.commands[i+1]); i += 2
+      p.pathCubicTo(transform(cur + (q1-cur)*(2/3)), transform(ep + (q1-ep)*(2/3)), transform(ep))
+      lastQ1 = q1; cur = ep
+    of 18: # RArc
+      let rx  = path.commands[i];   let ry  = path.commands[i+1]
+      let phi = path.commands[i+2] * Pi / 180.0
+      let fA  = path.commands[i+3]; let fS  = path.commands[i+4]
+      let ep  = cur + vec2(path.commands[i+5], path.commands[i+6]); i += 7
+      for item in svgArcToBeziers(cur, rx, ry, phi, fA, fS, ep):
+        p.pathCubicTo(transform(item[0]), transform(item[1]), transform(item[2]))
+      cur = ep
+    else: break
+
+    # reset smooth-curve anchors for non-cubic / non-quad commands
+    if cmd notin {5, 6, 14, 15}: lastC2 = cur
+    if cmd notin {7, 8, 16, 17}: lastQ1 = cur
+
+  if doFill and doStroke: p.fillStroke()
+  elif doFill:            p.fill()
+  elif doStroke:          p.stroke()
 
 
 proc drawText*(p: var PdfPage; w: var PdfWriter;

@@ -172,11 +172,11 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
 
   ctx.viewport = this.viewport[]
 
-  w[].forEach (line: LineSection, color: Color||globals.foreground, thickness: opt Thickness):
+  w[].forEach (line: LineSection, color: Color|Foreground||globals.foreground, thickness: opt Thickness):
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
-  w[].forEach (curve: CircleArc, opt Color, count: PointCount||20, opt Background, opt Foreground, thickness: opt Thickness):
+  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness):
     let points = curve.points(count)
     let fg =
       if has Foreground: the Foreground
@@ -198,7 +198,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
           drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk)
 
 
-  w[].forEach (arc: EllipseArc, color: Color||globals.foreground, count: PointCount||32, thickness: opt Thickness):
+  w[].forEach (arc: EllipseArc, color: Color|Foreground||globals.foreground, count: PointCount||32, thickness: opt Thickness):
     let points = arc.points(count)
     let thk = if has Thickness: some thickness else: none Thickness
     for i in 0 ..< points.len - 1:
