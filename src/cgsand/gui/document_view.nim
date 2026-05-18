@@ -362,3 +362,9 @@ method init*(this: DocumentView) =
         of Executing: parent.w[] * (2 / 2)
       bottom = parent.bottom
       color = "#76b1ffff".color
+
+    - Button.new:
+      text = tr"Reset"
+      centerX = parent.center
+      top = parent.top+10
+      on this.activated: root.viewport[] = mat4()

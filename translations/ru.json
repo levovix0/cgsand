@@ -10,6 +10,9 @@
   "src/cgsand/gui/document_view.nim": {
     "Recompile": {
       "": "Пересобрать"
+    },
+    "Reset": {
+      "": "Сброс"
     }
   },
   "src/cgsand/gui/tool_bar.nim": {
