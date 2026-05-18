@@ -21,7 +21,6 @@ type
 
   PositionAt* = enum
     ## can be added to an entity with Text to specify which point of a text Position2 defines
-    ## can be added to an entity with CanvasSettings, to specify if axisY is directed down (it is up by default)
     PositionAtTopLeft
     PositionAtTopRight
     PositionAtBottomLeft
@@ -33,9 +32,9 @@ type
     PositionAtCenter
 
   AxisYDirection* = enum
-    ## can be added to an entity with CanvasSettings, to specify if axisY is directed down (it is up by default)
-    AxisYUp
+    ## can be added to an entity with CanvasSettings, to specify if axisY is directed up (it is down by default)
     AxisYDown
+    AxisYUp
 
 
   Foreground* = Color

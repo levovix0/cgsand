@@ -7,8 +7,8 @@ export localize
 requireLocalesToBeTranslated ("ru", "")
 
 
-# var currentScript*: Property[string] = "examples/script.nim".property
 var currentScript*: Property[string] = "examples/tutorial_use.nim".property
+# var currentScript*: Property[string] = "examples/logic/carnot_map.nim".property
 
 # todo: make config an object
 # todo: save and load config

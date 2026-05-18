@@ -33,10 +33,10 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
       else:     (w.y - bmin.y) * scale * mmToPt.float32,
     )
 
-  let backgroundColor = blendColor(color_bg, globals.background)
+  let backgroundColor = blendColor(globals.background, color_bg)
   o.pages[pi].fillRect(0, 0, pageWidthPt, pageHeightPt, backgroundColor)
 
-  r.doc[].forEach (line: LineSection, color: Color|Foreground||globals.foreground, thickness: Thickness||(0.1/scale)):
+  r.doc[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: Thickness||(0.1/scale)):
     let a = sandbox.Vec2(line.startPoint).vec2
     let b = sandbox.Vec2(line.endPoint).vec2
     o.pages[pi].drawLine(
@@ -70,7 +70,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
       o.pages[pi].drawPolyline(pagePts, fg, lw)
 
 
-  r.doc[].forEach (arc: EllipseArc, color: Color|Foreground||globals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale)):
+  r.doc[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale)):
     let pts = arc.points(count)
     var pagePts: seq[Vec2]
     for p in pts:

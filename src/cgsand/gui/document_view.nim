@@ -119,13 +119,12 @@ proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thicknes
 
 proc drawText*(
   ctx: DrawContext,
-  text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
+  text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float, axisYUp: bool,
   transform = mat4(),
 ) =
-  let fontSize = abs((ctx.viewportToGlMatrix * vec4(0, fontSize, 0, 0)).y) / ctx.px.y
   let ts = typeset(font.withSize(fontSize), text)
   let origin = posAt.factor().vec2
-  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true)
+  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true, axisYUp=axisYUp)
 
 
 
@@ -172,7 +171,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
 
   ctx.viewport = this.viewport[]
 
-  w[].forEach (line: LineSection, color: Color|Foreground||globals.foreground, thickness: opt Thickness):
+  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness):
     drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
 
 
@@ -198,7 +197,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
           drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk)
 
 
-  w[].forEach (arc: EllipseArc, color: Color|Foreground||globals.foreground, count: PointCount||32, thickness: opt Thickness):
+  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness):
     let points = arc.points(count)
     let thk = if has Thickness: some thickness else: none Thickness
     for i in 0 ..< points.len - 1:
@@ -231,7 +230,7 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    drawText(ctx, text, pos, fg, posAt, font, size)
+    drawText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp)
   
 
   glDisable(GlBlend)
