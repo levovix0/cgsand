@@ -13,9 +13,9 @@ type
     ## global, add this to the `doc` to apply
     ## add any other global settings to an entity with CanvasSettings
 
-    size*: Vec2 = vec2(200, 200)   ## in abstract units
-    mmScale*: float32 = 1  ## (paper page) millimeters per abstract unit
-    autoSize*: bool = false
+    size*: Vec2             ## in abstract units
+    mmScale*: float32 = 10  ## (paper page) millimeters per abstract unit
+    autoSize*: bool = true  ## if true, `size` is ignored and calculated from document content bounds insted
     margin*: Vec2 = vec2(0, 0)  ## extra page space around auto-sized content
 
 
@@ -84,11 +84,13 @@ when defined(script) or defined(nimcheck):
 const CanvasSettings_A4_Vertical* = CanvasSettings(
   size: vec2(210, 297),
   mmScale: 1,
+  autoSize: false,
 )
 
 const CanvasSettings_A4_Horizontal* = CanvasSettings(
   size: vec2(297, 210),
   mmScale: 1,
+  autoSize: false,
 )
 
 
@@ -130,4 +132,18 @@ proc factor*(posAt: PositionAt): Vec2 =
   of PositionAtTop: vec2(1/2, 0)
   of PositionAtBottom: vec2(1/2, 1)
   of PositionAtCenter: vec2(1/2, 1/2)
+
+
+
+proc background*(doc: var World): Background =
+  result = color(0, 0, 0, 0)
+  doc.forEach (CanvasSettings, Background): return the Background
+
+proc foreground*(doc: var World): Foreground =
+  result = color(1, 1, 1)
+  doc.forEach (CanvasSettings, Foreground): return the Foreground
+
+proc fontSize*(doc: var World): FontSize =
+  result = 1
+  doc.forEach (CanvasSettings, FontSize): return the FontSize
 

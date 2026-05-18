@@ -72,6 +72,7 @@ proc pointsBounds*(points: openArray[Point2]): Bounds2 =
     result.addPoint(sandbox.Vec2(p).vec2)
 
 
+# todo: textBounds should depend on AxisYDirection
 proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface, fontSize: float64): Bounds2 =
   let arrangement = typeset(font.withSize(fontSize), text)
   let box = arrangement.computeBounds()

@@ -1,8 +1,8 @@
 EntityId
 DeletedEntity
 CanvasSettings
-Foreground
 Background
+Foreground
 FontSize
 AxisYDirection
 PositionAt
@@ -11,6 +11,7 @@ LineSection
 Thickness
 CircleArc
 PointCount
+EllipseArc
 Text
 Position2
 Color

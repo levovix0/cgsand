@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/uibase
 import ./cgsand/gui/[code_editor, document_view, tool_bar]
-import ./cgsand/logic/[config]
+import ./cgsand/logic/[config, scripts]
 
 globalLocale[0] = systemLocale()
 
@@ -70,6 +70,10 @@ win.makeLayout:
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
       h = 60
+      doc = binding:
+        if documentView.scriptStage[] == Idle and documentView.script[] != nil:
+          documentView.script[].world
+        else: nil
 
 run win
 

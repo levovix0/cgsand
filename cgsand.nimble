@@ -20,7 +20,7 @@ requires "localize >= 0.3.5" #d1b5ae63
 
 # --- unstable dependencies ---
 
-requires "sigui#97129b33"
+requires "sigui >= 0.2.5.2"
   ## for GUI
 
 requires "https://github.com/levovix0/sigeo"
@@ -32,7 +32,4 @@ requires "https://github.com/levovix0/ecs"
 requires "https://github.com/levovix0/toscel"
   ## for basic GUI widgets
 
-requires "https://github.com/levovix0/rice"
-
-requires "winim"
 

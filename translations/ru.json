@@ -15,6 +15,9 @@
   "src/cgsand/gui/tool_bar.nim": {
     "Code": {
       "": "Код"
+    },
+    "Export PDF": {
+      "": "Экспорт PDF"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {

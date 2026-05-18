@@ -12,7 +12,7 @@ type
     settings*: CanvasSettings
     foreground*: Color = color(1, 1, 1)
     background*: Color = color(0, 0, 0, 0)
-    fontSize*: float64 = 10
+    fontSize*: float64 = 1
     font*: Typeface
     axisYDirection*: AxisYDirection = AxisYUp
     originAt*: PositionAt = PositionAtCenter
@@ -52,6 +52,9 @@ proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
 
   w[].forEach (curve: CircleArc, count: PointCount||20):
     result.contentBounds.add(pointsBounds(curve.points(count)))
+
+  w[].forEach (arc: EllipseArc, count: PointCount||32):
+    result.contentBounds.add(pointsBounds(arc.points(count)))
 
   w[].forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||globals.fontSize):
     result.contentBounds.add(textBounds(text, pos, posAt, font, size))
