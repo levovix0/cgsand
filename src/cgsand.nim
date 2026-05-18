@@ -6,6 +6,7 @@ import ./cgsand/gui/[code_editor, document_view, tool_bar]
 import ./cgsand/logic/[config, scripts]
 
 globalLocale[0] = systemLocale()
+loadConfig()
 
 when defined(useX11):
   let win = newSiwinGlobals(x11).newOpenglWindow(title = "cgsand", frameless = true, transparent = true).newUiWindow
@@ -16,7 +17,9 @@ else:
 
 win.makeLayout:
   this.clearColor = "#00000000".color
-  
+
+  on currentScript.changed: saveConfig()
+
   proc onWindowResize =
     when defined(windows):
       win.siwinWindow.setTitleRegion(toolBar.globalXy + vec2(400,0), vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]) -  vec2(400,0))
