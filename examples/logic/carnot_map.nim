@@ -361,7 +361,7 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
   doc[].drawFigureBrackets()
 
 
-when isMainModule:
+mainModule:
   doc.add CanvasSettings(autoSize: true, margin: vec2(1)):
     Background color(1, 1, 1)
     Foreground color(0, 0, 0)

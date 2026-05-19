@@ -55,7 +55,7 @@ proc rsTrigger*: RsTrigger =
 
 
 
-when isMainModule:
+mainModule:
   var (n, placement, T) = rsTrigger()
 
   placeComponents(placement)

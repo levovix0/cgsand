@@ -113,7 +113,7 @@ proc draw2d*(doc: var World, shaft: Shaft, origin: Position2, scale: float = 100
 
 
 
-when isMainModule:
+mainModule:
   let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)
   let fillet = ShaftConjunction(kind: Fillet, radius: 2.mm)
   let shaft = Shaft(

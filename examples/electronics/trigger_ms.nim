@@ -2,7 +2,7 @@ import sandbox
 import electronics/schemes
 import ./trigger_rs
 
-when isMainModule: addDefaultElectronicsGlobals()
+mainModule: addDefaultElectronicsGlobals()
 
 
 type
@@ -86,7 +86,7 @@ proc startup*(r: MsTrigger, v: Value = 0): seq[ValChange] =
 
 
 
-when isMainModule:
+mainModule:
   let r = msTrigger()
 
 

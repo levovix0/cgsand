@@ -708,7 +708,7 @@ proc echoPlot*(plot: Plot) =
     accumVals = simVals
 
 
-when isMainModule:
+mainModule:
   addDefaultElectronicsGlobals()
 
   let inputs = @[Node "x3", "x2", "x1"]

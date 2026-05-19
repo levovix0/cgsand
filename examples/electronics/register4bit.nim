@@ -2,7 +2,7 @@ import sandbox
 import electronics/schemes
 import ./trigger_d
 
-when isMainModule: addDefaultElectronicsGlobals()
+mainModule: addDefaultElectronicsGlobals()
 
 
 const bits = 4
@@ -60,7 +60,7 @@ proc register4Bit*: Register4Bit =
   return (pack(Ds & @[clk], Qs), placement, startup)
 
 
-when isMainModule:
+mainModule:
   let (r, placement, startup) = register4Bit()
 
   let clk = r.inputs[^1]

@@ -2,7 +2,7 @@ import sandbox
 import electronics/schemes
 import ./trigger_rs
 
-when isMainModule: addDefaultElectronicsGlobals()
+mainModule: addDefaultElectronicsGlobals()
 
 
 const bits = 4
@@ -79,7 +79,7 @@ proc registerShift4Bit*: RegisterShift4Bit =
   return (pack(@[din, clk], Qs), rules, startup)
 
 
-when isMainModule:
+mainModule:
   let (r, placement, startup) = registerShift4Bit()
 
   let din = r.inputs[0]

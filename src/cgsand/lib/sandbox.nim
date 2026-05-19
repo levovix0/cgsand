@@ -146,3 +146,17 @@ proc fontSize*(doc: var World): FontSize =
   result = 1
   doc.forEach (CanvasSettings, FontSize): return the FontSize
 
+
+
+template mainModule*(body: untyped) =
+  when isMainModule:
+    try:
+      body
+    except Defect:
+      echo getCurrentExceptionMsg()
+      echo getCurrentException().getStackTrace()
+    except:
+      echo getCurrentExceptionMsg()
+      echo getCurrentException().getStackTrace()
+
+
