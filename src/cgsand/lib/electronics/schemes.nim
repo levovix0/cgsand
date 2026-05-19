@@ -78,6 +78,7 @@ type
     skipUnchangedAxes*: bool = false
 
 const Eps = 1e-4
+const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
 
 
 proc addDefaultElectronicsGlobals* =
@@ -519,6 +520,8 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
           vals[inpNode] = resolveInp(n.inputs[i])
       if n.pack.outputs.len > 0:
         vals[n] = simulateNode(n.pack.outputs[0], vals, prevVals, computing, skipSim)
+        for i in 1..<n.pack.outputs.len:
+          discard simulateNode(n.pack.outputs[i], vals, prevVals, computing, skipSim)
       else:
         vals[n] = Value(power: 0.0)
     else:
@@ -665,6 +668,44 @@ proc draw*(plot: Plot) =
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, y - plot.gap)
     ), plot.axiesColor
 
+
+
+proc echoPlot*(plot: Plot) =
+  var stamps = plot.timestamps
+  stamps.sort(proc(a, b: PlotTimestamp): int = cmp(a.time, b.time))
+  if stamps.len == 0: return
+
+  block mergeStamps:
+    var merged: seq[PlotTimestamp]
+    for stamp in stamps:
+      if merged.len > 0 and merged[^1].time == stamp.time:
+        merged[^1].changes.add stamp.changes
+      else:
+        merged.add stamp
+    stamps = merged
+
+  var accumVals: Table[Node, Value]
+  for stamp in stamps:
+    var skipSim: HashSet[Node]
+    for change in stamp.changes:
+      accumVals[change.node] = change.value
+      skipSim.incl change.node
+
+    var simVals = accumVals
+    var computing = initHashSet[Node]()
+    for group in plot.data:
+      for node in group:
+        discard simulateNode(node, simVals, accumVals, computing, skipSim)
+
+    var parts: seq[string]
+    parts.add "t=" & stamp.time.formatFloat(ffDecimal, 2)
+    for group in plot.data:
+      for node in group:
+        let v = simVals.getOrDefault(node)
+        parts.add node.name & "=" & (if v.power > 0.5: "1" else: "0")
+    echo parts.join("  ")
+
+    accumVals = simVals
 
 
 when isMainModule:

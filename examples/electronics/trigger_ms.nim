@@ -1,9 +1,6 @@
 import sandbox
 import electronics/schemes
-import ./trigger_rcs
-
-# todo: load trigger_rcs as another world
-# todo: allow to place multiple World's inside a doc World
+import ./trigger_rs
 
 when isMainModule: addDefaultElectronicsGlobals()
 
@@ -12,7 +9,8 @@ type
   MsTrigger* = object
     I: seq[Node]
     O: seq[Node]
-    t1, t2: RcsTrigger
+    t1O: seq[Node]
+    t1, t2: RsTrigger
     placement: seq[PlacementRule]
 
 
@@ -23,48 +21,56 @@ proc Q*(r: MsTrigger): var Node = r.O.addr[][0]
 proc nQ*(r: MsTrigger): var Node = r.O.addr[][1]
 
 
-proc msTrigger: MsTrigger =
+proc msTrigger*: MsTrigger =
   template r: untyped = result
-  r.t1 = rcsTrigger()
-  r.t2 = rcsTrigger()
-  r.t1.placement.move vec2(4, 0)
-  r.t2.placement.move vec2(18, 0)
-  r.placement.add r.t1.placement
-  r.placement.add r.t2.placement
 
   r.I = @[Node "S₁", "C₁", "R₁"]
   r.O = @[Node "Q₂", "!Q₂"]
 
-  for i in 0..<r.I.len: r.t1.I[i].inputs.add r.I[i]
-  for i in 0..<r.O.len: r.O[i].inputs.add r.t2.O[i]
+  let notC = norN(r.C)
 
-  r.t2.S.inputs.add r.t1.Q
-  r.t2.R.inputs.add r.t1.nQ
+  let M1 = @[andN(r.S, r.C), andN(r.C, r.R)]
+  r.t1 = rsTrigger()
+  let rsN1 = r.t1.pack.packN("T₁")
+  for i in 0..<M1.len: rsN1.inputs.add M1[i]
 
-  let n = norN(r.C)
-  r.t2.C.inputs.add n
+  let M2 = @[andN((rsN1,0), notC), andN(notC, (rsN1,1))]
+  r.t2 = rsTrigger()
+  let rsN2 = r.t2.pack.packN("T₂")
+  for i in 0..<M2.len: rsN2.inputs.add M2[i]
 
-  r.t1.Q.name = "Q₁"
-  r.t1.nQ.name = "!Q₁"
+  for i in 0..<r.O.len: r.O[i].inputs.add (rsN2, i)
 
-  for x in r.t1.I.mitems: x.name = ""
-  for x in r.t2.I.mitems: x.name = ""
-  for x in r.t2.O.mitems: x.name = ""
-
-  r.placement.add placementRules(
+  r.placement = placementRules(
     Line(
       origin: point2(0, 1),
       nodes: r.I,
       align: Outputs,
     ),
-    bus(point2(3, 0), r.C, @[n]),
-    bus(point2(16, 0), n, r.t2.I),
     Line(
-      origin: point2(10, 7),
-      nodes: @[n],
+      origin: point2(5, 5),
+      nodes: @[notC],
+    ),
+    bus(point2(4, 0), r.C, M1),
+    Line(
+      origin: point2(5, 0),
+      nodes: M1,
     ),
     Line(
-      origin: point2(32, 0),
+      origin: point2(9, 0),
+      nodes: @[rsN1],
+    ),
+    bus(point2(17, 0), notC, M2),
+    Line(
+      origin: point2(18, 0),
+      nodes: M2,
+    ),
+    Line(
+      origin: point2(22, 0),
+      nodes: @[rsN2],
+    ),
+    Line(
+      origin: point2(30, 1),
       nodes: r.O,
       align: Inputs,
     ),
@@ -72,7 +78,11 @@ proc msTrigger: MsTrigger =
 
 
 proc startup*(r: MsTrigger, v: Value = 0): seq[ValChange] =
-  startup(r.t1, v) & startup(r.t2, v)
+  @[
+    setVal(r.S, 0), setVal(r.R, 0),
+    setVal(r.t1.T[0], v), setVal(r.t1.T[1], not v),
+    setVal(r.t2.T[0], v), setVal(r.t2.T[1], not v)
+  ]
 
 
 
@@ -83,6 +93,8 @@ when isMainModule:
   placeComponents(r.placement)
   drawComponents()
 
+
+  doc[CanvasSettings].mmScale = 2.5
 
 
   var timestamps = @[
@@ -99,14 +111,11 @@ when isMainModule:
     timestamps.add PlotTimestamp(time: t.float * 3 + 2, changes: @[setVal(r.C, 0)])
 
   draw Plot(
-    data: @[@[r.C], @[r.S, r.R], r.t1.O, r.O],
-    # todo: remove quantum mechanics
-    #       (if r.t1.O is not visible on the Plot, the scheme breaks)
+    data: @[@[r.C], @[r.S, r.R], r.t1O, r.O],
     gap: 0.2,
     groupGap: 0.5,
-    timeScale: 5.5,
+    timeScale: 5.1,
     timestamps: timestamps,
     origin: point2(0, 10),
     skipUnchangedAxes: true,
   )
-
