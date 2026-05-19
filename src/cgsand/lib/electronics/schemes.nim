@@ -37,7 +37,7 @@ type
     origin*: Point2
   
   Bus* = object
-    input*: Node
+    input*: Port
     outputs*: seq[Node]
     origin*: Point2
     path*: seq[Point2]
@@ -135,10 +135,10 @@ proc packN*(pack: Pack, name: string, inputs: varargs[Port]): Node =
 converter toPlacementRule*(l: Line): PlacementRule = PlacementRule(kind: LineR, line: l)
 converter toPlacementRule*(b: Bus): PlacementRule = PlacementRule(kind: BusR, bus: b)
 
-proc bus*(path: openArray[Point2], input: Node, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
   Bus(path: @path, input: input, outputs: @outputs, color: color)
 
-proc bus*(origin: Point2, input: Node, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+proc bus*(origin: Point2, input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
   Bus(origin: origin, input: input, outputs: @outputs, color: color)
 
 
@@ -208,7 +208,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       let elem = rule.bus
       for outNode in elem.outputs:
         for portIdx, inp in outNode.inputs:
-          if inp.n == elem.input:
+          if inp.n == elem.input.n and inp.port == elem.input.port:
             busHandled.incl (cast[pointer](outNode), portIdx)
 
   # Build successor table: node -> [(consuming node, port index)]
@@ -304,10 +304,11 @@ proc placeComponents*(rules: seq[PlacementRule]) =
 
     of BusR:
       let elem {.cursor.} = rule.bus
-      let inNode = elem.input
+      let inNode = elem.input.n
+      let inPort = elem.input.port
       if inNode in nodeRects:
         let inRect = nodeRects[inNode]
-        let startY = outputPortY(inNode, inRect, 0)
+        let startY = outputPortY(inNode, inRect, inPort)
 
         let (busX, pathEndY, leadPts) =
           if elem.path.len >= 1:
@@ -323,7 +324,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         var busConns: seq[tuple[n: Node, port: int]]
         for outNode in elem.outputs:
           for portIdx, inp in outNode.inputs:
-            if inp.n == inNode and outNode in nodeRects:
+            if inp.n == inNode and inp.port == inPort and outNode in nodeRects:
               busConns.add (outNode, portIdx)
 
         if busConns.len > 0:

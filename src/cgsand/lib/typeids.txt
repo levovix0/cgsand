@@ -15,4 +15,5 @@ EllipseArc
 Text
 Position2
 Color
+Transform3
 Path

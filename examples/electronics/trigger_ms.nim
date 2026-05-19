@@ -10,9 +10,11 @@ type
     I: seq[Node]
     O: seq[Node]
     t1O: seq[Node]
-    t1, t2: RsTrigger
+    t1*, t2*: RsTrigger
     placement: seq[PlacementRule]
 
+
+proc msPack*(r: MsTrigger): Pack = pack(r.I, r.O)
 
 proc S*(r: MsTrigger): var Node = r.I.addr[][0]
 proc C*(r: MsTrigger): var Node = r.I.addr[][1]
@@ -34,7 +36,9 @@ proc msTrigger*: MsTrigger =
   let rsN1 = r.t1.pack.packN("T₁")
   for i in 0..<M1.len: rsN1.inputs.add M1[i]
 
-  let M2 = @[andN((rsN1,0), notC), andN(notC, (rsN1,1))]
+  r.t1O = @[symN("Q" & subscript[1], (rsN1,0)), symN("!Q" & subscript[1], (rsN1,1))]
+
+  let M2 = @[andN(r.t1O[0], notC), andN(notC, r.t1O[1])]
   r.t2 = rsTrigger()
   let rsN2 = r.t2.pack.packN("T₂")
   for i in 0..<M2.len: rsN2.inputs.add M2[i]
@@ -60,17 +64,22 @@ proc msTrigger*: MsTrigger =
       origin: point2(9, 0),
       nodes: @[rsN1],
     ),
-    bus(point2(17, 0), notC, M2),
     Line(
-      origin: point2(18, 0),
+      origin: point2(16, 0),
+      nodes: r.t1O,
+      align: Inputs,
+    ),
+    bus(point2(19, 0), notC, M2),
+    Line(
+      origin: point2(20, 0),
       nodes: M2,
     ),
     Line(
-      origin: point2(22, 0),
+      origin: point2(24, 0),
       nodes: @[rsN2],
     ),
     Line(
-      origin: point2(30, 1),
+      origin: point2(32, 1),
       nodes: r.O,
       align: Inputs,
     ),

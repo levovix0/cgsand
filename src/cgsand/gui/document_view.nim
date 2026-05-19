@@ -171,48 +171,51 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
 
   ctx.viewport = this.viewport[]
 
-  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness):
-    drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
+  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness, transform3: Transform3||dmat4()):
+    drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness), transform = mat4(transform3))
 
 
-  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness):
+  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness, transform3: Transform3||dmat4()):
     let points = curve.points(count)
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
     let thk = if has Thickness: some thickness else: none Thickness
+    let t3 = mat4(transform3)
 
     if curve.closed:
       if has Background:
-        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count)
+        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count, transform = t3)
 
       if Background.has.not or Color.has or Foreground.has:
         for i in 0 ..< points.len - 1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk)
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
 
     else:
       if Foreground.has or Color.has or Background.has.not:
         for i in 0 ..< points.len - 1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk)
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
 
 
-  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness):
+  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness, transform3: Transform3||dmat4()):
     let points = arc.points(count)
     let thk = if has Thickness: some thickness else: none Thickness
+    let t3 = mat4(transform3)
     for i in 0 ..< points.len - 1:
-      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk)
+      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
   
 
-  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background):
+  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background, transform3: Transform3||dmat4()):
+    let t3 = mat4(transform3)
     if has Background:
-      ctx.fillPath(path, color = the Background)
+      ctx.fillPath(path, color = the Background, transform = t3)
     if has Foreground:
-      ctx.strokePath(path, color = the Foreground, strokeWidth=thickness)
+      ctx.strokePath(path, color = the Foreground, strokeWidth=thickness, transform = t3)
     elif has Color:
-      ctx.strokePath(path, color = the Color, strokeWidth=thickness)
+      ctx.strokePath(path, color = the Color, strokeWidth=thickness, transform = t3)
     elif not(has Background):
-      ctx.fillPath(path, color = globals.foreground)
+      ctx.fillPath(path, color = globals.foreground, transform = t3)
 
 
 
@@ -225,12 +228,13 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     posAt: PositionAt||PositionAtTopLeft,
     font: Typeface||globals.font,
     size: FontSize||globals.fontSize,
+    transform3: Transform3||dmat4(),
   ):
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    drawText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp)
+    drawText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform3))
   
 
   glDisable(GlBlend)

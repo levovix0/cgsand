@@ -48,6 +48,11 @@ type
   Position2* = Point2
     ## used for non-geometry objects that can be displayed (Text)
   
+
+
+  Transform3* = Mat4
+    ## can be added to arbitrary transform 2D/3D object (for example, rotate text) in 3D space. Applied before Position2
+  
   
   Text* = string
     ## draws text

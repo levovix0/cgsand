@@ -363,7 +363,10 @@ proc drawPath*(
 
 proc drawText*(p: var PdfPage; w: var PdfWriter;
                typeface: Typeface; sizePt: float32;
-               color: Color; baselineX, baselineY: float32; text: string) =
+               color: Color; baselineX, baselineY: float32; text: string;
+               ta: float32 = 1; tb: float32 = 0; tc: float32 = 0; td: float32 = 1) =
+  ## ta..td: 2D text matrix columns (a,b = text-x direction; c,d = text-y direction in PDF space).
+  ## Defaults to identity (horizontal text). Use non-default values to apply rotation/shear.
   if text.len == 0: return
   let fontIdx = w.ensureFont(typeface)
   if fontIdx < 0: return
@@ -384,7 +387,7 @@ proc drawText*(p: var PdfPage; w: var PdfWriter;
   p.setFillColor(color)
   p.content.add "BT\n"
   p.content.add "/Ff" & $fontIdx & " " & pdfNum(sizePt) & " Tf\n"
-  p.content.add pdfNum(baselineX) & " " & pdfNum(baselineY) & " Td\n"
+  p.content.add pdfNum(ta) & " " & pdfNum(tb) & " " & pdfNum(tc) & " " & pdfNum(td) & " " & pdfNum(baselineX) & " " & pdfNum(baselineY) & " Tm\n"
   p.content.add "<" & hexGlyphs & "> Tj\n"
   p.content.add "ET\n"
 
