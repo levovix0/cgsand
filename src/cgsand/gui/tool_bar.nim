@@ -12,6 +12,52 @@ type
 
 registerComponent ToolBar
 
+type
+  BrowserItem = object
+    display: string # То, что видит юзер
+    path: string    # Реальный путь к объекту
+    isDir: bool     # Флаг: папка это или нет
+
+var browserItems: seq[BrowserItem] = @[] # Здесь храним всю скрытую логику
+
+const startDirName = "examples"
+let rootPath = absolutePath(startDirName) # Жесткая точка отсчета
+var currentPath = rootPath # Переменная текущего положения, которая меняется при кликах
+
+
+proc updateFileBrowser(dir: string): seq[string] =
+  result = @[]
+  browserItems = @[] # Очищаем старые данные
+  
+  if parentDir(dir) != dir:
+    browserItems.add(BrowserItem(display: "..", path: parentDir(dir), isDir: true))
+    
+  # Списки для разделения (чтобы папки всегда были сверху)
+  var folders: seq[BrowserItem] = @[]
+  var files: seq[BrowserItem] = @[]
+  
+  # Читаем диск и проверяем типы системными средствами (kind)
+  for kind, path in walkDir(dir, relative = true):
+    let fullPath = dir / path
+    if kind in {pcDir, pcLinkToDir}:
+      folders.add(BrowserItem(display: path & "/", path: fullPath, isDir: true))
+    else:
+      files.add(BrowserItem(display: path, path: fullPath, isDir: false))
+      
+  # Собираем всё воедино в наш скрытый массив состояний
+  browserItems.add(folders)
+  browserItems.add(files)
+  
+  # Возвращаем массив строк для ComboBox
+  for item in browserItems:
+    result.add(item.display)
+
+proc getCurrentRelativePath(): string =
+  if currentPath == rootPath:
+    return startDirName
+  else:
+    # Возвращает путь вида: examples/subfolder1/subfolder2
+    return startDirName / relativePath(currentPath, rootPath)
 
 
 proc windowControlsWidth*(this: ToolBar): float32 =
@@ -69,15 +115,41 @@ method init*(this: ToolBar) =
 
       - ComboBox.new:
         text = binding: config.currentScript[]
-        this.options[] = toSeq(walkDirRec(absolutePath("examples"))).mapIt(relativePath(it, absolutePath("examples") / ".."))
+        this.options[] = updateFileBrowser(currentPath)
         w = 300
 
         on this.textEdited:
           config.currentScript[] = this.text[]
         
         on this.optionSelected:
-          config.currentScript[] = this.text[]
-
+          let selectedOptionText = this.options[][this.selectedOption[]]
+          
+          var foundItem: BrowserItem
+          for item in browserItems:
+            if item.display == selectedOptionText:
+              foundItem = item
+              break
+          
+          if foundItem.isDir:
+            # Смена директории
+            currentPath = foundItem.path 
+            
+            # Обновляем список файлов для новой папки
+            this.options[] = updateFileBrowser(currentPath)
+            this.w[] = 300
+            this.selectedOption[] = -1
+            this.dropdownOpened[] = true
+            
+            # Выводим новый относительный путь в текстовое поле ComboBox
+            this.text[] = getCurrentRelativePath() 
+            
+          else:
+            # Выбран файл — записываем его путь в конфиг
+            config.currentScript[] = startDirName / relativePath(foundItem.path, rootPath) #foundItem.path
+            
+            # Опционально: можно оставить имя файла в текстовом поле, 
+            # чтобы пользователь видел, какой именно файл сейчас выбран
+            this.text[] = startDirName / relativePath(foundItem.path, rootPath)
 
       - Button.new:
         text = tr"Export PDF"
