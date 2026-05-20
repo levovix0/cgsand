@@ -37,9 +37,11 @@ proc withDllExtension(path: string): string =
 
 
 
-proc wrapScript(code: string): string =
-  result.add code
-  result.add "\n\n{.emit: \"/*VARSECTION*/ #define nimTestErrorFlag() bool was_excpt__ = *nimErrorFlag(); *nimErrorFlag() = false; nimTestErrorFlag(); *nimErrorFlag() = was_excpt__;\".}"
+when defined(cgsand.script_wrapper):
+  proc wrapScript(code: string): string =
+    result.add code
+    result.add "\n\n{.emit: \"/*VARSECTION*/ #define nimTestErrorFlag() bool was_excpt__ = *nimErrorFlag(); *nimErrorFlag() = false; nimTestErrorFlag(); *nimErrorFlag() = was_excpt__;\".}"
+
 
 
 proc compileAndRunScript*(filename: string, outfile: string = "script"): Script =
@@ -55,14 +57,19 @@ proc compileAndRunScript*(filename: string, outfile: string = "script"): Script 
       withLock result.lock: result.stage = Idle
       return
 
-    let wrapperPath = "build/script_wrapper.nim"
     let outfile = info.outfile.withDllExtension
     
-    try:
-      writeFile wrapperPath, wrapScript(readFile(info.filename))
-    except:
-      echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
-    if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
+    when defined(cgsand.script_wrapper):
+      let wrapperPath = "build/script_wrapper.nim"
+    
+      try:
+        writeFile wrapperPath, wrapScript(readFile(info.filename))
+      except:
+        echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+
+      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
+    else:
+      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
     
     result.lib = loadLib(outfile)
     if result.lib == nil: fail()

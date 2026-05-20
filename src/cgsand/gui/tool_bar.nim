@@ -1,19 +1,21 @@
+import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
 import pkg/toscel/[lineEdit, button]
-import ../logic/[config]
+import ../logic/[config, pdf_renderer]
 
 
 type
   ToolBar* = ref object of Uiobj
     codeEditor*: Uiobj
+    doc*: Property[ptr World]
 
 registerComponent ToolBar
 
 
 
 proc windowControlsWidth*(this: ToolBar): float32 =
-  60
+  180
 
 
 
@@ -72,4 +74,53 @@ method init*(this: ToolBar) =
         on this.textEdited:
           config.currentScript[] = this.text[]
 
+      - Button.new:
+        text = tr"Export PDF"
+        enabled = binding: root.doc[] != nil
+
+        on this.activated:
+          if root.doc[] == nil: return
+          let r = PdfRenerer(doc: root.doc[])
+          let filters = ["*.pdf".cstring, "*".cstring]
+          let filename = "out.pdf"
+          if filename != "":
+            writePdf filename, r
+
+
+    - MouseArea.new as mouse1:
+      this.fillVertical(parent)
+      right = parent.right-120
+      w = 60
+
+      - UiRect.new:
+        this.fill(parent)
+
+        color = binding:
+          if mouse1.pressed[]: "#050F8D".color
+          elif mouse1.hovered[]: "#0E2CB1".color
+          else: "#00000000".color
+
+        - this.color.transition(0.1's):
+          easing = outSquareEasing
+      on this.mouseDownAndUpInside:
+        this.parentWindow.minimized = true
+
+
+    - MouseArea.new as mouse2:
+      this.fillVertical(parent)
+      right = parent.right-60
+      w = 60
+
+      - UiRect.new:
+        this.fill(parent)
+
+        color = binding:
+          if mouse2.pressed[]: "#126731".color
+          elif mouse2.hovered[]: "#3bc016".color
+          else: "#00000000".color
+
+        - this.color.transition(0.1's):
+          easing = outSquareEasing
+      on this.mouseDownAndUpInside:
+        this.parentWindow.maximized = not this.parentWindow.maximized
 

@@ -119,13 +119,12 @@ proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thicknes
 
 proc drawText*(
   ctx: DrawContext,
-  text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float,
+  text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float, axisYUp: bool,
   transform = mat4(),
 ) =
-  let fontSize = abs((ctx.viewportToGlMatrix * vec4(0, fontSize, 0, 0)).y) / ctx.px.y
   let ts = typeset(font.withSize(fontSize), text)
   let origin = posAt.factor().vec2
-  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true)
+  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true, axisYUp=axisYUp)
 
 
 
@@ -172,40 +171,51 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
 
   ctx.viewport = this.viewport[]
 
-  w[].forEach (line: LineSection, color: Color||globals.foreground, thickness: opt Thickness):
-    drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness))
+  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness, transform3: Transform3||dmat4()):
+    drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness), transform = mat4(transform3))
 
 
-  w[].forEach (curve: CircleArc, opt Color, count: PointCount||20, opt Background, opt Foreground):
+  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness, transform3: Transform3||dmat4()):
     let points = curve.points(count)
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    
+    let thk = if has Thickness: some thickness else: none Thickness
+    let t3 = mat4(transform3)
+
     if curve.closed:
       if has Background:
-        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count)
-      
+        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count, transform = t3)
+
       if Background.has.not or Color.has or Foreground.has:
-        for i in 0 ..< points.len:
-          ctx.drawLineSection(lineSection(points[i], points[(i + 1) mod points.len]), fg)
-    
+        for i in 0 ..< points.len - 1:
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+
     else:
       if Foreground.has or Color.has or Background.has.not:
-        for i in 0 ..< points.len-1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg)
+        for i in 0 ..< points.len - 1:
+          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+
+
+  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness, transform3: Transform3||dmat4()):
+    let points = arc.points(count)
+    let thk = if has Thickness: some thickness else: none Thickness
+    let t3 = mat4(transform3)
+    for i in 0 ..< points.len - 1:
+      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
   
 
-  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background):
+  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background, transform3: Transform3||dmat4()):
+    let t3 = mat4(transform3)
     if has Background:
-      ctx.fillPath(path, color = the Background)
+      ctx.fillPath(path, color = the Background, transform = t3)
     if has Foreground:
-      ctx.strokePath(path, color = the Foreground, strokeWidth=thickness)
+      ctx.strokePath(path, color = the Foreground, strokeWidth=thickness, transform = t3)
     elif has Color:
-      ctx.strokePath(path, color = the Color, strokeWidth=thickness)
+      ctx.strokePath(path, color = the Color, strokeWidth=thickness, transform = t3)
     elif not(has Background):
-      ctx.fillPath(path, color = globals.foreground)
+      ctx.fillPath(path, color = globals.foreground, transform = t3)
 
 
 
@@ -218,12 +228,13 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
     posAt: PositionAt||PositionAtTopLeft,
     font: Typeface||globals.font,
     size: FontSize||globals.fontSize,
+    transform3: Transform3||dmat4(),
   ):
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    drawText(ctx, text, pos, fg, posAt, font, size)
+    drawText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform3))
   
 
   glDisable(GlBlend)
@@ -354,3 +365,9 @@ method init*(this: DocumentView) =
         of Executing: parent.w[] * (2 / 2)
       bottom = parent.bottom
       color = "#76b1ffff".color
+
+    - Button.new:
+      text = tr"Reset"
+      centerX = parent.center
+      top = parent.top+10
+      on this.activated: root.viewport[] = mat4()

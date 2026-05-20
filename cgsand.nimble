@@ -18,9 +18,11 @@ requires "nim >= 2.2.4"
 requires "localize >= 0.3.5" #d1b5ae63
   ## for translations
 
+requires "jsony"
+
 # --- unstable dependencies ---
 
-requires "sigui#97129b33"
+requires "sigui >= 0.2.5.2"
   ## for GUI
 
 requires "https://github.com/levovix0/sigeo"

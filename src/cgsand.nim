@@ -3,9 +3,10 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/uibase
 import ./cgsand/gui/[code_editor, document_view, tool_bar]
-import ./cgsand/logic/[config]
+import ./cgsand/logic/[config, scripts]
 
 globalLocale[0] = systemLocale()
+loadConfig()
 
 when defined(useX11):
   let win = newSiwinGlobals(x11).newOpenglWindow(title = "cgsand", frameless = true, transparent = true).newUiWindow
@@ -16,10 +17,12 @@ else:
 
 win.makeLayout:
   this.clearColor = "#00000000".color
-  
+
+  on currentScript.changed: saveConfig()
+
   proc onWindowResize =
     when defined(windows):
-      win.siwinWindow.setTitleRegion(toolBar.globalXy, vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]))
+      win.siwinWindow.setTitleRegion(toolBar.globalXy + vec2(400,0), vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]) -  vec2(400,0))
     else:
       win.siwinWindow.setTitleRegion(toolBar.globalXy, toolBar.wh)
     win.siwinWindow.setBorderWidth(10, 0, 40)
@@ -70,6 +73,10 @@ win.makeLayout:
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
       h = 60
+      doc = binding:
+        if documentView.scriptStage[] == Idle and documentView.script[] != nil:
+          documentView.script[].world
+        else: nil
 
 run win
 

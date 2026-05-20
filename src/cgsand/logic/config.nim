@@ -1,5 +1,5 @@
-import std/json
-import pkg/[localize, chroma]
+import std/[json, os]
+import pkg/[localize, chroma, jsony]
 import pkg/sigui/[properties]
 import ./syntax_highlighting
 export localize
@@ -7,11 +7,30 @@ export localize
 requireLocalesToBeTranslated ("ru", "")
 
 
-# var currentScript*: Property[string] = "examples/script.nim".property
+type
+  Config* = object
+    lastOpenedScript*: string
+
+
 var currentScript*: Property[string] = "examples/tutorial_use.nim".property
 
-# todo: make config an object
-# todo: save and load config
+
+let configFilePath* = getConfigDir() / "cgsand" / "config.json"
+
+proc loadConfig*() =
+  if fileExists(configFilePath):
+    try:
+      let cfg = fromJson(readFile(configFilePath), Config)
+      if cfg.lastOpenedScript != "":
+        currentScript[] = cfg.lastOpenedScript
+    except: discard
+
+proc saveConfig*() =
+  try:
+    createDir(configFilePath.parentDir)
+    let cfg = Config(lastOpenedScript: currentScript[])
+    writeFile(configFilePath, pretty(%*cfg))
+  except: discard
 
 
 type
