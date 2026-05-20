@@ -100,12 +100,12 @@ proc fillHatchingRect*(
 
 proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
   if thickness.isSome:
-    ctx.drawLine(
+    ctx.fillCapsule(
       a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
       b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
       color = color,
       transform = transform,
-      thickness = thickness.get,
+      radius = thickness.get / 2,
     )
   else:
     ctx.drawLine(
@@ -292,8 +292,13 @@ proc recompileScript*(this: DocumentView) =
     withLock this.script[].lock:
       if this.script[].stage != Idle:
         return  # ignore recompile request while still compiling
+  let oldCache =
+    if this.script[] != nil and this.script[].filename == currentScript[]:
+      this.script[].cache
+    else:
+      nil
   this.script{} = nil  # unload current script
-  this.script[] = compileAndRunScript(currentScript[], "build/script")
+  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache)
 
 
 

@@ -67,13 +67,19 @@ type
   PixelThickness* = float32
     ## thickness of lines in pixels. Stays the same no matter how viewport transforms
     ## todo
+  
+
+  CacheVariable* = string
+    ## a name for an entity, that persists between script re-runs
 
 
 
 when defined(script) or defined(nimcheck):
   var doc* {.exportc: "world_instance", dynlib.} = World()
     ## in the sandbox we have an entire World!
-  
+
+  var cache* {.exportc: "cache_instance", dynlib.}: ptr World
+
   proc handleErrorAfterNimMain: bool {.exportc, dynlib.} =
     try: discard
     except Defect:
@@ -82,6 +88,17 @@ when defined(script) or defined(nimcheck):
     except:
       echo "script error: ", getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
       result = true
+
+  proc syncCacheFromDoc {.exportc, dynlib.} =
+    if cache == nil: return
+    var toDelete: seq[EntityId]
+    cache[].forEach (eid: EntityId, CacheVariable, float):
+      toDelete.add eid
+    for eid in toDelete:
+      cache[].despawn(eid)
+    cache[].cleanupDeleted()
+    doc.forEach (cv: CacheVariable, v: float):
+      discard cache[].spawn(cv, v)
 
 
 

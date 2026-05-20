@@ -13,9 +13,11 @@ type
   ScriptObj* = object
     lib*: LibHandle
     world*: ptr World
+    cache*: ref World
+    filename*: string
     stage* {.guard: lock.}: ScriptStage
     lock*: Lock
-    
+
     thread: Thread[tuple[script: ptr ScriptObj, filename, outfile: string]]
 
 
@@ -44,10 +46,12 @@ when defined(cgsand.script_wrapper):
 
 
 
-proc compileAndRunScript*(filename: string, outfile: string = "script"): Script =
+proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: ref World = nil): Script =
   new result
   initLock result.lock
   withLock result.lock: result.stage = Compiling
+  result.filename = filename
+  result.cache = if existingCache != nil: existingCache else: new World
 
   proc worker(info: tuple[script: ptr ScriptObj, filename, outfile: string]) =
     template result: untyped = info.script[]
@@ -77,6 +81,10 @@ proc compileAndRunScript*(filename: string, outfile: string = "script"): Script 
     let nimMain = cast[proc() {.cdecl, gcsafe.}](result.lib.symAddr("NimMain"))
     if nimMain == nil: fail()
 
+    let cacheInstanceAddr = result.lib.symAddr("cache_instance")
+    if cacheInstanceAddr != nil:
+      cast[ptr ptr World](cacheInstanceAddr)[] = cast[ptr World](result.cache)
+
     withLock result.lock: result.stage = Executing
     nimMain()
 
@@ -86,8 +94,13 @@ proc compileAndRunScript*(filename: string, outfile: string = "script"): Script 
 
     let w = result.lib.symAddr("world_instance")
     if w == nil: fail()
-  
+
     result.world = cast[ptr World](w)
+
+    let syncCache = cast[proc() {.cdecl, gcsafe.}](result.lib.symAddr("syncCacheFromDoc"))
+    if syncCache != nil:
+      syncCache()
+
     withLock result.lock: result.stage = Idle
     
   result.thread.createThread(worker, (result[].addr, filename, outfile))
