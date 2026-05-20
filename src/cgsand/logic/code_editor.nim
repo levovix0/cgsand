@@ -285,7 +285,7 @@ proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool 
   if c.col > 0:
     dec c.col
     if prevWord:
-      while not arrangement.lines[c.line].arrangement.runes[c.col - 1].isWhiteSpace and c.col > 0:
+      while c.col > 0 and not arrangement.lines[c.line].arrangement.runes[c.col - 1].isWhiteSpace:
         dec c.col
   elif c.line > 0:
     let prev = arrangement.prevVisibleLine(c.line)
@@ -309,7 +309,7 @@ proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool
   if c.col < lineLen:
     inc c.col
     if nextWord:
-      while not arrangement.lines[c.line].arrangement.runes[c.col].isWhiteSpace and c.col < lineLen:
+      while c.col < lineLen and not arrangement.lines[c.line].arrangement.runes[c.col].isWhiteSpace:
         inc c.col
   else:
     let next = arrangement.nextVisibleLine(c.line)
