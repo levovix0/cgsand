@@ -1,9 +1,9 @@
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
-import pkg/toscel/[lineEdit, button]
+import pkg/toscel/[comboBox, lineEdit, button]
 import ../logic/[config, pdf_renderer]
-
+import std/[os, sequtils]
 
 type
   ToolBar* = ref object of Uiobj
@@ -67,12 +67,17 @@ method init*(this: ToolBar) =
         on this.activated:
           root.codeEditor.visibility[] = (if root.codeEditor.visibility[] == visible: collapsed else: visible)
 
-      - LineEdit.new:
-        w = 300
+      - ComboBox.new:
         text = binding: config.currentScript[]
+        this.options[] = toSeq(walkDirRec(absolutePath("examples"))).mapIt(relativePath(it, absolutePath("examples") / ".."))
+        w = 300
 
         on this.textEdited:
           config.currentScript[] = this.text[]
+        
+        on this.optionSelected:
+          config.currentScript[] = this.text[]
+
 
       - Button.new:
         text = tr"Export PDF"
