@@ -1,3 +1,4 @@
+import std/strutils
 import sandbox
 import electronics/schemes
 import ./trigger_ms
@@ -33,7 +34,7 @@ proc counterMod*(modulus: int): CounterMod =
   r.msN = newSeq[Node](n)
   for i in 0..<n:
     r.ms[i]  = msTrigger()
-    r.msN[i] = r.ms[i].msPack.packN("T" & subscript[i])
+    r.msN[i] = r.ms[i].msPack.packN("MS" & subscript[i])
 
   # Detect state `modulus`: AND together the Q outputs whose bit is set in modulus.
   block:
@@ -56,22 +57,25 @@ proc counterMod*(modulus: int): CounterMod =
   rArr[0]    = if r.reset != nil: orN(r.carry[0], r.reset) else: r.carry[0]
 
   for i in 1..<n:
-    r.carry[i] = andN(r.carry[i-1], (r.msN[i], 0))
-    sArr[i]    = andN(r.carry[i-1], (r.msN[i], 1))
-    rArr[i]    = if r.reset != nil: orN(r.carry[i], r.reset) else: r.carry[i]
+    r.carry[i] = andN((r.msN[i], 0), r.carry[i-1])
+    sArr[i]    = andN((r.msN[i], 1), r.carry[i-1])
+    rArr[i]    = if r.reset != nil: orN(r.reset, r.carry[i]) else: r.carry[i]
 
   for i in 0..<n:
     r.msN[i].inputs.add sArr[i]
     r.msN[i].inputs.add r.C
     r.msN[i].inputs.add rArr[i]
+    for x in r.msN[i].pack.inputs: x.name.removeSuffix subscript[1]
+    r.msN[i].pack.outputs[0].name = "Q" & subscript[i]
+    r.msN[i].pack.outputs[1].name = "!Q" & subscript[i]
 
   r.Q = newSeq[Node](n)
   for i in 0..<n:
     r.Q[i] = symN("Q" & subscript[i], (r.msN[i], 0))
 
   # Layout: each trigger is offset by (stepX, stepY) from the previous.
-  const stepX = 18.0
-  const stepY = 4.0
+  const stepX = 19.0
+  const stepY = 4.0 - 1e-3  # todo: if stepY is ideally aligned, some branches are not drawn
 
   var rules: seq[PlacementRule]
   rules.add Line(origin: point2(0, n.float * stepY + 6), nodes: @[r.C])
@@ -80,11 +84,12 @@ proc counterMod*(modulus: int): CounterMod =
     let x = 6.0  + i.float * stepX
     let y = i.float * stepY
     rules.add Line(origin: point2(x, y - 1.5), nodes: @[sArr[i]], align: Outputs)
-    # rules.add Line(origin: point2(x, y + 1.5), nodes: @[rArr[i]])
-    rules.add Line(origin: point2(x + 6, y), nodes: @[r.msN[i]])
+    rules.add Line(origin: point2(x, y + 1.5), nodes: @[rArr[i]], align: Outputs)
+    rules.add Line(origin: point2(x + 4, y), nodes: @[r.msN[i]])
     if i > 0:
-      ## carry[i-1] is the AND node feeding both sArr[i] and carry[i]
-      # rules.add Line(origin: point2(x - 4, y - 0.5), nodes: @[r.carry[i-1]])
+      # carry[i-1] is the AND node feeding both sArr[i] and carry[i]
+      rules.add Line(origin: point2(x - 6, y - 0.5), nodes: @[r.carry[i-1]], align: Outputs)
+      rules.add loopbackPath(r.carry[i-1], (rArr[i-1],1), offset = 1)
 
   # if r.reset != nil:
   #   rules.add Line(
@@ -99,8 +104,8 @@ proc counterMod*(modulus: int): CounterMod =
   )
 
   for i in 0..<n:
-    rules.add bus(point2(11.0 + i.float * stepX, 0), r.C, @[r.msN[i]])
-    rules.add loopbackPath((r.msN[i],1), (sArr[i],1))
+    rules.add bus(point2(9.0 + i.float * stepX, 0), r.C, @[r.msN[i]])
+    rules.add loopbackPath((r.msN[i],1), (sArr[i],0), offset = -1)
 
   r.placement = rules
 

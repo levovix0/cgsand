@@ -43,10 +43,15 @@ type
     path*: seq[Point2]
     color*: Color = color(0, 0, 0)
 
+  HOffset* = object
+    left*: float
+    right*: float
+
   LoopbackPath* = object
     output*: Port
     input*: Port
     offset*: float
+    hOffset*: HOffset
     color*: Color = color(0, 0, 0)
 
   PlacementRuleKind* = enum
@@ -140,12 +145,15 @@ proc packN*(pack: Pack, name: string, inputs: varargs[Port]): Node =
   Node(kind: PackN, name: name, inputs: @inputs, pack: pack, outputs: newSeqWith(pack.outputs.len, true))
 
 
+converter toHOffset*(v: float): HOffset = HOffset(left: -v, right: v)
+converter toHOffset*(v: (float, float)): HOffset = HOffset(left: v[0], right: v[1])
+
 converter toPlacementRule*(l: Line): PlacementRule = PlacementRule(kind: LineR, line: l)
 converter toPlacementRule*(b: Bus): PlacementRule = PlacementRule(kind: BusR, bus: b)
 converter toPlacementRule*(lp: LoopbackPath): PlacementRule = PlacementRule(kind: LoopbackPathR, loopbackPath: lp)
 
-proc loopbackPath*(output: Port, input: Port, offset: float = 0, color = color(0, 0, 0)): LoopbackPath =
-  LoopbackPath(output: output, input: input, offset: offset, color: color)
+proc loopbackPath*(output: Port, input: Port, offset: float = 0, hOffset: HOffset = 0.0, color = color(0, 0, 0)): LoopbackPath =
+  LoopbackPath(output: output, input: input, offset: offset, hOffset: hOffset, color: color)
 
 proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
   Bus(path: @path, input: input, outputs: @outputs, color: color)
@@ -215,6 +223,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
 
   type ConnKey = tuple[n: pointer, port: int]
   var busHandled = initHashSet[ConnKey]()
+  var handledPorts = initHashSet[ConnKey]()
 
   # Pass 1: collect which (node, portIdx) pairs are connected via buses or loopbacks
   for rule in rules:
@@ -223,13 +232,17 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       for outNode in elem.outputs:
         for portIdx, inp in outNode.inputs:
           if inp.n == elem.input.n and inp.port == elem.input.port:
-            busHandled.incl (cast[pointer](outNode), portIdx)
+            let key = (cast[pointer](outNode), portIdx)
+            busHandled.incl key
+            handledPorts.incl key
     elif rule.kind == LoopbackPathR:
       let elem = rule.loopbackPath
       let inNode = elem.input.n
       for portIdx, inp in inNode.inputs:
         if inp.n == elem.output.n and inp.port == elem.output.port:
-          busHandled.incl (cast[pointer](inNode), portIdx)
+          let key = (cast[pointer](inNode), portIdx)
+          busHandled.incl key
+          handledPorts.incl key
 
   # Build successor table: node -> [(consuming node, port index)]
   var successors = initTable[Node, seq[tuple[n: Node, port: int]]]()
@@ -246,6 +259,12 @@ proc placeComponents*(rules: seq[PlacementRule]) =
     of LoopbackPathR:
       let lp = rule.loopbackPath
       successors.mgetOrPut(lp.output.n, @[]).add (lp.input.n, lp.input.port)
+
+  var lineNodes = initHashSet[pointer]()
+  for rule in rules:
+    if rule.kind == LineR:
+      for node in rule.line.nodes:
+        lineNodes.incl cast[pointer](node)
 
   # Pass 2a: place nodes from Lines with no alignment (no inter-node dependencies)
   for rule in rules:
@@ -305,6 +324,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         let r = nodeRects[node]
         for portIdx, inp in node.inputs:
           if (cast[pointer](node), portIdx) notin busHandled and inp.n in nodeRects:
+            handledPorts.incl (cast[pointer](node), portIdx)
             let inRect = nodeRects[inp.n]
             if node.height != 0 and inp.n.outputs.len == 1:
               let fromY = outputPortY(inp.n, inRect, inp.port)
@@ -401,8 +421,8 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         else:
           topBound + elem.offset.float32
 
-      let rightX = max(outRect.x + outRect.w, inRect.x + inRect.w) + 1.float32
-      let leftX  = min(outRect.x, inRect.x) - 1.float32
+      let rightX = max(outRect.x + outRect.w, inRect.x + inRect.w) + 1.float32 + elem.hOffset.right.float32
+      let leftX  = min(outRect.x, inRect.x) - 1.float32 + elem.hOffset.left.float32
 
       let pts = Connection(@[
         point2(outRect.x + outRect.w, outY),
@@ -412,8 +432,36 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         point2(leftX,  inY),
         point2(inRect.x, inY),
       ])
-      doc.add pts, elem.color
-      allConns.add (pts, elem.color, true)
+
+      let connected = elem.input.port < inNode.inputs.len and
+                      inNode.inputs[elem.input.port].n == outNode and
+                      inNode.inputs[elem.input.port].port == elem.output.port
+      if connected:
+        doc.add pts, elem.color
+      else:
+        doc.add pts, color(1, 0, 0), Thickness 0.15
+      allConns.add (pts, (if connected: elem.color else: color(1, 0, 0)), true)
+
+  # Pass 3c: draw error markers for ports with real connections not covered by any rule
+  for node, r in nodeRects:
+    for portIdx, inp in node.inputs:
+      if (cast[pointer](node) notin lineNodes) == (cast[pointer](inp.n) notin lineNodes): continue
+      if (cast[pointer](node), portIdx) in handledPorts: continue
+
+      if cast[pointer](node) in lineNodes:
+        let px = r.x
+        let py = inputPortY(node, r, portIdx)
+        doc.add circle(center = point2(px, py), radius = 0.15):
+          Foreground color(1, 0, 0)
+          Background color(1, 0, 0)
+
+      if cast[pointer](inp.n) in lineNodes:
+        let inRect = nodeRects[inp.n]
+        let px = inRect.x + inRect.w
+        let py = outputPortY(inp.n, inRect, inp.port)
+        doc.add circle(center = point2(px, py), radius = 0.15):
+          Foreground color(1, 0, 0)
+          Background color(1, 0, 0)
 
   # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch
@@ -462,10 +510,12 @@ proc drawRect(r: Rect) =
 
 
 proc drawComponents* =
-  doc.forEach (c: Connection, color: Color||color(0, 0, 0)):
+  doc.forEach (c: Connection, color: Color||color(0, 0, 0), thickness: opt Thickness):
     for i in 0..<(c.len-1):
-      doc.add lineSection(c[i], c[i + 1]):
-        color
+      if has Thickness:
+        doc.add lineSection(c[i], c[i + 1]), Thickness thickness, color
+      else:
+        doc.add lineSection(c[i], c[i + 1]), color
 
   doc.forEach (b: Branch, color: Color||color(0, 0, 0)):
     doc.add circle(center = b.Point2, radius = 0.1):
