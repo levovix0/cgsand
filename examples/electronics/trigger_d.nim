@@ -2,7 +2,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_rs
 
-mainModule: addDefaultElectronicsGlobals()
 
 proc dTrigger*: tuple[pack: Pack, placement: seq[PlacementRule], startup: seq[ValChange]] =
   let rs = rsTrigger()

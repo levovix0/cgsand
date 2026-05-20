@@ -2,8 +2,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_ms
 
-mainModule: addDefaultElectronicsGlobals()
-
 
 type
   TTrigger* = object
@@ -79,8 +77,6 @@ mainModule:
 
   placeComponents(r.placement)
   drawComponents()
-
-  doc[CanvasSettings].mmScale = 2.5
 
   var timestamps = @[
     PlotTimestamp(time: 0, changes: startup(r)),

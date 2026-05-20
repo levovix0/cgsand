@@ -3,8 +3,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_ms
 
-mainModule: addDefaultElectronicsGlobals()
-
 
 type
   CounterMod* = object
@@ -125,8 +123,6 @@ mainModule:
 
   placeComponents(c.placement)
   drawComponents()
-
-  doc[CanvasSettings].mmScale = 2.5
 
   var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
   timestamps.add PlotTimestamp(time: 0.05)

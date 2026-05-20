@@ -2,8 +2,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_rs
 
-mainModule: addDefaultElectronicsGlobals()
-
 
 const bits = 4
 const stageW = 16.0
@@ -88,8 +86,6 @@ mainModule:
 
   placeComponents(placement)
   drawComponents()
-
-  doc[CanvasSettings].mmScale = 2.5
 
   var timestamps = @[
     PlotTimestamp(time: 0, changes: startup & @[setVal(din, 1)]),

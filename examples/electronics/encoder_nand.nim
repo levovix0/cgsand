@@ -2,8 +2,6 @@ import std/sequtils
 import sandbox
 import electronics/schemes
 
-addDefaultElectronicsGlobals()
-
 
 let I = @[Node "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9"]
 let N = I.mapIt(nandN(it))

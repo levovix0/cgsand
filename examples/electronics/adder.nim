@@ -1,8 +1,6 @@
 import sandbox
 import electronics/schemes
 
-addDefaultElectronicsGlobals()
-
 
 let A = @[Node "A1", "A2", "A3"]
 let B = @[Node "B1", "B2", "B3"]

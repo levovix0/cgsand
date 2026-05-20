@@ -54,15 +54,14 @@ type
 let darkTheme* = true
 
 
-let globals* = doc.spawn(
-  CanvasSettings(
-    autoSize: true,
-    margin: vec2(2, 2),
-  ),
-  AxisYDown,
-  (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0)),
-  FontSize 1,
+doc.update globals: add CanvasSettings(
+  autoSize: true,
+  margin: vec2(2, 2),
 )
+doc.update globals: add  AxisYDown
+doc.update globals: add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
+doc.update globals: add FontSize 1
+
 if not darkTheme:
   doc.update globals: add Background color(1, 1, 1)
 

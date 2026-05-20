@@ -99,6 +99,13 @@ when defined(script) or defined(nimcheck):
     cache[].cleanupDeleted()
     doc.forEach (cv: CacheVariable, v: float):
       discard cache[].spawn(cv, v)
+  
+
+  var globals* = doc.spawn(
+    CanvasSettings(),
+    Foreground color(1, 1, 1),
+    Background color(0, 0, 0, 0)
+  )
 
 
 

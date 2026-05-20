@@ -2,7 +2,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_rs
 
-mainModule: addDefaultElectronicsGlobals()
 
 type
   RcsTrigger* = object

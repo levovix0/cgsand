@@ -2,8 +2,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_d
 
-mainModule: addDefaultElectronicsGlobals()
-
 
 const bits = 4
 const rowH = 3.0
@@ -69,8 +67,6 @@ mainModule:
 
   placeComponents(placement)
   drawComponents()
-
-  doc[CanvasSettings].mmScale = 2.5
 
   var timestamps = @[
     PlotTimestamp(time: 0, changes: startup & @[setVal(Ds[0], 1), setVal(Ds[1], 0), setVal(Ds[2], 1), setVal(Ds[3], 0)]),

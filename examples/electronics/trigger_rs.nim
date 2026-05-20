@@ -1,10 +1,9 @@
 import sandbox
 import electronics/schemes
 
-addDefaultElectronicsGlobals()
 
-
-type RsTrigger* = tuple[pack: Pack, placement: seq[PlacementRule], T: seq[Node]]
+type
+  RsTrigger* = tuple[pack: Pack, placement: seq[PlacementRule], T: seq[Node]]
 
 
 proc rsTrigger*: RsTrigger =
@@ -60,8 +59,6 @@ mainModule:
 
   placeComponents(placement)
   drawComponents()
-
-  doc[CanvasSettings].mmScale = 2.5
 
   let S {.used.} = n.inputs[0]
   let R {.used.} = n.inputs[1]

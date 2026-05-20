@@ -2,8 +2,6 @@ import sandbox
 import electronics/schemes
 import ./trigger_rs
 
-mainModule: addDefaultElectronicsGlobals()
-
 
 type
   MsTrigger* = object
@@ -98,12 +96,8 @@ proc startup*(r: MsTrigger, v: Value = 0): seq[ValChange] =
 mainModule:
   let r = msTrigger()
 
-
   placeComponents(r.placement)
   drawComponents()
-
-
-  doc[CanvasSettings].mmScale = 2.5
 
 
   var timestamps = @[

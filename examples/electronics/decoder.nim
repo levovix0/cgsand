@@ -2,8 +2,6 @@ import std/sequtils
 import sandbox
 import electronics/schemes
 
-addDefaultElectronicsGlobals()
-
 
 let inputs = @[Node "x3", "x2", "x1"]
 let inverted = inputs.mapIt(norN(it))

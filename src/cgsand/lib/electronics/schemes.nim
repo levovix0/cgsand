@@ -104,6 +104,7 @@ type
     plotSignalHeight*: float32 = 1.0
     plotValueFontSize*: float32 = 0.5
 
+
 let darkTheme = false  # todo: unify dark theme with shafts/ darkTheme and read darkTheme from sandbox settings
 
 var schemeTheme* = SchemeTheme()
@@ -127,12 +128,21 @@ const Eps = 1e-4
 const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
 
 
-proc addDefaultElectronicsGlobals* =
-  doc.add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin)):
-    AxisYDown
-    FontSize schemeTheme.baseFontSize
-    Background schemeTheme.background
-    Foreground schemeTheme.foreground
+
+# todo: ecs bug: not (i == -1)` component was not found in destination archetype [AssertionDefect]
+# doc.update globals:
+#   add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+#   add AxisYDown
+#   add FontSize schemeTheme.baseFontSize
+#   add Background schemeTheme.background
+#   add Foreground schemeTheme.foreground
+
+doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+doc.update globals: add AxisYDown
+doc.update globals: add FontSize schemeTheme.baseFontSize
+doc.update globals: add Background schemeTheme.background
+doc.update globals: add Foreground schemeTheme.foreground
+
 
 
 converter toNode*(name: string): Node = Node(kind: SymN, name: name)
@@ -858,8 +868,6 @@ proc echoPlot*(plot: Plot) =
 
 
 mainModule:
-  addDefaultElectronicsGlobals()
-
   let inputs = @[Node "x3", "x2", "x1"]
   let inverted = inputs.mapIt(norN(it))
 
