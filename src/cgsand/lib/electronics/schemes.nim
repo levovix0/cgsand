@@ -43,14 +43,22 @@ type
     path*: seq[Point2]
     color*: Color = color(0, 0, 0)
 
+  LoopbackPath* = object
+    output*: Port
+    input*: Port
+    offset*: float
+    color*: Color = color(0, 0, 0)
+
   PlacementRuleKind* = enum
     LineR
     BusR
+    LoopbackPathR
 
   PlacementRule* = object
     case kind*: PlacementRuleKind
     of LineR: line*: Line
     of BusR: bus*: Bus
+    of LoopbackPathR: loopbackPath*: LoopbackPath
 
   Value* = object
     power*: float
@@ -134,6 +142,10 @@ proc packN*(pack: Pack, name: string, inputs: varargs[Port]): Node =
 
 converter toPlacementRule*(l: Line): PlacementRule = PlacementRule(kind: LineR, line: l)
 converter toPlacementRule*(b: Bus): PlacementRule = PlacementRule(kind: BusR, bus: b)
+converter toPlacementRule*(lp: LoopbackPath): PlacementRule = PlacementRule(kind: LoopbackPathR, loopbackPath: lp)
+
+proc loopbackPath*(output: Port, input: Port, offset: float = 0, color = color(0, 0, 0)): LoopbackPath =
+  LoopbackPath(output: output, input: input, offset: offset, color: color)
 
 proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
   Bus(path: @path, input: input, outputs: @outputs, color: color)
@@ -153,6 +165,8 @@ proc move*(rules: var seq[PlacementRule], v: Vec2) =
       x.bus.origin += v
       for x in x.bus.path.mitems:
         x += v
+    of LoopbackPathR:
+      discard
 
 
 
@@ -202,7 +216,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
   type ConnKey = tuple[n: pointer, port: int]
   var busHandled = initHashSet[ConnKey]()
 
-  # Pass 1: collect which (node, portIdx) pairs are connected via buses
+  # Pass 1: collect which (node, portIdx) pairs are connected via buses or loopbacks
   for rule in rules:
     if rule.kind == BusR:
       let elem = rule.bus
@@ -210,6 +224,12 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         for portIdx, inp in outNode.inputs:
           if inp.n == elem.input.n and inp.port == elem.input.port:
             busHandled.incl (cast[pointer](outNode), portIdx)
+    elif rule.kind == LoopbackPathR:
+      let elem = rule.loopbackPath
+      let inNode = elem.input.n
+      for portIdx, inp in inNode.inputs:
+        if inp.n == elem.output.n and inp.port == elem.output.port:
+          busHandled.incl (cast[pointer](inNode), portIdx)
 
   # Build successor table: node -> [(consuming node, port index)]
   var successors = initTable[Node, seq[tuple[n: Node, port: int]]]()
@@ -223,6 +243,9 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       for outNode in rule.bus.outputs:
         for portIdx, inp in outNode.inputs:
           successors.mgetOrPut(inp.n, @[]).add (outNode, portIdx)
+    of LoopbackPathR:
+      let lp = rule.loopbackPath
+      successors.mgetOrPut(lp.output.n, @[]).add (lp.input.n, lp.input.port)
 
   # Pass 2a: place nodes from Lines with no alignment (no inter-node dependencies)
   for rule in rules:
@@ -275,6 +298,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
   # Pass 3: place Connection and collect for branch detection
   for rule in rules:
     case rule.kind
+    of LoopbackPathR: discard
     of LineR:
       let elem {.cursor.} = rule.line
       for node in elem.nodes:
@@ -349,6 +373,47 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             let stub = Connection(@[point2(busX, portY), point2(outRect.x, portY)])
             doc.add stub, elem.color
             allConns.add (stub, elem.color, false)
+
+  # Pass 3b: draw LoopbackPath connections
+  for rule in rules:
+    if rule.kind == LoopbackPathR:
+      let elem = rule.loopbackPath
+      let outNode = elem.output.n
+      let inNode = elem.input.n
+      if outNode notin nodeRects or inNode notin nodeRects: continue
+
+      let outRect = nodeRects[outNode]
+      let inRect = nodeRects[inNode]
+      let outY = outputPortY(outNode, outRect, elem.output.port)
+      let inY = inputPortY(inNode, inRect, elem.input.port)
+
+      let topBound = min(outRect.y, inRect.y)
+      let bottomBound = max(outRect.y + outRect.h, inRect.y + inRect.h)
+
+      let midY: float32 =
+        if elem.offset == 0:
+          if outY - topBound < bottomBound - outY:
+            topBound - 1
+          else:
+            bottomBound + 1
+        elif elem.offset > 0:
+          bottomBound + elem.offset.float32
+        else:
+          topBound + elem.offset.float32
+
+      let rightX = max(outRect.x + outRect.w, inRect.x + inRect.w) + 1.float32
+      let leftX  = min(outRect.x, inRect.x) - 1.float32
+
+      let pts = Connection(@[
+        point2(outRect.x + outRect.w, outY),
+        point2(rightX, outY),
+        point2(rightX, midY),
+        point2(leftX,  midY),
+        point2(leftX,  inY),
+        point2(inRect.x, inY),
+      ])
+      doc.add pts, elem.color
+      allConns.add (pts, elem.color, true)
 
   # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch

@@ -6,94 +6,108 @@ mainModule: addDefaultElectronicsGlobals()
 
 
 type
-  Counter14* = object
+  CounterMod* = object
     C*: Node
     Q*: seq[Node]
     ms*: seq[MsTrigger]
     msN*: seq[Node]
-    reset*: Node
+    carry*: seq[Node]    ## carry[i] = Q₀·Q₁·…·Qᵢ
+    reset*: Node         ## nil when modulus is a power of 2 (natural rollover)
     placement*: seq[PlacementRule]
 
 
-proc counter14*: Counter14 =
+proc counterMod*(modulus: int): CounterMod =
+  ## Synchronous binary counter with auto-reset at `modulus`.
+  ## Builds T-triggers from MS-triggers via packN.
+  ## Minimum number of bits is derived automatically.
   template r: untyped = result
+  assert modulus >= 2
+
+  var n = 1
+  while (1 shl n) < modulus:
+    inc n
 
   r.C = Node "C"
 
-  r.ms = newSeq[MsTrigger](4)
-  r.msN = newSeq[Node](4)
-  for i in 0..<4:
-    r.ms[i] = msTrigger()
+  r.ms  = newSeq[MsTrigger](n)
+  r.msN = newSeq[Node](n)
+  for i in 0..<n:
+    r.ms[i]  = msTrigger()
     r.msN[i] = r.ms[i].msPack.packN("T" & subscript[i])
 
-  # Auto-reset: detect state 14 = 1110₂ → Q₃·Q₂·Q₁
-  r.reset = andN((r.msN[3], 0), (r.msN[2], 0), (r.msN[1], 0))
+  # Detect state `modulus`: AND together the Q outputs whose bit is set in modulus.
+  block:
+    var acc: Node = nil
+    for i in 0..<n:
+      if ((modulus shr i) and 1) == 1:
+        acc = if acc == nil: symN("", (r.msN[i], 0))
+              else:          andN(acc, (r.msN[i], 0))
+    r.reset = acc  # nil when modulus is power of 2
 
-  # FF0: T=1 → S = !Q₀, R_eff = Q₀ OR reset
-  let s0 = symN("!Q" & subscript[0], (r.msN[0], 1))
-  let r0 = orN((r.msN[0], 0), r.reset)
-  r.msN[0].inputs.add s0
-  r.msN[0].inputs.add r.C
-  r.msN[0].inputs.add r0
+  # carry[i] = Q₀·Q₁·…·Qᵢ  (running AND chain)
+  # sArr[i]  = carry[i-1] · !Qᵢ   (= Tᵢ · !Qᵢ, the S input)
+  # rArr[i]  = carry[i] [OR reset] (= Tᵢ · Qᵢ [+ forced reset], the R input)
+  r.carry = newSeq[Node](n)
+  var sArr = newSeq[Node](n)
+  var rArr = newSeq[Node](n)
 
-  # FF1: T₁ = Q₀ → S = Q₀·!Q₁, R_eff = Q₀·Q₁ OR reset
-  let s1 = andN((r.msN[0], 0), (r.msN[1], 1))
-  let r1 = orN(andN((r.msN[0], 0), (r.msN[1], 0)), r.reset)
-  r.msN[1].inputs.add s1
-  r.msN[1].inputs.add r.C
-  r.msN[1].inputs.add r1
+  sArr[0]    = symN("!Q" & subscript[0], (r.msN[0], 1))
+  r.carry[0] = symN("Q"  & subscript[0], (r.msN[0], 0))
+  rArr[0]    = if r.reset != nil: orN(r.carry[0], r.reset) else: r.carry[0]
 
-  # FF2: T₂ = Q₀·Q₁ → S = Q₀·Q₁·!Q₂, R_eff = Q₀·Q₁·Q₂ OR reset
-  let s2 = andN((r.msN[0], 0), (r.msN[1], 0), (r.msN[2], 1))
-  let r2 = orN(andN((r.msN[0], 0), (r.msN[1], 0), (r.msN[2], 0)), r.reset)
-  r.msN[2].inputs.add s2
-  r.msN[2].inputs.add r.C
-  r.msN[2].inputs.add r2
+  for i in 1..<n:
+    r.carry[i] = andN(r.carry[i-1], (r.msN[i], 0))
+    sArr[i]    = andN(r.carry[i-1], (r.msN[i], 1))
+    rArr[i]    = if r.reset != nil: orN(r.carry[i], r.reset) else: r.carry[i]
 
-  # FF3: T₃ = Q₀·Q₁·Q₂ → S = Q₀·Q₁·Q₂·!Q₃, R_eff = Q₀·Q₁·Q₂·Q₃ OR reset
-  let s3 = andN((r.msN[0], 0), (r.msN[1], 0), (r.msN[2], 0), (r.msN[3], 1))
-  let r3 = orN(andN((r.msN[0], 0), (r.msN[1], 0), (r.msN[2], 0), (r.msN[3], 0)), r.reset)
-  r.msN[3].inputs.add s3
-  r.msN[3].inputs.add r.C
-  r.msN[3].inputs.add r3
+  for i in 0..<n:
+    r.msN[i].inputs.add sArr[i]
+    r.msN[i].inputs.add r.C
+    r.msN[i].inputs.add rArr[i]
 
-  r.Q = @[
-    symN("Q" & subscript[0], (r.msN[0], 0)),
-    symN("Q" & subscript[1], (r.msN[1], 0)),
-    symN("Q" & subscript[2], (r.msN[2], 0)),
-    symN("Q" & subscript[3], (r.msN[3], 0)),
-  ]
+  r.Q = newSeq[Node](n)
+  for i in 0..<n:
+    r.Q[i] = symN("Q" & subscript[i], (r.msN[i], 0))
 
-  r.placement = placementRules(
-    Line(origin: point2(0, 10),  nodes: @[r.C]),
+  # Layout: each trigger is offset by (stepX, stepY) from the previous.
+  const stepX = 18.0
+  const stepY = 4.0
 
-    Line(origin: point2(6, -1.5),  nodes: @[s0]),
-    Line(origin: point2(6,  1.5),  nodes: @[r0]),
-    Line(origin: point2(12, 0),    nodes: @[r.msN[0]]),
+  var rules: seq[PlacementRule]
+  rules.add Line(origin: point2(0, n.float * stepY + 6), nodes: @[r.C])
 
-    Line(origin: point2(20, -1.5), nodes: @[s1]),
-    Line(origin: point2(20,  1.5), nodes: @[r1]),
-    Line(origin: point2(26, 0),    nodes: @[r.msN[1]]),
+  for i in 0..<n:
+    let x = 6.0  + i.float * stepX
+    let y = i.float * stepY
+    rules.add Line(origin: point2(x, y - 1.5), nodes: @[sArr[i]], align: Outputs)
+    # rules.add Line(origin: point2(x, y + 1.5), nodes: @[rArr[i]])
+    rules.add Line(origin: point2(x + 6, y), nodes: @[r.msN[i]])
+    if i > 0:
+      ## carry[i-1] is the AND node feeding both sArr[i] and carry[i]
+      # rules.add Line(origin: point2(x - 4, y - 0.5), nodes: @[r.carry[i-1]])
 
-    Line(origin: point2(34, -1.5), nodes: @[s2]),
-    Line(origin: point2(34,  1.5), nodes: @[r2]),
-    Line(origin: point2(40, 0),    nodes: @[r.msN[2]]),
+  # if r.reset != nil:
+  #   rules.add Line(
+  #     origin: point2(n.float * stepX + 4, n.float * stepY + 2),
+  #     nodes: @[r.reset],
+  #   )
 
-    Line(origin: point2(48, -1.5), nodes: @[s3]),
-    Line(origin: point2(48,  1.5), nodes: @[r3]),
-    Line(origin: point2(54, 0),    nodes: @[r.msN[3]]),
-
-    Line(origin: point2(32, 8),    nodes: @[r.reset]),
-
-    Line(origin: point2(62, 0), nodes: r.Q, gap: 2, align: Inputs),
-
-    bus(point2(2, 0), r.C, @[s0, r0, r1, r2, r3]),
+  rules.add Line(
+    origin: point2(n.float * stepX + 10, 0),
+    nodes:  r.Q,
+    align:  Inputs,
   )
 
+  for i in 0..<n:
+    rules.add bus(point2(11.0 + i.float * stepX, 0), r.C, @[r.msN[i]])
+    rules.add loopbackPath((r.msN[i],1), (sArr[i],1))
 
-proc startup*(c: Counter14): seq[ValChange] =
+  r.placement = rules
+
+
+proc startup*(c: CounterMod): seq[ValChange] =
   result.add setVal(c.C, 0)
-  for i in 0..<4:
+  for i in 0..<c.ms.len:
     result.add setVal(c.ms[i].t1.T[0], 0)
     result.add setVal(c.ms[i].t1.T[1], 1)
     result.add setVal(c.ms[i].t2.T[0], 0)
@@ -102,29 +116,33 @@ proc startup*(c: Counter14): seq[ValChange] =
 
 
 mainModule:
-  let c = counter14()
+  let c = counterMod(14)
 
   placeComponents(c.placement)
   drawComponents()
 
-  doc[CanvasSettings].mmScale = 2.0
+  doc[CanvasSettings].mmScale = 2.5
 
   var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
   timestamps.add PlotTimestamp(time: 0.05)
 
   for t in 0..<15:
     let base = 1.0 + t.float * 3.0
-    timestamps.add PlotTimestamp(time: base,        changes: @[setVal(c.C, 1)])
+    timestamps.add PlotTimestamp(time: base,       changes: @[setVal(c.C, 1)])
     timestamps.add PlotTimestamp(time: base + 0.05)
-    timestamps.add PlotTimestamp(time: base + 1.5,  changes: @[setVal(c.C, 0)])
+    timestamps.add PlotTimestamp(time: base + 1.5, changes: @[setVal(c.C, 0)])
     timestamps.add PlotTimestamp(time: base + 1.55)
 
+  let plotData =
+    if c.reset != nil: @[@[c.C], c.Q, @[c.reset]]
+    else:              @[@[c.C], c.Q]
+
   let p = Plot(
-    data: @[@[c.C], c.Q, @[c.reset]],
-    gap: 0.2,
-    groupGap: 0.5,
-    timeScale: 1.5,
-    timestamps: timestamps,
-    origin: point2(0, 14),
+    data:              plotData,
+    gap:               0.2,
+    groupGap:          0.5,
+    timeScale:         1.5,
+    timestamps:        timestamps,
+    origin:            point2(0, 14),
     skipUnchangedAxes: true,
   )
