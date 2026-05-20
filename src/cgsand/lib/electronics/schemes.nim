@@ -90,16 +90,49 @@ type
     axiesColor*: Color = color(0, 0, 0, 0.1)
     skipUnchangedAxes*: bool = false
 
+  SchemeTheme* = object
+    background*: Color = color(1, 1, 1)
+    foreground*: Color = color(0, 0, 0)
+    errorColor*: Color = color(1, 0, 0)
+    canvasMargin*: float32 = 1.0
+    baseFontSize*: float32 = 1.0
+    branchRadius*: float32 = 0.1
+    negationCircleRadius*: float32 = 0.1
+    negationLineThickness*: float32 = 0.05
+    errorCircleRadius*: float32 = 0.15
+    errorConnectionThickness*: float32 = 0.15
+    plotSignalHeight*: float32 = 1.0
+    plotValueFontSize*: float32 = 0.5
+
+let darkTheme = false  # todo: unify dark theme with shafts/ darkTheme and read darkTheme from sandbox settings
+
+var schemeTheme* = SchemeTheme()
+if darkTheme:
+  schemeTheme = SchemeTheme(
+    background:               parseHtmlHex "#202020",
+    foreground:               color(0.75, 0.75, 0.8),
+    errorColor:               color(1, 0.4, 0.4),
+    canvasMargin:             1.0,
+    baseFontSize:             1.0,
+    branchRadius:             0.1,
+    negationCircleRadius:     0.1,
+    negationLineThickness:    0.05,
+    errorCircleRadius:        0.15,
+    errorConnectionThickness: 0.15,
+    plotSignalHeight:         1.0,
+    plotValueFontSize:        0.5,
+  )
+
 const Eps = 1e-4
 const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
 
 
 proc addDefaultElectronicsGlobals* =
-  doc.add CanvasSettings(autoSize: true, margin: vec2(1)):
+  doc.add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin)):
     AxisYDown
-    FontSize 1
-    Background color(1, 1, 1)
-    Foreground color(0, 0, 0)
+    FontSize schemeTheme.baseFontSize
+    Background schemeTheme.background
+    Foreground schemeTheme.foreground
 
 
 converter toNode*(name: string): Node = Node(kind: SymN, name: name)
@@ -152,13 +185,13 @@ converter toPlacementRule*(l: Line): PlacementRule = PlacementRule(kind: LineR, 
 converter toPlacementRule*(b: Bus): PlacementRule = PlacementRule(kind: BusR, bus: b)
 converter toPlacementRule*(lp: LoopbackPath): PlacementRule = PlacementRule(kind: LoopbackPathR, loopbackPath: lp)
 
-proc loopbackPath*(output: Port, input: Port, offset: float = 0, hOffset: HOffset = 0.0, color = color(0, 0, 0)): LoopbackPath =
+proc loopbackPath*(output: Port, input: Port, offset: float = 0, hOffset: HOffset = 0.0, color = schemeTheme.foreground): LoopbackPath =
   LoopbackPath(output: output, input: input, offset: offset, hOffset: hOffset, color: color)
 
-proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = schemeTheme.foreground): Bus =
   Bus(path: @path, input: input, outputs: @outputs, color: color)
 
-proc bus*(origin: Point2, input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+proc bus*(origin: Point2, input: Port, outputs: openArray[Node], color = schemeTheme.foreground): Bus =
   Bus(origin: origin, input: input, outputs: @outputs, color: color)
 
 
@@ -330,7 +363,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let pts = Connection(@[point2(inRect.x + inRect.w, fromY), point2(r.x, fromY)])
               doc.add pts
-              allConns.add (pts, color(0, 0, 0), true)
+              allConns.add (pts, schemeTheme.foreground, true)
             else:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let toY = inputPortY(node, r, portIdx)
@@ -339,12 +372,12 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               if abs(fromY - toY) < Eps:
                 let pts = Connection(@[p1, p2])
                 doc.add pts
-                allConns.add (pts, color(0, 0, 0), true)
+                allConns.add (pts, schemeTheme.foreground, true)
               else:
                 let midX = (p1.x + p2.x) / 2.0
                 let pts = Connection(@[p1, point2(midX, fromY), point2(midX, toY), p2])
                 doc.add pts
-                allConns.add (pts, color(0, 0, 0), true)
+                allConns.add (pts, schemeTheme.foreground, true)
 
     of BusR:
       let elem {.cursor.} = rule.bus
@@ -439,8 +472,8 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       if connected:
         doc.add pts, elem.color
       else:
-        doc.add pts, color(1, 0, 0), Thickness 0.15
-      allConns.add (pts, (if connected: elem.color else: color(1, 0, 0)), true)
+        doc.add pts, schemeTheme.errorColor, Thickness schemeTheme.errorConnectionThickness
+      allConns.add (pts, (if connected: elem.color else: schemeTheme.errorColor), true)
 
   # Pass 3c: draw error markers for ports with real connections not covered by any rule
   for node, r in nodeRects:
@@ -451,17 +484,17 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       if cast[pointer](node) in lineNodes:
         let px = r.x
         let py = inputPortY(node, r, portIdx)
-        doc.add circle(center = point2(px, py), radius = 0.15):
-          Foreground color(1, 0, 0)
-          Background color(1, 0, 0)
+        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius):
+          Foreground schemeTheme.errorColor
+          Background schemeTheme.errorColor
 
       if cast[pointer](inp.n) in lineNodes:
         let inRect = nodeRects[inp.n]
         let px = inRect.x + inRect.w
         let py = outputPortY(inp.n, inRect, inp.port)
-        doc.add circle(center = point2(px, py), radius = 0.15):
-          Foreground color(1, 0, 0)
-          Background color(1, 0, 0)
+        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius):
+          Foreground schemeTheme.errorColor
+          Background schemeTheme.errorColor
 
   # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch
@@ -472,7 +505,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       for starter in starters.mitems:
         if starter.p ~== conn.pts[0] and not isParallel(conn.pts[1] - conn.pts[0], starter.dir):
           inc starter.count
-          if starter.color == color(0, 0, 0):
+          if starter.color == schemeTheme.foreground:
             starter.color = conn.color
           break hasStarter
       # not hasStarter
@@ -510,15 +543,15 @@ proc drawRect(r: Rect) =
 
 
 proc drawComponents* =
-  doc.forEach (c: Connection, color: Color||color(0, 0, 0), thickness: opt Thickness):
+  doc.forEach (c: Connection, color: Color||schemeTheme.foreground, thickness: opt Thickness):
     for i in 0..<(c.len-1):
       if has Thickness:
         doc.add lineSection(c[i], c[i + 1]), Thickness thickness, color
       else:
         doc.add lineSection(c[i], c[i + 1]), color
 
-  doc.forEach (b: Branch, color: Color||color(0, 0, 0)):
-    doc.add circle(center = b.Point2, radius = 0.1):
+  doc.forEach (b: Branch, color: Color||schemeTheme.foreground):
+    doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius):
       Foreground color
       Background color
 
@@ -534,9 +567,9 @@ proc drawComponents* =
       for i, o in n.outputs:
         let p = point2(r.x + r.w, outputPortY(n, r, i))
         if not o:
-          doc.add circle(center = p, radius = 0.1):
-            Foreground color(0, 0, 0)
-            Background color(1, 1, 1)
+          doc.add circle(center = p, radius = schemeTheme.negationCircleRadius):
+            Foreground schemeTheme.foreground
+            Background schemeTheme.background
     
     of SymN:
       var name = n.name
@@ -549,7 +582,7 @@ proc drawComponents* =
         PositionAtBottom
       
       if negate:
-        doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness 0.05
+        doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness schemeTheme.negationLineThickness
 
     of PackN:
       assert(n.pack != nil)
@@ -578,7 +611,7 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness 0.05
+          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
 
       for i, outN in n.pack.outputs:
         let y = r.y + i.float * outH
@@ -592,10 +625,10 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness 0.05
-          doc.add circle(point2(r.x + 6, y + outH/2), radius = 0.1):
-            Foreground color(0, 0, 0)
-            Background color(1, 1, 1)
+          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
+          doc.add circle(point2(r.x + 6, y + outH/2), radius = schemeTheme.negationCircleRadius):
+            Foreground schemeTheme.foreground
+            Background schemeTheme.background
 
 
 proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node]): Value =
@@ -674,7 +707,7 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
 
 
 proc draw*(plot: Plot) =
-  const signalH = 1.0
+  let signalH = schemeTheme.plotSignalHeight
   var stamps = plot.timestamps
   stamps.sort(proc(a, b: PlotTimestamp): int = cmp(a.time, b.time))
   if stamps.len == 0: return
@@ -758,12 +791,12 @@ proc draw*(plot: Plot) =
             doc.add Text valStr:
               Position2 point2(x1 + 0.2, rowY + 0.2)
               PositionAtTopLeft
-              FontSize 0.5
+              FontSize schemeTheme.plotValueFontSize
           else:
             doc.add Text valStr:
               Position2 point2(x1 + 0.2, rowY + signalH - 0.2)
               PositionAtBottomLeft
-              FontSize 0.5
+              FontSize schemeTheme.plotValueFontSize
 
       y += signalH + plot.gap
 
