@@ -6,7 +6,7 @@ import ./[shafts]
 
 proc mm*(m: float): float = m * 1e-3
 
-let mainLine = Thickness 0.05
+let mainLine = PixelThickness 3
 let dimFontSize = FontSize 0.5
 
 

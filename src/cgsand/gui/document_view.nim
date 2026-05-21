@@ -171,17 +171,27 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
 
   ctx.viewport = this.viewport[]
 
-  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness, transform3: Transform3||dmat4()):
-    drawLineSection(ctx, line, color, (if has Thickness: some thickness else: none Thickness), transform = mat4(transform3))
+  let toGl = this.viewportToGlMatrix
+  let pixelsPerUnit = sqrt(toGl[0][0]*toGl[0][0] + toGl[1][0]*toGl[1][0]) * width / 2
+
+  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+    let thk =
+      if has PixelThickness: some(pixThick / pixelsPerUnit)
+      elif has Thickness: some thickness
+      else: none float32
+    drawLineSection(ctx, line, color, thk, transform = mat4(transform3))
 
 
-  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness, transform3: Transform3||dmat4()):
+  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
     let points = curve.points(count)
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    let thk = if has Thickness: some thickness else: none Thickness
+    let thk =
+      if has PixelThickness: some(pixThick / pixelsPerUnit)
+      elif has Thickness: some thickness
+      else: none float32
     let t3 = mat4(transform3)
 
     if curve.closed:
@@ -198,22 +208,26 @@ proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, h
           drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
 
 
-  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness, transform3: Transform3||dmat4()):
+  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
     let points = arc.points(count)
-    let thk = if has Thickness: some thickness else: none Thickness
+    let thk =
+      if has PixelThickness: some(pixThick / pixelsPerUnit)
+      elif has Thickness: some thickness
+      else: none float32
     let t3 = mat4(transform3)
     for i in 0 ..< points.len - 1:
       drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
   
 
-  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, opt Background, transform3: Transform3||dmat4()):
+  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, transform3: Transform3||dmat4()):
     let t3 = mat4(transform3)
+    let strokeWidth = if has PixelThickness: pixThick / pixelsPerUnit else: thickness
     if has Background:
       ctx.fillPath(path, color = the Background, transform = t3)
     if has Foreground:
-      ctx.strokePath(path, color = the Foreground, strokeWidth=thickness, transform = t3)
+      ctx.strokePath(path, color = the Foreground, strokeWidth=strokeWidth, transform = t3)
     elif has Color:
-      ctx.strokePath(path, color = the Color, strokeWidth=thickness, transform = t3)
+      ctx.strokePath(path, color = the Color, strokeWidth=strokeWidth, transform = t3)
     elif not(has Background):
       ctx.fillPath(path, color = globals.foreground, transform = t3)
 

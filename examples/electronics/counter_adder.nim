@@ -150,6 +150,7 @@ mainModule:
   placeComponents(c.placement)
   drawComponents()
 
+
   var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
 
   for t in 0..(c.modulus+6):

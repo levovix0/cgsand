@@ -95,7 +95,8 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
     r.ttN[i].inputs.add(if r.T_expr[i] != nil: r.T_expr[i] else: zeroNode)
     r.ttN[i].inputs.add r.C
 
-  # Placement — one Line per logic layer, no loopback paths
+
+  # Placement
   const stepX = 14.0
   var rules: seq[PlacementRule]
   let nf = nBits.float
@@ -104,12 +105,12 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
 
   for i in 0..<nBits:
     let x = i.float * stepX
-    if intermediates[i].len > 0:
-      rules.add Line(origin: point2(x, 0), nodes: intermediates[i])
+    # if intermediates[i].len > 0:
+    #   rules.add Line(origin: point2(x, 0), nodes: intermediates[i])
     rules.add Line(origin: point2(x + 6, 0), nodes: @[r.ttN[i]])
 
-  rules.add Line(origin: point2(nf * stepX + 6, 0), nodes: r.Q,  align: Inputs)
-  rules.add Line(origin: point2(nf * stepX + 6, -4), nodes: r.nQ, align: Inputs)
+  # rules.add Line(origin: point2(nf * stepX + 6, 0), nodes: r.Q,  align: Inputs)
+  # rules.add Line(origin: point2(nf * stepX + 6, -4), nodes: r.nQ, align: Inputs)
 
   for i in 0..<nBits:
     rules.add bus(point2(i.float * stepX + 6, -2), r.C, @[r.ttN[i]])
