@@ -22,7 +22,7 @@ if not doc.hasComponent(globals, OwnerModule):
   doc.update globals: add Background color(1, 1, 1)
   doc.update globals: add Foreground color(0, 0, 0)
   doc.update globals: add FontSize 1
-  doc.update globals: add AxisYUp
+  doc.update globals: add AxisYDown
 
 
 proc varValues(y, x, nVars: int): seq[int] =
@@ -175,7 +175,7 @@ proc drawNormalFormImpl(
     return
 
   # Tight glyph bounds — renderer uses these for vertical centering (PositionAtLeft, exactBoundaries)
-  # world_y of pixie py = origin.y + (boxY + boxH/2 - py) / sf
+  # world_y of pixie py = origin.y - (boxY + boxH/2 - py) / sf  (AxisYDown: up = negative Y)
   var boxX = 0.0f32
   var boxY = 0.0f32
   var boxH = font.size * sf
@@ -188,7 +188,7 @@ proc drawNormalFormImpl(
     discard
 
   let sel0 = sels[0]
-  let oy = float64(boxY + boxH * 0.5f32 - sel0.y) / float64(sf) + float64(font.size) * 0.05
+  let oy = -(float64(boxY + boxH * 0.5f32 - sel0.y) / float64(sf) + float64(font.size) * 0.05)
 
   for (a, b) in overlines:
     if b < sels.len:
@@ -233,7 +233,7 @@ proc drawKarnaughGroups*(
     let ya = group.rect.y.a
     let yb = group.rect.y.b
 
-    let cy = origin.y - (ya + yb + 1).float * cellSize / 2
+    let cy = origin.y + (ya + yb + 1).float * cellSize / 2
     let ry = (yb - ya + 1).float * cellSize / 2 + margin
     let cx = origin.x + (xa + xb + 1).float * cellSize / 2
     let rx = (xb - xa + 1).float * cellSize / 2 + margin
@@ -261,18 +261,18 @@ proc drawKarnaughGroups*(
     elif not wrapX and wrapY:
       let ryBottom = (-ya).float * cellSize + margin
       let ryTop = (yb + 1).float * cellSize + margin
-      addArc(cx, origin.y - tableH, rx * 2, ryBottom * 2, 0, Pi)
-      addArc(cx, origin.y, rx * 2, ryTop * 2, Pi, 2 * Pi)
+      addArc(cx, origin.y + tableH, rx * 2, ryBottom * 2, -Pi, 0)
+      addArc(cx, origin.y, rx * 2, ryTop * 2, 0, Pi)
 
     else:
       let rxRight = (-xa).float * cellSize + margin
       let rxLeft = (xb + 1).float * cellSize + margin
       let ryBottom = (-ya).float * cellSize + margin
       let ryTop = (yb + 1).float * cellSize + margin
-      addArc(origin.x + tableW, origin.y - tableH, rxRight * 2, ryBottom * 2, Pi / 2, Pi)
-      addArc(origin.x, origin.y - tableH, rxLeft * 2, ryBottom * 2, 0, Pi / 2)
-      addArc(origin.x + tableW, origin.y, rxRight * 2, ryTop * 2, Pi, Pi * 3 / 2)
-      addArc(origin.x, origin.y, rxLeft * 2, ryTop * 2, Pi * 3 / 2, 2 * Pi)
+      addArc(origin.x + tableW, origin.y + tableH, rxRight * 2, ryBottom * 2, -Pi, -Pi / 2)
+      addArc(origin.x, origin.y + tableH, rxLeft * 2, ryBottom * 2, -Pi / 2, 0)
+      addArc(origin.x + tableW, origin.y, rxRight * 2, ryTop * 2, Pi / 2, Pi)
+      addArc(origin.x, origin.y, rxLeft * 2, ryTop * 2, 0, Pi / 2)
 
 
 proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]], cellSize: float = 2.0) =
@@ -286,31 +286,31 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
 
   doc[].forEach (r: RectTable, pos: Position2||point2()):
     doc[].add lineSection(pos, pos + vec2(r.size.x, 0))
-    doc[].add lineSection(pos + vec2(r.size.x, 0), pos + vec2(r.size.x, -r.size.y))
-    doc[].add lineSection(pos + vec2(r.size.x, -r.size.y), pos + vec2(0, -r.size.y))
-    doc[].add lineSection(pos + vec2(0, -r.size.y), pos)
+    doc[].add lineSection(pos + vec2(r.size.x, 0), pos + vec2(r.size.x, r.size.y))
+    doc[].add lineSection(pos + vec2(r.size.x, r.size.y), pos + vec2(0, r.size.y))
+    doc[].add lineSection(pos + vec2(0, r.size.y), pos)
 
-    for i in 1..r.rows:
+    for i in 1..<r.rows:
       let y = (i / r.rows) * r.size.y
-      doc[].add lineSection(pos + vec2(0, -y), pos + vec2(r.size.x, -y))
+      doc[].add lineSection(pos + vec2(0, y), pos + vec2(r.size.x, y))
 
-    for i in 1..r.cols:
+    for i in 1..<r.cols:
       let x = (i / r.cols) * r.size.x
-      doc[].add lineSection(pos + vec2(x, 0), pos + vec2(x, -r.size.y))
+      doc[].add lineSection(pos + vec2(x, 0), pos + vec2(x, r.size.y))
 
     let cs = r.size.x / float(r.cols)
     let bH = cs * 0.125
     let bW = bH
-    let sz = vec2(r.size.x, -(r.size.y))
+    let sz = vec2(r.size.x, r.size.y)
 
     proc drawLabel(name: string, labelPos: Point2, anchor: PositionAt) =
       var name = name
       if name.startsWith("!"):
         let v = case anchor
-          of PositionAtBottom: vec2(0, 1 - 0.1)
-          of PositionAtTop:    vec2(0, 0.1)
-          of PositionAtRight:  vec2(-0.3, 0.5)
-          of PositionAtLeft:   vec2(0.3, 0.5)
+          of PositionAtBottom: vec2(0, -(1 - 0.1))
+          of PositionAtTop:    vec2(0, -0.1)
+          of PositionAtRight:  vec2(-0.3, -0.5)
+          of PositionAtLeft:   vec2(0.3, -0.5)
           else: vec2()
         doc[].add lineSection(labelPos + v - vec2(0.3, 0), labelPos + v + vec2(0.3, 0))
       name.removePrefix("!")
@@ -319,29 +319,29 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
         anchor
 
     if variables.len == 3:
-      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz, b: pos + vec2(0.5, 0) * sz, h: vec2(0, bH), power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.5, 0) * sz, b: pos + vec2(1, 0) * sz, h: vec2(0, bH), power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz, h: vec2(0, -bH), power: 2)
-      drawLabel "!" & variables[0], pos + vec2(0, 1/4) * sz + vec2(-0.2, 0),      PositionAtRight
-      drawLabel variables[0],       pos + vec2(0, 3/4) * sz + vec2(-0.2, 0),      PositionAtRight
-      drawLabel "!" & variables[1], pos + vec2(0.25, 0) * sz + vec2(0, bH+0.1),   PositionAtBottom
-      drawLabel variables[1],       pos + vec2(0.75, 0) * sz + vec2(0, bH+0.1),   PositionAtBottom
-      drawLabel "!" & variables[2], pos + vec2(1/8, 1) * sz + vec2(0, -(bH+0.1)), PositionAtTop
-      drawLabel "!" & variables[2], pos + vec2(7/8, 1) * sz + vec2(0, -(bH+0.1)), PositionAtTop
-      drawLabel variables[2],       pos + vec2(0.5, 1) * sz + vec2(0, -(bH+0.1)), PositionAtTop
+      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz, b: pos + vec2(0.5, 0) * sz, h: vec2(0, -bH), power: 2)
+      doc[].add FigureBracket(a: pos + vec2(0.5, 0) * sz, b: pos + vec2(1, 0) * sz, h: vec2(0, -bH), power: 2)
+      doc[].add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz, h: vec2(0, bH), power: 2)
+      drawLabel "!" & variables[0], pos + vec2(0, 1/4) * sz + vec2(-0.2, 0),       PositionAtRight
+      drawLabel variables[0],       pos + vec2(0, 3/4) * sz + vec2(-0.2, 0),       PositionAtRight
+      drawLabel "!" & variables[1], pos + vec2(0.25, 0) * sz + vec2(0, -(bH+0.1)), PositionAtBottom
+      drawLabel variables[1],       pos + vec2(0.75, 0) * sz + vec2(0, -(bH+0.1)), PositionAtBottom
+      drawLabel "!" & variables[2], pos + vec2(1/8, 1) * sz + vec2(0, bH+0.1),     PositionAtTop
+      drawLabel "!" & variables[2], pos + vec2(7/8, 1) * sz + vec2(0, bH+0.1),     PositionAtTop
+      drawLabel variables[2],       pos + vec2(0.5, 1) * sz + vec2(0, bH+0.1),     PositionAtTop
 
     elif variables.len >= 4:
-      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0.5, 0) * sz,    h: vec2(0, bH),   power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.5, 0) * sz,  b: pos + vec2(1, 0) * sz,      h: vec2(0, bH),   power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz,   h: vec2(0, -bH),  power: 2)
+      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0.5, 0) * sz,    h: vec2(0, -bH),  power: 2)
+      doc[].add FigureBracket(a: pos + vec2(0.5, 0) * sz,  b: pos + vec2(1, 0) * sz,      h: vec2(0, -bH),  power: 2)
+      doc[].add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz,   h: vec2(0, bH),   power: 2)
       doc[].add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0, 0.5) * sz,    h: vec2(-bW, 0),  power: 2)
       doc[].add FigureBracket(a: pos + vec2(0, 0.5) * sz,  b: pos + vec2(0, 1) * sz,      h: vec2(-bW, 0),  power: 2)
       doc[].add FigureBracket(a: pos + vec2(1, 0.25) * sz, b: pos + vec2(1, 0.75) * sz,   h: vec2(bW, 0),   power: 2)
-      drawLabel "!" & variables[2], pos + vec2(0.25, 0) * sz + vec2(0, bH+0.1),     PositionAtBottom
-      drawLabel variables[2],       pos + vec2(0.75, 0) * sz + vec2(0, bH+0.1),     PositionAtBottom
-      drawLabel "!" & variables[3], pos + vec2(1/8, 1) * sz + vec2(0, -(bH+0.1)),   PositionAtTop
-      drawLabel "!" & variables[3], pos + vec2(7/8, 1) * sz + vec2(0, -(bH+0.1)),   PositionAtTop
-      drawLabel variables[3],       pos + vec2(0.5, 1) * sz + vec2(0, -(bH+0.1)),   PositionAtTop
+      drawLabel "!" & variables[2], pos + vec2(0.25, 0) * sz + vec2(0, -(bH+0.1)),  PositionAtBottom
+      drawLabel variables[2],       pos + vec2(0.75, 0) * sz + vec2(0, -(bH+0.1)),  PositionAtBottom
+      drawLabel "!" & variables[3], pos + vec2(1/8, 1) * sz + vec2(0, bH+0.1),      PositionAtTop
+      drawLabel "!" & variables[3], pos + vec2(7/8, 1) * sz + vec2(0, bH+0.1),      PositionAtTop
+      drawLabel variables[3],       pos + vec2(0.5, 1) * sz + vec2(0, bH+0.1),      PositionAtTop
       drawLabel "!" & variables[0], pos + vec2(0, 1/4) * sz + vec2(-(bW+0.2), 0),   PositionAtRight
       drawLabel variables[0],       pos + vec2(0, 3/4) * sz + vec2(-(bW+0.2), 0),   PositionAtRight
       drawLabel "!" & variables[1], pos + vec2(1, 1/8) * sz + vec2(bW+0.2, 0),      PositionAtLeft
@@ -353,7 +353,7 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
     for x in 0..<r.cols:
       for y in 0..<r.rows:
         let d = data[y][x]
-        let p = pos + vec2(((x*2+1) / (r.cols*2)) * r.size.x, ((y*2+1) / (r.rows*2)) * -r.size.y)
+        let p = pos + vec2(((x*2+1) / (r.cols*2)) * r.size.x, ((y*2+1) / (r.rows*2)) * r.size.y)
         doc[].add Text (if d == 2: "-" else: $d):
           Position2 p
           PositionAtCenter
@@ -363,7 +363,7 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
           else:
             $y & $(x div 2) & $(((x mod 2).bool xor (x div 2).bool).int)
         doc[].add Text mintermsText:
-          Position2 p + vec2(cellHalfW, -cellHalfH)
+          Position2 p + vec2(cellHalfW, cellHalfH)
           PositionAtBottomRight
           FontSize 0.4
 
@@ -424,7 +424,7 @@ mainModule:
 
   let sdnf = findSdnf(data, variables)
   doc.drawKarnaughGroups(sdnf, variables)
-  doc.drawSdnf(sdnf, point2(0, 2.5))
+  doc.drawSdnf(sdnf, point2(0, -2.5))
 
   # let sknf = findSknf(data, variables)
   # doc.drawKarnaughGroups(sknf, variables)

@@ -13,17 +13,17 @@ type
     nQ*: seq[Node]
     tt*: seq[TTrigger]
     ttN*: seq[Node]
-    T_expr*: seq[Node]   ## computed T input per bit (nil = never toggles)
-    placement*: seq[PlacementRule]
+    T_expr*: seq[Node]
+    intermediates*: seq[seq[Node]]
     n*: int
     excluded*: seq[int]
 
 
 proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
   template r: untyped = result
-  r.n       = nBits
+  r.n        = nBits
   r.excluded = excluded
-  r.C       = Node "C"
+  r.C        = Node "C"
 
   r.tt  = newSeq[TTrigger](nBits)
   r.ttN = newSeq[Node](nBits)
@@ -39,15 +39,12 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
     r.Q[i]  = symN("Q"  & subscript[i], r.ttN[i][0])
     r.nQ[i] = symN("!Q" & subscript[i], r.ttN[i][1])
 
-  # Variable names for the Karnaugh map (must match lookup in the loop below)
   var varNames: seq[string]
   for i in 0..<nBits: varNames.add "q" & $i
 
   let tables = buildTInputTables(nBits, excluded)
 
-  # Build combinational T-input logic from SDNF groups
-  # Each T_i = OR of AND-terms derived from prime implicants
-  var intermediates = newSeq[seq[Node]](nBits)  # newly created AND/OR nodes per bit
+  r.intermediates = newSeq[seq[Node]](nBits)
   r.T_expr = newSeq[Node](nBits)
 
   for i in 0..<nBits:
@@ -56,11 +53,10 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
 
     for grp in groups:
       if grp.terms.len == 0:
-        # Tautology: T = 1 always — use OR(Q, !Q)
         let c1 = Node(kind: BoxN, name: "1",
           inputs: @[Port(n: r.Q[i], port: 0), Port(n: r.nQ[i], port: 0)],
           outputs: @[true])
-        intermediates[i].add c1
+        r.intermediates[i].add c1
         termNodes.add c1
         continue
 
@@ -72,10 +68,10 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
         lits.add Port(n: if neg: r.nQ[idx] else: r.Q[idx], port: 0)
 
       if lits.len == 1:
-        termNodes.add lits[0].n   # single literal — reuse existing node
+        termNodes.add lits[0].n
       else:
         let a = Node(kind: BoxN, name: "&", inputs: lits, outputs: @[true])
-        intermediates[i].add a
+        r.intermediates[i].add a
         termNodes.add a
 
     if termNodes.len == 0:
@@ -86,41 +82,66 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
       var orPorts: seq[Port]
       for t in termNodes: orPorts.add Port(n: t, port: 0)
       let o = Node(kind: BoxN, name: "1", inputs: orPorts, outputs: @[true])
-      intermediates[i].add o
+      r.intermediates[i].add o
       r.T_expr[i] = o
 
-  # Wire T inputs and clock into each trigger
   let zeroNode = Node(kind: SymN, name: "0")
   for i in 0..<nBits:
     r.ttN[i].inputs.add(if r.T_expr[i] != nil: r.T_expr[i] else: zeroNode)
     r.ttN[i].inputs.add r.C
 
 
-  # Placement
-  const stepX = 14.0
+proc place*(c: CounterStop) =
+  const offsetX = 8.0
+  const stepX = 26.0
   const stepY = 4.0
-  var rules: seq[PlacementRule]
-  let nf = nBits.float
+  let nf = c.n.float
 
-  rules.add Line(origin: point2(0, nf * stepY + 4), nodes: @[r.C])
+  var baseRules: seq[PlacementRule]
+  baseRules.add Line(origin: point2(0, nf * stepY + 8), nodes: @[c.C])
 
-  for i in 0..<nBits:
-    let x = i.float * stepX
+  for i in 0..<c.n:
+    let x = i.float * stepX + offsetX
     let y = i.float * stepY
-    if intermediates[i].len > 0:
-      if i < 1:
-        rules.add Line(origin: point2(x, y), nodes: intermediates[i], gap: 1)
-      case i
-      else: discard
-    rules.add Line(origin: point2(x + 6, y), nodes: @[r.ttN[i]])
+    if c.intermediates[i].len > 0:
+      baseRules.add Line(origin: point2(x - 4, y), nodes: c.intermediates[i][0..^2])
+      baseRules.add Line(origin: point2(x + 2, y), nodes: @[c.intermediates[i][^1]])
+    baseRules.add Line(origin: point2(x + 6, y), nodes: @[c.ttN[i]])
 
-  rules.add Line(origin: point2(nf * stepX + 6, 0), nodes: r.Q,  align: Inputs)
-  rules.add Line(origin: point2(nf * stepX + 4, 0), nodes: r.nQ, align: Inputs)
+  baseRules.add Line(origin: point2(nf * stepX + 8, 0), nodes: c.Q,  align: Inputs)
+  baseRules.add Line(origin: point2(nf * stepX + 2, 0), nodes: c.nQ, align: Inputs)
 
-  for i in 0..<nBits:
-    rules.add bus(point2(i.float * stepX + 5, -2), r.C, @[r.ttN[i]])
+  for i in 0..<c.n:
+    baseRules.add bus(point2(i.float * stepX + offsetX + 5.5, -2), c.C, @[c.ttN[i]])
 
-  r.placement = rules
+  let rects = placeNodes(baseRules)
+
+  var connRules: seq[PlacementRule]
+  for i in 0..<c.n:
+    for j in 0..<c.intermediates[i].len:
+      let andNode = c.intermediates[i][j]
+      for pIdx in 0..<andNode.inputs.len:
+        let srcNode = andNode.inputs[pIdx].n
+        for k in 0..<c.n:
+          let isQ = srcNode == c.Q[k]
+          if not isQ and srcNode != c.nQ[k]: continue
+          let qNode  = if isQ: c.Q[k] else: c.nQ[k]
+          let srcX   = rects[qNode].x + rects[qNode].w + k.float * 0.8 + 1
+          let laneY  = if isQ: -3.0 - k.float * 0.5
+                       else:   -3.0 - nf * 0.5 - 1.0 - k.float * 0.5
+          let dstX   = rects[andNode].x - 1.5 - j.float * 1.5 - pIdx.float * 0.2
+          connRules.add bus([point2(srcX, rects[qNode].y), point2(srcX, laneY), point2(dstX, laneY)], srcNode, @[andNode])
+          break
+
+  for i in 0..<c.n:
+    if c.intermediates.len > 1:
+      let orNode = c.intermediates[i][^1]
+      if orNode.name != "1": continue
+      for pIdx, port in orNode.inputs:
+        if port.n.name != "&": continue
+        connRules.add bus(point2(rects[orNode].x - 2 + pIdx.float * 0.2, 0), port.n, @[orNode])
+
+  placeConnections(baseRules & connRules, rects)
 
 
 proc startup*(c: CounterStop, startState: int = -1): seq[ValChange] =
@@ -141,7 +162,7 @@ mainModule:
   let excluded = @[0, 1, 10, 12]
   let c = counterStop(excluded, 4)
 
-  placeComponents(c.placement)
+  place(c)
   drawComponents()
 
   var validStates: seq[int]
@@ -155,7 +176,7 @@ mainModule:
     data:              @[@[c.C], c.Q],
     gap:               0.2,
     groupGap:          1,
-    timeScale:         1.4,
+    timeScale:         1,
     timestamps:        timestamps,
     origin:            point2(0, 30),
     skipUnchangedAxes: true,

@@ -361,9 +361,73 @@ proc segmentsOverlap(a1, a2, b1, b2: Point2): bool =
   return false
 
 
-proc placeComponents*(rules: seq[PlacementRule]) =
-  var nodeRects = initTable[Node, Rect]()
+proc placeNodes*(rules: seq[PlacementRule]): Table[Node, Rect] =
+  # Build successor table needed for Outputs alignment
+  var successors = initTable[Node, seq[tuple[n: Node, port: int]]]()
+  for rule in rules:
+    case rule.kind
+    of LineR:
+      for n in rule.line.nodes:
+        for portIdx, inp in n.inputs:
+          successors.mgetOrPut(inp.n, @[]).add (n, portIdx)
+    of BusR:
+      for outNode in rule.bus.outputs:
+        for portIdx, inp in outNode.inputs:
+          successors.mgetOrPut(inp.n, @[]).add (outNode, portIdx)
+    of LoopbackPathR:
+      let lp = rule.loopbackPath
+      successors.mgetOrPut(lp.output.n, @[]).add (lp.input.n, lp.input.port)
 
+  # Pass 2a: place nodes from Lines with no alignment
+  for rule in rules:
+    if rule.kind == LineR and rule.line.align == None:
+      let elem = rule.line
+      var pos = elem.origin
+      for node in elem.nodes:
+        let sz = nodeSize(node)
+        let r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
+        pos.y += sz.y + elem.gap.float
+        result[node] = r
+        doc.add node, r
+
+  # Pass 2b: place nodes from Lines with alignment, preserving original order
+  for rule in rules:
+    if rule.kind == LineR and rule.line.align != None:
+      let elem = rule.line
+      var pos = elem.origin
+      for node in elem.nodes:
+        let sz = nodeSize(node)
+        let zeroRect = rect(0f32, 0f32, sz.x.float32, sz.y.float32)
+        var r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
+        var positioned = false
+
+        case elem.align
+        of Inputs:
+          if node.inputs.len > 0:
+            let inp0 = node.inputs[0]
+            if result.hasKey(inp0.n):
+              let connectY = outputPortY(inp0.n, result[inp0.n], inp0.port)
+              r = rect(pos.x.float32, connectY - inputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
+              positioned = true
+        of Outputs:
+          if successors.hasKey(node):
+            for succ in successors[node]:
+              if succ.n in result:
+                let targetY = inputPortY(succ.n, result[succ.n], succ.port)
+                r = rect(pos.x.float32, targetY - outputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
+                positioned = true
+                break
+        of None:
+          discard
+
+        if not positioned:
+          pos.y += sz.y + elem.gap.float
+
+        result[node] = r
+        doc.add node, r
+
+
+proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) =
   type ConnSource = tuple[n: pointer, port: int]
   var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool, eid: EntityId, source: ConnSource]]
 
@@ -390,75 +454,11 @@ proc placeComponents*(rules: seq[PlacementRule]) =
           busHandled.incl key
           handledPorts.incl key
 
-  # Build successor table: node -> [(consuming node, port index)]
-  var successors = initTable[Node, seq[tuple[n: Node, port: int]]]()
-  for rule in rules:
-    case rule.kind
-    of LineR:
-      for n in rule.line.nodes:
-        for portIdx, inp in n.inputs:
-          successors.mgetOrPut(inp.n, @[]).add (n, portIdx)
-    of BusR:
-      for outNode in rule.bus.outputs:
-        for portIdx, inp in outNode.inputs:
-          successors.mgetOrPut(inp.n, @[]).add (outNode, portIdx)
-    of LoopbackPathR:
-      let lp = rule.loopbackPath
-      successors.mgetOrPut(lp.output.n, @[]).add (lp.input.n, lp.input.port)
-
   var lineNodes = initHashSet[pointer]()
   for rule in rules:
     if rule.kind == LineR:
       for node in rule.line.nodes:
         lineNodes.incl cast[pointer](node)
-
-  # Pass 2a: place nodes from Lines with no alignment (no inter-node dependencies)
-  for rule in rules:
-    if rule.kind == LineR and rule.line.align == None:
-      let elem = rule.line
-      var pos = elem.origin
-      for node in elem.nodes:
-        let sz = nodeSize(node)
-        let r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
-        pos.y += sz.y + elem.gap.float
-        nodeRects[node] = r
-        doc.add node, r
-
-  # Pass 2b: place nodes from Lines with alignment, preserving original order
-  for rule in rules:
-    if rule.kind == LineR and rule.line.align != None:
-      let elem = rule.line
-      var pos = elem.origin
-      for node in elem.nodes:
-        let sz = nodeSize(node)
-        let zeroRect = rect(0f32, 0f32, sz.x.float32, sz.y.float32)
-        var r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
-        var positioned = false
-
-        case elem.align
-        of Inputs:
-          if node.inputs.len > 0:
-            let inp0 = node.inputs[0]
-            if nodeRects.hasKey(inp0.n):
-              let connectY = outputPortY(inp0.n, nodeRects[inp0.n], inp0.port)
-              r = rect(pos.x.float32, connectY - inputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
-              positioned = true
-        of Outputs:
-          if successors.hasKey(node):
-            for succ in successors[node]:
-              if succ.n in nodeRects:
-                let targetY = inputPortY(succ.n, nodeRects[succ.n], succ.port)
-                r = rect(pos.x.float32, targetY - outputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
-                positioned = true
-                break
-        of None:
-          discard
-
-        if not positioned:
-          pos.y += sz.y + elem.gap.float
-
-        nodeRects[node] = r
-        doc.add node, r
 
   # Pass 3: place Connection and collect for branch detection
   for rule in rules:
@@ -693,6 +693,9 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         let c = overlapPalette[idx mod overlapPalette.len]
         doc.update conn.eid: add Color c
 
+
+proc placeComponents*(rules: seq[PlacementRule]) =
+  placeConnections(rules, placeNodes(rules))
 
 
 proc drawRect(r: Rect) =
