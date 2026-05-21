@@ -198,6 +198,9 @@ converter toPlacementRule*(lp: LoopbackPath): PlacementRule = PlacementRule(kind
 proc loopbackPath*(output: Port, input: Port, offset: float = 0, hOffset: HOffset = 0.0, color = schemeTheme.foreground): LoopbackPath =
   LoopbackPath(output: output, input: input, offset: offset, hOffset: hOffset, color: color)
 
+proc loopbackPath*(output: Port, offset: float = 0, hOffset: HOffset = 0.0, color = schemeTheme.foreground): LoopbackPath =
+  LoopbackPath(output: output.n.inputs[output.port], input: output, offset: offset, hOffset: hOffset, color: color)
+
 proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = schemeTheme.foreground): Bus =
   Bus(path: @path, input: input, outputs: @outputs, color: color)
 
