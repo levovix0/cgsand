@@ -67,7 +67,10 @@ type
   PixelThickness* = float32
     ## thickness of lines in pixels. Stays the same no matter how viewport transforms
     ## todo
-  
+
+
+  DarkTheme* = bool
+    ## set in cache by the app to indicate the current UI theme; scripts read this at startup
 
   CacheVariable* = string
     ## a name for an entity, that persists between script re-runs
@@ -82,6 +85,9 @@ when defined(script) or defined(nimcheck):
     ## in the sandbox we have an entire World!
 
   var cache* {.exportc: "cache_instance", dynlib.}: ptr World
+  
+  var reserveCache: World
+  if cache == nil: cache = reserveCache.addr
 
   proc handleErrorAfterNimMain: bool {.exportc, dynlib.} =
     try: discard
@@ -143,6 +149,30 @@ proc `[]=`*[T](w: var World, t: typedesc[T], v: T) =
     got = true
   if not got:
     w.add v
+
+proc getOrDefault*[T](w: var World, t: typedesc[T], v: T): T =
+  var res: ptr T
+  w.forEach (singletonValue: var T):
+    res = singletonValue.addr
+  if res == nil:
+    v
+  else:
+    res[]
+
+proc mgetOrPut*[T](w: var World, t: typedesc[T], v: T): var T =
+  var res: ptr T
+  w.forEach (singletonValue: var T):
+    res = singletonValue.addr
+  if res == nil:
+    w.add v
+    w.forEach (singletonValue: var T):
+      res = singletonValue.addr
+  res[]
+
+template hasSingleton*[T](w: var World, t: typedesc[T]): bool =
+  var hasV = false
+  w.forEach (t): hasV = true
+  hasV
 
 
 

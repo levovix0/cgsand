@@ -1,7 +1,7 @@
 import sandbox, geom2d
 
 
-let darkTheme* = false
+let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 let SZ = 2.0
 
 

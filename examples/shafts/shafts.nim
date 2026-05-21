@@ -51,7 +51,7 @@ type
 
 
 
-let darkTheme* = true
+let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
 
 if not doc.hasComponent(globals, OwnerModule):

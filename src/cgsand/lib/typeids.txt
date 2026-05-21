@@ -18,3 +18,5 @@ Color
 PixelThickness
 Transform3
 Path
+DarkTheme
+bool

@@ -9,16 +9,22 @@ type
     Executing
     # BuildingRenderTree
 
+  WorkerArgs = object
+    script: ptr ScriptObj
+    filename, outfile: string
+    compile: bool = true
+
   Script* = ref ScriptObj
   ScriptObj* = object
     lib*: LibHandle
     world*: ptr World
     cache*: ref World
     filename*: string
+    outfile*: string
     stage* {.guard: lock.}: ScriptStage
     lock*: Lock
 
-    thread: Thread[tuple[script: ptr ScriptObj, filename, outfile: string]]
+    thread: Thread[WorkerArgs]
 
 
 proc `=destroy`(this: ScriptObj) =
@@ -46,63 +52,95 @@ when defined(cgsand.script_wrapper):
 
 
 
+proc scriptWorker(info: WorkerArgs) {.thread.} =
+  let s = info.script
+  let outfile = info.outfile.withDllExtension
+
+  template fail {.dirty.} =
+    if info.compile:
+      if s.lib != nil:
+        unloadLib(s.lib)
+        s.lib = nil
+    withLock s.lock: s.stage = Idle
+    return
+
+
+  if info.compile:
+    when defined(cgsand.script_wrapper):
+      let wrapperPath = "build/script_wrapper.nim"
+      try:
+        writeFile wrapperPath, wrapScript(readFile(info.filename))
+      except:
+        echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
+      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
+    else:
+      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
+
+    if s.lib != nil: unloadLib(s.lib)
+    s.lib = loadLib(outfile)
+    if s.lib == nil: fail()
+  
+  else:
+    if s.lib != nil: unloadLib(s.lib)
+    s.lib = loadLib(outfile)
+    if s.lib == nil: fail()
+
+
+  if s.lib == nil: fail()
+
+  let nimMain = cast[proc() {.cdecl, gcsafe.}](s.lib.symAddr("NimMain"))
+  if nimMain == nil: fail()
+
+  let cacheInstanceAddr = s.lib.symAddr("cache_instance")
+  if cacheInstanceAddr != nil:
+    cast[ptr ptr World](cacheInstanceAddr)[] = cast[ptr World](s.cache)
+
+
+  withLock s.lock: s.stage = Executing
+  nimMain()
+
+
+  let scriptHandleError = cast[proc: bool {.cdecl, gcsafe.}](s.lib.symAddr("handleErrorAfterNimMain"))
+  if scriptHandleError != nil:
+    if scriptHandleError(): fail()
+
+  let w = s.lib.symAddr("world_instance")
+  if w == nil: fail()
+  s.world = cast[ptr World](w)
+
+  let syncCache = cast[proc() {.cdecl, gcsafe.}](s.lib.symAddr("syncCacheFromDoc"))
+  if syncCache != nil:
+    syncCache()
+
+  withLock s.lock: s.stage = Idle
+
+
+
 proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: ref World = nil): Script =
   new result
   initLock result.lock
   withLock result.lock: result.stage = Compiling
   result.filename = filename
+  result.outfile = outfile
   result.cache = if existingCache != nil: existingCache else: new World
 
-  proc worker(info: tuple[script: ptr ScriptObj, filename, outfile: string]) =
-    template result: untyped = info.script[]
-    template fail {.dirty.} =
-      if result.lib != nil: unloadLib(result.lib)
-      result.lib = nil
-      withLock result.lock: result.stage = Idle
-      return
+  result.thread.createThread(scriptWorker, WorkerArgs(
+    script: result[].addr, filename: filename, outfile: outfile,
+  ))
 
-    let outfile = info.outfile.withDllExtension
-    
-    when defined(cgsand.script_wrapper):
-      let wrapperPath = "build/script_wrapper.nim"
-    
-      try:
-        writeFile wrapperPath, wrapScript(readFile(info.filename))
-      except:
-        echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
 
-      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
-    else:
-      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
-    
-    result.lib = loadLib(outfile)
-    if result.lib == nil: fail()
-
-    let nimMain = cast[proc() {.cdecl, gcsafe.}](result.lib.symAddr("NimMain"))
-    if nimMain == nil: fail()
-
-    let cacheInstanceAddr = result.lib.symAddr("cache_instance")
-    if cacheInstanceAddr != nil:
-      cast[ptr ptr World](cacheInstanceAddr)[] = cast[ptr World](result.cache)
-
-    withLock result.lock: result.stage = Executing
-    nimMain()
-
-    let scriptHandleError = cast[proc: bool {.cdecl, gcsafe.}](result.lib.symAddr("handleErrorAfterNimMain"))
-    if scriptHandleError != nil:
-      if scriptHandleError(): fail()
-
-    let w = result.lib.symAddr("world_instance")
-    if w == nil: fail()
-
-    result.world = cast[ptr World](w)
-
-    let syncCache = cast[proc() {.cdecl, gcsafe.}](result.lib.symAddr("syncCacheFromDoc"))
-    if syncCache != nil:
-      syncCache()
-
-    withLock result.lock: result.stage = Idle
-    
-  result.thread.createThread(worker, (result[].addr, filename, outfile))
+proc rerunScript*(script: Script) =
+  ## Re-execute the already-compiled script .so without recompilation.
+  if script.lib == nil: return
   
-
+  withLock script.lock:
+    if script.stage != Idle: return
+    script.stage = Compiling
+  
+  if script.thread.running:
+    joinThread script.thread
+  
+  script.thread.createThread(scriptWorker, WorkerArgs(
+    script: script[].addr, filename: script.filename, outfile: script.outfile,
+    compile: false,
+  ))

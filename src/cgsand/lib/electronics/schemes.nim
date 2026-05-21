@@ -105,7 +105,7 @@ type
     plotValueFontSize*: float32 = 0.5
 
 
-let darkTheme = false  # todo: unify dark theme with shafts/ darkTheme and read darkTheme from sandbox settings
+let darkTheme* = cache[].mgetOrPut(DarkTheme, false)
 
 var schemeTheme* = SchemeTheme()
 if darkTheme:

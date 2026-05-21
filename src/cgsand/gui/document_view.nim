@@ -2,7 +2,7 @@ import std/[locks, options, math]
 import pkg/[ecs, shady]
 import pkg/pixie/paths
 import pkg/siwin/platforms/any/window
-import pkg/sigui/[uibase, globalKeybinding, mouseArea]
+import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
 import pkg/rice/[primitives, antialiasing, transform, texts, paths]
 import ../logic/[scripts, config, bounds, doclayout]
@@ -15,8 +15,9 @@ type
     script*: Property[Script]
     scriptStage*: Property[ScriptStage]
     viewport*: Property[Mat4]
-
     documentPixels: AntialiasedFramebuffer
+
+    darkTheme: Property[bool]
 
 registerComponent DocumentView
 
@@ -385,8 +386,37 @@ method init*(this: DocumentView) =
       bottom = parent.bottom
       color = "#76b1ffff".color
 
-    - Button.new:
-      text = tr"Reset"
+
+    - Layout.row:
+      gap = 10
       centerX = parent.center
       top = parent.top+10
-      on this.activated: root.viewport[] = mat4()
+
+
+      - Button.new:
+        text = tr"Reset view"
+        on this.activated: root.viewport[] = mat4()
+
+
+      - Button.new:
+        visibility = Visibility.collapsed
+
+        on root.scriptStage[] == Idle:
+          if root.script[] != nil:
+            this.visibility[] =
+              if root.script[].cache[].hasSingleton(DarkTheme):
+                Visibility.visible
+              else:
+                Visibility.collapsed
+        
+        enabled = binding:
+          root.scriptStage[] == Idle and root.script[] != nil
+
+        text = binding:
+          if root.darkTheme[]: tr"Theme: dark" else: tr"Theme: light"
+        
+        on this.activated:
+          let cache = root.script[].cache
+          root.darkTheme[] = not cache[][DarkTheme]
+          cache[][DarkTheme] = root.darkTheme[]
+          rerunScript(root.script[])
