@@ -24,7 +24,7 @@ proc register4Bit*: Register4Bit =
 
     dtN.inputs.add d
     dtN.inputs.add clk
-    q.inputs.add (dtN, 0)
+    q.inputs.add dtN[0]
 
     Ds.add d
     Qs.add q
@@ -32,27 +32,11 @@ proc register4Bit*: Register4Bit =
     startup.add dt.startup
 
   let placement = placementRules(
-    Line(
-      origin: point2(0, 0),
-      nodes: Ds,
-      gap: rowH,
-      align: Outputs,
-    ),
-    Line(
-      origin: point2(0, 3),
-      nodes: @[clk],
-    ),
+    Line(origin: point2(0, 0), nodes: Ds,       gap: rowH, align: Outputs),
+    Line(origin: point2(0, 3), nodes: @[clk]),
     bus(point2(2, 0), clk, dtNs),
-    Line(
-      origin: point2(3, 0),
-      nodes: dtNs,
-      gap: 1,
-    ),
-    Line(
-      origin: point2(11, 0),
-      nodes: Qs,
-      align: Inputs,
-    ),
+    Line(origin: point2(3, 0),  nodes: dtNs, gap: 1),
+    Line(origin: point2(11, 0), nodes: Qs,   align: Inputs),
   )
 
   return (pack(Ds & @[clk], Qs), placement, startup)
@@ -76,9 +60,7 @@ mainModule:
 
   for t in 0..2:
     for t2 in 0..<3:
-      for t3 in 1..<2:
-        let t = t.float * 3 + t2.float + t3.float * 0.05
-        timestamps.add PlotTimestamp(time: t)
+      timestamps.add PlotTimestamp(time: t.float * 3 + t2.float + 0.05)
     timestamps.add PlotTimestamp(time: t.float * 3 + 1, changes: @[setVal(clk, 1)])
     timestamps.add PlotTimestamp(time: t.float * 3 + 2, changes: @[setVal(clk, 0)])
 

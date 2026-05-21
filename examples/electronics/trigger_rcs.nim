@@ -23,7 +23,6 @@ proc rcsTrigger*: RcsTrigger =
   template S: untyped = result.S
   template C: untyped = result.C
   template R: untyped = result.R
-  # template I: untyped = result.I
   template O: untyped = result.O
   result.I = @[Node "S", "C", "R"]
   result.O = @[Node "Q", "!Q"]
@@ -32,32 +31,13 @@ proc rcsTrigger*: RcsTrigger =
 
   result.rs = rsTrigger()
   result.rsN = result.rs.pack.packN("T", M[0], M[1])
-  for i in 0..<O.len: O[i].inputs.add (result.rsN, i)
-
+  for i in 0..<O.len: O[i].inputs.add result.rsN[i]
 
   result.placement = placementRules(
-    Line(
-      origin: point2(0, 2/3),
-      nodes: @[S, C, R],
-      gap: 0 + 1/3,
-    ),
-    Line(
-      origin: point2(4, 0),
-      nodes: M,
-    ),
-    Line(
-      origin: point2(8, 0),
-      nodes: @[result.rsN],
-    ),
-    
-    # bus(@[point2(9, 2), point2(5, 4)], input = M[0], outputs = T),
-    # bus(@[point2(9, 4), point2(5, 2)], input = M[1], outputs = T),
-
-    Line(
-      origin: point2(16, 1),
-      nodes: O,
-      align: Inputs,
-    ),
+    Line(origin: point2(0, 2/3), nodes: @[S, C, R], gap: 0 + 1/3),
+    Line(origin: point2(4, 0),   nodes: M),
+    Line(origin: point2(8, 0),   nodes: @[result.rsN]),
+    Line(origin: point2(16, 1),  nodes: O, align: Inputs),
   )
 
 
@@ -69,11 +49,8 @@ proc startup*(t: RcsTrigger, v: Value = 0): seq[ValChange] =
 mainModule:
   let t = rcsTrigger()
 
-
   placeComponents(t.placement)
   drawComponents()
-
-
 
   var timestamps = @[
     PlotTimestamp(time: 0, changes: startup(t) & @[setVal(t.C, 1)]),
@@ -89,10 +66,7 @@ mainModule:
     PlotTimestamp(time: 5.6, changes: @[setVal(t.S, 1)]),
     PlotTimestamp(time: 5.9, changes: @[setVal(t.S, 0)]),
   ]
-
-  for i in 0..6:
-    timestamps.add PlotTimestamp(time: i.float, changes: @[setVal(t.C, 1)])
-    timestamps.add PlotTimestamp(time: i.float + 0.5, changes: @[setVal(t.C, 0)])
+  timestamps.add clockPulses(t.C, 7, startTime = 0, halfPeriod = 0.5)
 
   draw Plot(
     data: @[@[t.S, t.R, t.C], @[t.Q, t.nQ]],
@@ -102,4 +76,3 @@ mainModule:
     timestamps: timestamps,
     origin: point2(20, 0),
   )
-

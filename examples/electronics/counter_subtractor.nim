@@ -41,9 +41,9 @@ proc counterModDown*(modulus: int): CounterModDown =
 
   # borrow[i] = !Q₀·!Q₁·…·!Qᵢ  (running AND of all inverted outputs)
   r.borrow = newSeq[Node](n)
-  r.borrow[0] = symN("!Q" & subscript[0], (r.msN[0], 1))
+  r.borrow[0] = symN("!Q" & subscript[0], r.msN[0][1])
   for i in 1..<n:
-    r.borrow[i] = andN(r.borrow[i-1], (r.msN[i], 1))
+    r.borrow[i] = andN(r.borrow[i-1], r.msN[i][1])
 
   # load fires when state = 0 (all Q = 0); on next clock reload to m1
   let load = if hasReset: r.borrow[n-1] else: Node nil
@@ -66,18 +66,18 @@ proc counterModDown*(modulus: int): CounterModDown =
   # bit 0: always toggles (borrow[-1] ≡ 1)
   let m1b0 = m1 and 1
   if hasReset and m1b0 == 0:
-    sArr[0] = andN((r.msN[0], 1), r.reset)
+    sArr[0] = andN(r.msN[0][1], r.reset)
   else:
-    sArr[0] = symN("!Q" & subscript[0], (r.msN[0], 1))
-  rArr[0] = symN("Q" & subscript[0], (r.msN[0], 0))
+    sArr[0] = symN("!Q" & subscript[0], r.msN[0][1])
+  rArr[0] = symN("Q" & subscript[0], r.msN[0][0])
 
   for i in 1..<n:
     let m1bi = (m1 shr i) and 1
     if hasReset and m1bi == 0:
-      sArr[i] = andN((r.msN[i], 1), r.reset, r.borrow[i-1])
+      sArr[i] = andN(r.msN[i][1], r.reset, r.borrow[i-1])
     else:
-      sArr[i] = andN((r.msN[i], 1), r.borrow[i-1])
-    rArr[i] = andN((r.msN[i], 0), r.borrow[i-1])
+      sArr[i] = andN(r.msN[i][1], r.borrow[i-1])
+    rArr[i] = andN(r.msN[i][0], r.borrow[i-1])
 
   for i in 0..<n:
     r.msN[i].inputs.add sArr[i]
@@ -89,7 +89,7 @@ proc counterModDown*(modulus: int): CounterModDown =
 
   r.Q = newSeq[Node](n)
   for i in 0..<n:
-    r.Q[i] = symN("Q" & subscript[i], (r.msN[i], 0))
+    r.Q[i] = symN("Q" & subscript[i], r.msN[i][0])
 
   const stepX = 19.0
   const stepY = 4.0 - 1e-3
@@ -102,7 +102,7 @@ proc counterModDown*(modulus: int): CounterModDown =
     let y = i.float * stepY
     rules.add Line(origin: point2(x, y - 1.5), nodes: @[sArr[i]], align: Outputs)
     rules.add Line(origin: point2(x, y + 1.5), nodes: @[rArr[i]], align: Outputs)
-    rules.add Line(origin: point2(x + 4, y), nodes: @[r.msN[i]])
+    rules.add Line(origin: point2(x + 4, y),   nodes: @[r.msN[i]])
     if i > 0:
       rules.add Line(origin: point2(x - 6, y - 0.5), nodes: @[r.borrow[i-1]], align: Outputs)
       rules.add loopbackPath((r.borrow[i], 0), offset = (if i > 1: -2.0 else: -3.5), hOffset = (0.0, 1.0))
@@ -140,7 +140,7 @@ proc startup*(c: CounterModDown): seq[ValChange] =
   result.add setVal(c.C, 0)
   let startVal = c.modulus - 1
   for i in 0..<c.ms.len:
-    let bit = Value((startVal shr i) and 1)
+    let bit = bitVal(startVal, i)
     result.add setVal(c.ms[i].t1.T[0], bit)
     result.add setVal(c.ms[i].t1.T[1], not bit)
     result.add setVal(c.ms[i].t2.T[0], bit)
@@ -155,13 +155,7 @@ mainModule:
   drawComponents()
 
   var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
-
-  for t in 0..(c.modulus + 6):
-    let base = 1.0 + t.float * 3.0
-    timestamps.add PlotTimestamp(time: base,       changes: @[setVal(c.C, 1)])
-    timestamps.add PlotTimestamp(time: base + 0.05)
-    timestamps.add PlotTimestamp(time: base + 1.5, changes: @[setVal(c.C, 0)])
-    timestamps.add PlotTimestamp(time: base + 1.55)
+  timestamps.add clockPulses(c.C, c.modulus + 7, startTime = 1.0, halfPeriod = 1.5, settle = 0.05)
 
   let p = Plot(
     data:              @[@[c.C], c.Q],

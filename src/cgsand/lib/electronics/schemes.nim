@@ -94,6 +94,7 @@ type
     background*: Color = color(1, 1, 1)
     foreground*: Color = color(0, 0, 0)
     errorColor*: Color = color(1, 0, 0)
+    overlapErrorColor*: Color = color(0, 0, 1)
     canvasMargin*: float32 = 1.0
     baseFontSize*: float32 = 1.0
     branchRadius*: float32 = 0.1
@@ -113,6 +114,7 @@ if darkTheme:
     background:               parseHtmlHex "#202020",
     foreground:               color(0.75, 0.75, 0.8),
     errorColor:               color(1, 0.4, 0.4),
+    overlapErrorColor:        color(0.4, 0.4, 1),
     canvasMargin:             1.0,
     baseFontSize:             1.0,
     branchRadius:             0.1,
@@ -155,6 +157,8 @@ converter toPort*(n: Node): Port = Port(n: n, port: 0)
 converter toPort*(n: (Node, int)): Port = Port(n: n[0], port: n[1])
 
 proc delayed*(n: Node, port = 0): Port = Port(n: n, port: port, delayed: true)
+
+proc `[]`*(n: Node, port: int): Port = Port(n: n, port: port)
 
 proc `$`*(n: Node): string = n.name
 
@@ -210,6 +214,10 @@ proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color 
 proc bus*(origin: Point2, input: Port, outputs: openArray[Node], color = schemeTheme.foreground): Bus =
   Bus(origin: origin, input: input, outputs: @outputs, color: color)
 
+proc buses*(originX, originY, stepX: float, inputs: openArray[Node], outputs: openArray[Node], color = schemeTheme.foreground): seq[PlacementRule] =
+  for i, inp in inputs:
+    result.add bus(point2(originX + i.float * stepX, originY), input = inp, outputs = outputs, color = color)
+
 
 proc placementRules*(rules: varargs[PlacementRule]): seq[PlacementRule] = @rules
 
@@ -263,6 +271,26 @@ proc setVal*(node: Node, value: Value): ValChange =
 
 proc `not`*(v: Value): Value =
   Value(power: 1 - v.power)
+
+proc bitVal*(x, bit: int): Value = Value(power: float((x shr bit) and 1))
+
+proc clockPulse*(clk: Node, atTime: float, halfPeriod = 0.5, settle = 0.0): seq[PlotTimestamp] =
+  result.add PlotTimestamp(time: atTime, changes: @[setVal(clk, 1)])
+  if settle > 0: result.add PlotTimestamp(time: atTime + settle)
+  result.add PlotTimestamp(time: atTime + halfPeriod, changes: @[setVal(clk, 0)])
+  if settle > 0: result.add PlotTimestamp(time: atTime + halfPeriod + settle)
+
+proc clockPulses*(clk: Node, n: int, startTime = 1.0, halfPeriod = 0.5, settle = 0.0): seq[PlotTimestamp] =
+  for i in 0..<n:
+    result.add clockPulse(clk, startTime + i.float * halfPeriod * 2, halfPeriod, settle)
+
+proc exhaustiveInputStamps*(inputs: openArray[Node], startTime = 0.0, step = 1.0): seq[PlotTimestamp] =
+  let count = 1 shl inputs.len
+  for i in 0..<count:
+    var changes: seq[ValChange]
+    for bit in 0..<inputs.len:
+      changes.add setVal(inputs[bit], bitVal(i, bit))
+    result.add PlotTimestamp(time: startTime + i.float * step, changes: changes)
 
 
 
@@ -638,8 +666,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
           passesThrough = true
           break
     if passesThrough:
-      doc.update conn.eid: add Color color(0, 0, 1)
-      # todo: doc.update conn.eid: add color(0, 0, 1)  # doesn't compile
+      doc.update conn.eid: add schemeTheme.overlapErrorColor
       doc.update conn.eid: add Thickness schemeTheme.errorConnectionThickness
 
   # Pass 7: highlight overlapping segments from different sources with palette colors

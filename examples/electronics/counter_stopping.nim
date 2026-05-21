@@ -36,8 +36,8 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
   r.Q  = newSeq[Node](nBits)
   r.nQ = newSeq[Node](nBits)
   for i in 0..<nBits:
-    r.Q[i]  = symN("Q"  & subscript[i], (r.ttN[i], 0))
-    r.nQ[i] = symN("!Q" & subscript[i], (r.ttN[i], 1))
+    r.Q[i]  = symN("Q"  & subscript[i], r.ttN[i][0])
+    r.nQ[i] = symN("!Q" & subscript[i], r.ttN[i][1])
 
   # Variable names for the Karnaugh map (must match lookup in the loop below)
   var varNames: seq[string]
@@ -98,22 +98,27 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
 
   # Placement
   const stepX = 14.0
+  const stepY = 4.0
   var rules: seq[PlacementRule]
   let nf = nBits.float
 
-  rules.add Line(origin: point2(0, nf * 2 + 4), nodes: @[r.C])
+  rules.add Line(origin: point2(0, nf * stepY + 4), nodes: @[r.C])
 
   for i in 0..<nBits:
     let x = i.float * stepX
-    # if intermediates[i].len > 0:
-    #   rules.add Line(origin: point2(x, 0), nodes: intermediates[i])
-    rules.add Line(origin: point2(x + 6, 0), nodes: @[r.ttN[i]])
+    let y = i.float * stepY
+    if intermediates[i].len > 0:
+      if i < 1:
+        rules.add Line(origin: point2(x, y), nodes: intermediates[i], gap: 1)
+      case i
+      else: discard
+    rules.add Line(origin: point2(x + 6, y), nodes: @[r.ttN[i]])
 
-  # rules.add Line(origin: point2(nf * stepX + 6, 0), nodes: r.Q,  align: Inputs)
-  # rules.add Line(origin: point2(nf * stepX + 6, -4), nodes: r.nQ, align: Inputs)
+  rules.add Line(origin: point2(nf * stepX + 6, 0), nodes: r.Q,  align: Inputs)
+  rules.add Line(origin: point2(nf * stepX + 4, 0), nodes: r.nQ, align: Inputs)
 
   for i in 0..<nBits:
-    rules.add bus(point2(i.float * stepX + 6, -2), r.C, @[r.ttN[i]])
+    rules.add bus(point2(i.float * stepX + 5, -2), r.C, @[r.ttN[i]])
 
   r.placement = rules
 
@@ -125,7 +130,7 @@ proc startup*(c: CounterStop, startState: int = -1): seq[ValChange] =
     while s0 in c.excluded: inc s0
   result.add setVal(c.C, 0)
   for i in 0..<c.n:
-    let bit = Value((s0 shr i) and 1)
+    let bit = bitVal(s0, i)
     result.add setVal(c.tt[i].ms.t1.T[0], bit)
     result.add setVal(c.tt[i].ms.t1.T[1], not bit)
     result.add setVal(c.tt[i].ms.t2.T[0], bit)
@@ -139,18 +144,12 @@ mainModule:
   placeComponents(c.placement)
   drawComponents()
 
-  var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
-
   var validStates: seq[int]
   for s in 0..<(1 shl c.n):
     if s notin excluded: validStates.add s
 
-  for t in 0..<(validStates.len + 3):
-    let base = 1.0 + t.float * 3.0
-    timestamps.add PlotTimestamp(time: base,        changes: @[setVal(c.C, 1)])
-    timestamps.add PlotTimestamp(time: base + 0.05)
-    timestamps.add PlotTimestamp(time: base + 1.5,  changes: @[setVal(c.C, 0)])
-    timestamps.add PlotTimestamp(time: base + 1.55)
+  var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
+  timestamps.add clockPulses(c.C, validStates.len + 3, startTime = 1.0, halfPeriod = 1.5, settle = 0.05)
 
   draw Plot(
     data:              @[@[c.C], c.Q],
@@ -158,6 +157,6 @@ mainModule:
     groupGap:          1,
     timeScale:         1.4,
     timestamps:        timestamps,
-    origin:            point2(0, 20),
+    origin:            point2(0, 30),
     skipUnchangedAxes: true,
   )

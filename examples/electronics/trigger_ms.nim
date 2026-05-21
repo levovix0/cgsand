@@ -34,53 +34,26 @@ proc msTrigger*: MsTrigger =
   let rsN1 = r.t1.pack.packN("T₁")
   for i in 0..<M1.len: rsN1.inputs.add M1[i]
 
-  r.t1O = @[symN("Q" & subscript[1], (rsN1,0)), symN("!Q" & subscript[1], (rsN1,1))]
+  r.t1O = @[symN("Q" & subscript[1], rsN1[0]), symN("!Q" & subscript[1], rsN1[1])]
 
   let M2 = @[andN(r.t1O[0], notC), andN(notC, r.t1O[1])]
   r.t2 = rsTrigger()
   let rsN2 = r.t2.pack.packN("T₂")
   for i in 0..<M2.len: rsN2.inputs.add M2[i]
 
-  for i in 0..<r.O.len: r.O[i].inputs.add (rsN2, i)
+  for i in 0..<r.O.len: r.O[i].inputs.add rsN2[i]
 
   r.placement = placementRules(
-    Line(
-      origin: point2(0, 1),
-      nodes: r.I,
-      align: Outputs,
-    ),
-    Line(
-      origin: point2(5, 5),
-      nodes: @[notC],
-    ),
+    Line(origin: point2(0, 1),   nodes: r.I,      align: Outputs),
+    Line(origin: point2(5, 5),   nodes: @[notC]),
     bus(point2(4, 0), r.C, M1),
-    Line(
-      origin: point2(5, 0),
-      nodes: M1,
-    ),
-    Line(
-      origin: point2(9, 0),
-      nodes: @[rsN1],
-    ),
-    Line(
-      origin: point2(16, 0),
-      nodes: r.t1O,
-      align: Inputs,
-    ),
+    Line(origin: point2(5, 0),   nodes: M1),
+    Line(origin: point2(9, 0),   nodes: @[rsN1]),
+    Line(origin: point2(16, 0),  nodes: r.t1O,    align: Inputs),
     bus(point2(19, 0), notC, M2),
-    Line(
-      origin: point2(20, 0),
-      nodes: M2,
-    ),
-    Line(
-      origin: point2(24, 0),
-      nodes: @[rsN2],
-    ),
-    Line(
-      origin: point2(32, 1),
-      nodes: r.O,
-      align: Inputs,
-    ),
+    Line(origin: point2(20, 0),  nodes: M2),
+    Line(origin: point2(24, 0),  nodes: @[rsN2]),
+    Line(origin: point2(32, 1),  nodes: r.O,      align: Inputs),
   )
 
 
@@ -99,7 +72,6 @@ mainModule:
   placeComponents(r.placement)
   drawComponents()
 
-
   var timestamps = @[
     PlotTimestamp(time: 0, changes: startup(r) & @[setVal(r.S, 1), setVal(r.R, 0)]),
     PlotTimestamp(time: 3, changes: @[setVal(r.S, 0), setVal(r.R, 1)]),
@@ -107,9 +79,7 @@ mainModule:
 
   for t in 0..1:
     for t2 in 0..<3:
-      for t3 in 1..<2:
-        let t = t.float * 3 + t2.float + t3.float * 0.05
-        timestamps.add PlotTimestamp(time: t)
+      timestamps.add PlotTimestamp(time: t.float * 3 + t2.float + 0.05)
     timestamps.add PlotTimestamp(time: t.float * 3 + 1, changes: @[setVal(r.C, 1)])
     timestamps.add PlotTimestamp(time: t.float * 3 + 2, changes: @[setVal(r.C, 0)])
 

@@ -54,19 +54,19 @@ proc counterMod*(modulus: int): CounterMod =
   var sArr = newSeq[Node](n)
   var rArr = newSeq[Node](n)
 
-  r.carry[0] = symN("Q"  & subscript[0], (r.msN[0], 0))
+  r.carry[0] = symN("Q"  & subscript[0], r.msN[0][0])
   if hasReset:
-    sArr[0] = andN((r.msN[0], 1), notReset)
+    sArr[0] = andN(r.msN[0][1], notReset)
   else:
-    sArr[0] = symN("!Q" & subscript[0], (r.msN[0], 1))
+    sArr[0] = symN("!Q" & subscript[0], r.msN[0][1])
   rArr[0] = if hasReset: orN(r.reset, r.carry[0]) else: r.carry[0]
 
   for i in 1..<n:
-    r.carry[i] = andN(r.carry[i-1], (r.msN[i], 0))
+    r.carry[i] = andN(r.carry[i-1], r.msN[i][0])
     if hasReset:
-      sArr[i] = andN((r.msN[i], 1), notReset, r.carry[i-1])
+      sArr[i] = andN(r.msN[i][1], notReset, r.carry[i-1])
     else:
-      sArr[i] = andN((r.msN[i], 1), r.carry[i-1])
+      sArr[i] = andN(r.msN[i][1], r.carry[i-1])
     rArr[i] =
       if hasReset:
         if i == n-1:
@@ -74,7 +74,6 @@ proc counterMod*(modulus: int): CounterMod =
         else:
           orN(r.reset, r.carry[i])
       else: r.carry[i]
-
 
   for i in 0..<n:
     r.msN[i].inputs.add sArr[i]
@@ -86,7 +85,7 @@ proc counterMod*(modulus: int): CounterMod =
 
   r.Q = newSeq[Node](n)
   for i in 0..<n:
-    r.Q[i] = symN("Q" & subscript[i], (r.msN[i], 0))
+    r.Q[i] = symN("Q" & subscript[i], r.msN[i][0])
 
   # Layout: each trigger is offset by (stepX, stepY) from the previous.
   const stepX = 19.0
@@ -100,7 +99,7 @@ proc counterMod*(modulus: int): CounterMod =
     let y = i.float * stepY
     rules.add Line(origin: point2(x, y - 1.5), nodes: @[sArr[i]], align: Outputs)
     rules.add Line(origin: point2(x, y + 1.5), nodes: @[rArr[i]], align: Outputs)
-    rules.add Line(origin: point2(x + 4, y), nodes: @[r.msN[i]])
+    rules.add Line(origin: point2(x + 4, y),   nodes: @[r.msN[i]])
     if i > 0:
       # carry[i-1] is the AND node feeding both sArr[i] and carry[i]
       rules.add Line(origin: point2(x - 6, y - 0.5), nodes: @[r.carry[i-1]], align: Outputs)
@@ -150,15 +149,8 @@ mainModule:
   placeComponents(c.placement)
   drawComponents()
 
-
   var timestamps = @[PlotTimestamp(time: 0, changes: startup(c))]
-
-  for t in 0..(c.modulus+6):
-    let base = 1.0 + t.float * 3.0
-    timestamps.add PlotTimestamp(time: base,       changes: @[setVal(c.C, 1)])
-    timestamps.add PlotTimestamp(time: base + 0.05)
-    timestamps.add PlotTimestamp(time: base + 1.5, changes: @[setVal(c.C, 0)])
-    timestamps.add PlotTimestamp(time: base + 1.55)
+  timestamps.add clockPulses(c.C, c.modulus + 7, startTime = 1.0, halfPeriod = 1.5, settle = 0.05)
 
   let p = Plot(
     data:              @[@[c.C], c.Q],
