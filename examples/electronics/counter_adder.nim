@@ -35,13 +35,11 @@ proc counterMod*(modulus: int): CounterMod =
     r.msN[i] = r.ms[i].msPack.packN("MS" & subscript[i])
 
   # Detect state `modulus`: AND together the Q outputs whose bit is set in modulus.
-  block:
-    var acc: Node = nil
-    for i in 0..<n:
-      if ((modulus shr i) and 1) == 1:
-        acc = if acc == nil: symN("", (r.msN[i], 0))
-              else:          andN(acc, (r.msN[i], 0))
-    r.reset = acc  # nil when modulus is power of 2
+  r.reset = andN()
+  for i in 0..<n:
+    if ((modulus shr i) and 1) == 1:
+      r.reset.inputs.insert r.msN[i]
+  let hasReset = r.reset.inputs.len != 0
 
   # carry[i] = Q₀·Q₁·…·Qᵢ  (running AND chain)
   # sArr[i]  = carry[i-1] · !Qᵢ   (= Tᵢ · !Qᵢ, the S input)
@@ -52,12 +50,19 @@ proc counterMod*(modulus: int): CounterMod =
 
   sArr[0]    = symN("!Q" & subscript[0], (r.msN[0], 1))
   r.carry[0] = symN("Q"  & subscript[0], (r.msN[0], 0))
-  rArr[0]    = if r.reset != nil: orN(r.carry[0], r.reset) else: r.carry[0]
+  rArr[0]    = if hasReset: orN(r.reset, r.carry[0]) else: r.carry[0]
 
   for i in 1..<n:
-    r.carry[i] = andN((r.msN[i], 0), r.carry[i-1])
+    r.carry[i] = andN(r.carry[i-1], (r.msN[i], 0))
     sArr[i]    = andN((r.msN[i], 1), r.carry[i-1])
-    rArr[i]    = if r.reset != nil: orN(r.reset, r.carry[i]) else: r.carry[i]
+    rArr[i]    =
+      if hasReset:
+        if i == n-1:
+          symN("", r.reset)
+        else:
+          orN(r.reset, r.carry[i])
+      else: r.carry[i]
+
 
   for i in 0..<n:
     r.msN[i].inputs.add sArr[i]
@@ -88,12 +93,15 @@ proc counterMod*(modulus: int): CounterMod =
       # carry[i-1] is the AND node feeding both sArr[i] and carry[i]
       rules.add Line(origin: point2(x - 6, y - 0.5), nodes: @[r.carry[i-1]], align: Outputs)
       rules.add loopbackPath(r.carry[i-1], (rArr[i-1],1), offset = 1)
+      rules.add loopbackPath(r.carry[i-1], (r.carry[i],0), offset = (if i > 1: -2 else: -3))
 
-  # if r.reset != nil:
-  #   rules.add Line(
-  #     origin: point2(n.float * stepX + 4, n.float * stepY + 2),
-  #     nodes: @[r.reset],
-  #   )
+  if hasReset:
+    rules.add Line(
+      origin: point2(n.float * stepX + 4, n.float * stepY + 2),
+      nodes: @[r.reset],
+    )
+    for i, resInp in r.reset.inputs:
+      rules.add bus(point2(n.float * stepX + 2 - i.float * 1, 0), resInp, @[r.reset])
 
   rules.add Line(
     origin: point2(n.float * stepX + 10, 0),
@@ -104,6 +112,7 @@ proc counterMod*(modulus: int): CounterMod =
   for i in 0..<n:
     rules.add bus(point2(9.0 + i.float * stepX, 0), r.C, @[r.msN[i]])
     rules.add loopbackPath((r.msN[i],1), (sArr[i],0), offset = -1)
+    rules.add loopbackPath(r.reset, rArr[i], hOffset = (-1.0, 0.0))
 
   r.placement = rules
 

@@ -260,9 +260,52 @@ proc `not`*(v: Value): Value =
 
 
 
+proc segmentIntersectsRectBorder(a, b: Point2, r: Rect): bool =
+  let seg = lineSection(a, b)
+  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y      ), point2(r.x + r.w, r.y      ))) or
+  hasIntersectedSegments(seg, lineSection(point2(r.x + r.w, r.y      ), point2(r.x + r.w, r.y + r.h))) or
+  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y + r.h), point2(r.x + r.w, r.y + r.h))) or
+  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y      ), point2(r.x,       r.y + r.h)))
+
+
+proc segmentPassesThroughRect(a, b: Point2, r: Rect): bool =
+  # Returns true if the open segment interior crosses the shrunk rect interior.
+  # The margin excludes endpoint-on-border touches (port connections).
+  const margin = 0.01f32
+  let xMin = r.x + margin
+  let xMax = r.x + r.w - margin
+  let yMin = r.y + margin
+  let yMax = r.y + r.h - margin
+  if xMin >= xMax or yMin >= yMax: return false
+  var tMin = 0f32
+  var tMax = 1f32
+  let dx = b.x - a.x
+  let dy = b.y - a.y
+  if abs(dx) < 1e-9f32:
+    if a.x < xMin or a.x > xMax: return false
+  else:
+    let tLeft  = (xMin - a.x) / dx
+    let tRight = (xMax - a.x) / dx
+    if dx > 0:
+      tMin = max(tMin, tLeft);  tMax = min(tMax, tRight)
+    else:
+      tMin = max(tMin, tRight); tMax = min(tMax, tLeft)
+  if tMin >= tMax: return false
+  if abs(dy) < 1e-9f32:
+    if a.y < yMin or a.y > yMax: return false
+  else:
+    let tBot = (yMin - a.y) / dy
+    let tTop = (yMax - a.y) / dy
+    if dy > 0:
+      tMin = max(tMin, tBot);  tMax = min(tMax, tTop)
+    else:
+      tMin = max(tMin, tTop); tMax = min(tMax, tBot)
+  return tMin < tMax
+
+
 proc placeComponents*(rules: seq[PlacementRule]) =
   var nodeRects = initTable[Node, Rect]()
-  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool]]
+  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool, eid: EntityId]]
 
   type ConnKey = tuple[n: pointer, port: int]
   var busHandled = initHashSet[ConnKey]()
@@ -372,8 +415,8 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             if node.height != 0 and inp.n.outputs.len == 1:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let pts = Connection(@[point2(inRect.x + inRect.w, fromY), point2(r.x, fromY)])
-              doc.add pts
-              allConns.add (pts, schemeTheme.foreground, true)
+              let eid = doc.spawn(pts)
+              allConns.add (pts, schemeTheme.foreground, true, eid)
             else:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let toY = inputPortY(node, r, portIdx)
@@ -381,13 +424,13 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               let p2 = point2(r.x, toY)
               if abs(fromY - toY) < Eps:
                 let pts = Connection(@[p1, p2])
-                doc.add pts
-                allConns.add (pts, schemeTheme.foreground, true)
+                let eid = doc.spawn(pts)
+                allConns.add (pts, schemeTheme.foreground, true, eid)
               else:
                 let midX = (p1.x + p2.x) / 2.0
                 let pts = Connection(@[p1, point2(midX, fromY), point2(midX, toY), p2])
-                doc.add pts
-                allConns.add (pts, schemeTheme.foreground, true)
+                let eid = doc.spawn(pts)
+                allConns.add (pts, schemeTheme.foreground, true, eid)
 
     of BusR:
       let elem {.cursor.} = rule.bus
@@ -423,19 +466,19 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             maxBusY = max(maxBusY, portY)
 
           let lead = Connection(leadPts)
-          doc.add lead, elem.color
-          allConns.add (lead, elem.color, true)
+          let leadEid = doc.spawn(lead, elem.color)
+          allConns.add (lead, elem.color, true, leadEid)
 
           let vertBus = Connection(@[point2(busX, minBusY), point2(busX, maxBusY)])
-          doc.add vertBus, elem.color
-          allConns.add (vertBus, elem.color, false)
+          let vertEid = doc.spawn(vertBus, elem.color)
+          allConns.add (vertBus, elem.color, false, vertEid)
 
           for bc in busConns:
             let outRect = nodeRects[bc.n]
             let portY = inputPortY(bc.n, outRect, bc.port)
             let stub = Connection(@[point2(busX, portY), point2(outRect.x, portY)])
-            doc.add stub, elem.color
-            allConns.add (stub, elem.color, false)
+            let stubEid = doc.spawn(stub, elem.color)
+            allConns.add (stub, elem.color, false, stubEid)
 
   # Pass 3b: draw LoopbackPath connections
   for rule in rules:
@@ -464,8 +507,15 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         else:
           topBound + elem.offset.float32
 
-      let rightX = max(outRect.x + outRect.w, inRect.x + inRect.w) + 1.float32 + elem.hOffset.right.float32
-      let leftX  = min(outRect.x, inRect.x) - 1.float32 + elem.hOffset.left.float32
+      let (rightX, leftX) =
+        if inRect.x > outRect.x:
+          # input is to the right of output: route right-stub → up/down → right-long → down/up → port
+          (outRect.x + outRect.w + 1.float32 + elem.hOffset.right.float32,
+           inRect.x - 1.float32 + elem.hOffset.left.float32)
+        else:
+          # loopback: input is to the left; wrap around both nodes
+          (max(outRect.x + outRect.w, inRect.x + inRect.w) + 1.float32 + elem.hOffset.right.float32,
+           min(outRect.x, inRect.x) - 1.float32 + elem.hOffset.left.float32)
 
       let pts = Connection(@[
         point2(outRect.x + outRect.w, outY),
@@ -479,11 +529,12 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       let connected = elem.input.port < inNode.inputs.len and
                       inNode.inputs[elem.input.port].n == outNode and
                       inNode.inputs[elem.input.port].port == elem.output.port
+      var eid: EntityId
       if connected:
-        doc.add pts, elem.color
+        eid = doc.spawn(pts, elem.color)
       else:
-        doc.add pts, schemeTheme.errorColor, Thickness schemeTheme.errorConnectionThickness
-      allConns.add (pts, (if connected: elem.color else: schemeTheme.errorColor), true)
+        eid = doc.spawn(pts, schemeTheme.errorColor, Thickness schemeTheme.errorConnectionThickness)
+      allConns.add (pts, (if connected: elem.color else: schemeTheme.errorColor), true, eid)
 
   # Pass 3c: draw error markers for ports with real connections not covered by any rule
   for node, r in nodeRects:
@@ -541,6 +592,21 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               seenBranches.incl v
               doc.add Branch v, conn2.color
             break
+
+  # Pass 6: redraw connections that pass through any node rect in bold blue
+  for conn in allConns:
+    var passesThrough = false
+    for i in 0 ..< conn.pts.high:
+      if passesThrough: break
+      for n, nodeRect in nodeRects:
+        if segmentPassesThroughRect(conn.pts[i], conn.pts[i + 1], nodeRect) or
+           segmentIntersectsRectBorder(conn.pts[i], conn.pts[i + 1], nodeRect):
+          passesThrough = true
+          break
+    if passesThrough:
+      doc.update conn.eid: add Color color(0, 0, 1)
+      # todo: doc.update conn.eid: add color(0, 0, 1)  # doesn't compile
+      doc.update conn.eid: add Thickness schemeTheme.errorConnectionThickness
 
 
 
