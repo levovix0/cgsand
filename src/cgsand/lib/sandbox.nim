@@ -71,6 +71,9 @@ type
 
   CacheVariable* = string
     ## a name for an entity, that persists between script re-runs
+  
+
+  OwnerModule* = string
 
 
 

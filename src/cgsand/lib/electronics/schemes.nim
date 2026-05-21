@@ -129,19 +129,22 @@ const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈
 
 
 
-# todo: ecs bug: not (i == -1)` component was not found in destination archetype [AssertionDefect]
-# doc.update globals:
-#   add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
-#   add AxisYDown
-#   add FontSize schemeTheme.baseFontSize
-#   add Background schemeTheme.background
-#   add Foreground schemeTheme.foreground
+if not doc.hasComponent(globals, OwnerModule):
+  doc.update globals: add OwnerModule "electronics/schemes"
+  
+  # todo: ecs bug: not (i == -1)` component was not found in destination archetype [AssertionDefect]
+  # doc.update globals:
+  #   add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+  #   add AxisYDown
+  #   add FontSize schemeTheme.baseFontSize
+  #   add Background schemeTheme.background
+  #   add Foreground schemeTheme.foreground
 
-doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
-doc.update globals: add AxisYDown
-doc.update globals: add FontSize schemeTheme.baseFontSize
-doc.update globals: add Background schemeTheme.background
-doc.update globals: add Foreground schemeTheme.foreground
+  doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+  doc.update globals: add AxisYDown
+  doc.update globals: add FontSize schemeTheme.baseFontSize
+  doc.update globals: add Background schemeTheme.background
+  doc.update globals: add Foreground schemeTheme.foreground
 
 
 
@@ -306,9 +309,35 @@ proc segmentPassesThroughRect(a, b: Point2, r: Rect): bool =
   return tMin < tMax
 
 
+const overlapPalette = [
+  color(0.85f32, 0.15f32, 0.15f32),
+  color(0.15f32, 0.60f32, 0.15f32),
+  color(0.15f32, 0.15f32, 0.85f32),
+  color(0.85f32, 0.50f32, 0.00f32),
+  color(0.60f32, 0.10f32, 0.75f32),
+  color(0.00f32, 0.60f32, 0.65f32),
+  color(0.70f32, 0.65f32, 0.00f32),
+  color(0.80f32, 0.00f32, 0.50f32),
+]
+
+proc segmentsOverlap(a1, a2, b1, b2: Point2): bool =
+  const eps = 1e-3f32
+  if abs(a1.y - a2.y) < eps and abs(b1.y - b2.y) < eps and abs(a1.y - b1.y) < eps:
+    let aMin = min(a1.x, a2.x); let aMax = max(a1.x, a2.x)
+    let bMin = min(b1.x, b2.x); let bMax = max(b1.x, b2.x)
+    return min(aMax, bMax) - max(aMin, bMin) > eps
+  if abs(a1.x - a2.x) < eps and abs(b1.x - b2.x) < eps and abs(a1.x - b1.x) < eps:
+    let aMin = min(a1.y, a2.y); let aMax = max(a1.y, a2.y)
+    let bMin = min(b1.y, b2.y); let bMax = max(b1.y, b2.y)
+    return min(aMax, bMax) - max(aMin, bMin) > eps
+  return false
+
+
 proc placeComponents*(rules: seq[PlacementRule]) =
   var nodeRects = initTable[Node, Rect]()
-  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool, eid: EntityId]]
+
+  type ConnSource = tuple[n: pointer, port: int]
+  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool, eid: EntityId, source: ConnSource]]
 
   type ConnKey = tuple[n: pointer, port: int]
   var busHandled = initHashSet[ConnKey]()
@@ -419,7 +448,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let pts = Connection(@[point2(inRect.x + inRect.w, fromY), point2(r.x, fromY)])
               let eid = doc.spawn(pts)
-              allConns.add (pts, schemeTheme.foreground, true, eid)
+              allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
             else:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let toY = inputPortY(node, r, portIdx)
@@ -428,12 +457,12 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               if abs(fromY - toY) < Eps:
                 let pts = Connection(@[p1, p2])
                 let eid = doc.spawn(pts)
-                allConns.add (pts, schemeTheme.foreground, true, eid)
+                allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
               else:
                 let midX = (p1.x + p2.x) / 2.0
                 let pts = Connection(@[p1, point2(midX, fromY), point2(midX, toY), p2])
                 let eid = doc.spawn(pts)
-                allConns.add (pts, schemeTheme.foreground, true, eid)
+                allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
 
     of BusR:
       let elem {.cursor.} = rule.bus
@@ -468,20 +497,22 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             minBusY = min(minBusY, portY)
             maxBusY = max(maxBusY, portY)
 
+          let busSource: ConnSource = (cast[pointer](inNode), inPort)
+
           let lead = Connection(leadPts)
           let leadEid = doc.spawn(lead, elem.color)
-          allConns.add (lead, elem.color, true, leadEid)
+          allConns.add (lead, elem.color, true, leadEid, busSource)
 
           let vertBus = Connection(@[point2(busX, minBusY), point2(busX, maxBusY)])
           let vertEid = doc.spawn(vertBus, elem.color)
-          allConns.add (vertBus, elem.color, false, vertEid)
+          allConns.add (vertBus, elem.color, false, vertEid, busSource)
 
           for bc in busConns:
             let outRect = nodeRects[bc.n]
             let portY = inputPortY(bc.n, outRect, bc.port)
             let stub = Connection(@[point2(busX, portY), point2(outRect.x, portY)])
             let stubEid = doc.spawn(stub, elem.color)
-            allConns.add (stub, elem.color, false, stubEid)
+            allConns.add (stub, elem.color, false, stubEid, busSource)
 
   # Pass 3b: draw LoopbackPath connections
   for rule in rules:
@@ -537,7 +568,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         eid = doc.spawn(pts, elem.color)
       else:
         eid = doc.spawn(pts, schemeTheme.errorColor, Thickness schemeTheme.errorConnectionThickness)
-      allConns.add (pts, (if connected: elem.color else: schemeTheme.errorColor), true, eid)
+      allConns.add (pts, (if connected: elem.color else: schemeTheme.errorColor), true, eid, (cast[pointer](elem.output.n), elem.output.port))
 
   # Pass 3c: draw error markers for ports with real connections not covered by any rule
   for node, r in nodeRects:
@@ -610,6 +641,30 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       doc.update conn.eid: add Color color(0, 0, 1)
       # todo: doc.update conn.eid: add color(0, 0, 1)  # doesn't compile
       doc.update conn.eid: add Thickness schemeTheme.errorConnectionThickness
+
+  # Pass 7: highlight overlapping segments from different sources with palette colors
+  var overlapSources: seq[ConnSource]
+  for i in 0 ..< allConns.len:
+    for j in i+1 ..< allConns.len:
+      if allConns[i].source == allConns[j].source: continue
+      block checkPair:
+        let pi = allConns[i].pts
+        let pj = allConns[j].pts
+        for si in 0 ..< pi.high:
+          for sj in 0 ..< pj.high:
+            if segmentsOverlap(pi[si], pi[si+1], pj[sj], pj[sj+1]):
+              if allConns[i].source notin overlapSources:
+                overlapSources.add allConns[i].source
+              if allConns[j].source notin overlapSources:
+                overlapSources.add allConns[j].source
+              break checkPair
+
+  if overlapSources.len > 0:
+    for conn in allConns:
+      let idx = overlapSources.find(conn.source)
+      if idx >= 0:
+        let c = overlapPalette[idx mod overlapPalette.len]
+        doc.update conn.eid: add Color c
 
 
 
@@ -710,12 +765,14 @@ proc drawComponents* =
             Background schemeTheme.background
 
 
-proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node]): Value =
+proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node], computed: var HashSet[Node], cacheable: bool = true): Value =
+  if n in computed: return vals[n]
   if n in vals and (n.inputs.len == 0 or n in skipSim): return vals[n]
   if n in computing:  # force delay
     return prevVals.getOrDefault(n, Value(power: 0.0))
   if n.inputs.len == 0:
     vals[n] = Value(power: 0.0)
+    if cacheable: computed.incl n
     return vals[n]
 
   computing.incl n
@@ -729,13 +786,16 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
         prevVals.getOrDefault(inp.n, Value(power: 0.0))
     else:
       if inp.n.kind == PackN and inp.n.pack != nil:
-        discard simulateNode(inp.n, vals, prevVals, computing, skipSim)
+        discard simulateNode(inp.n, vals, prevVals, computing, skipSim, computed, cacheable)
         if inp.port < inp.n.pack.outputs.len:
-          simulateNode(inp.n.pack.outputs[inp.port], vals, prevVals, computing, skipSim)
+          # If the PackN is currently in a computing cycle, its internal nodes
+          # are traversed with stale pack inputs — don't cache those results.
+          let c = cacheable and not (inp.n in computing)
+          simulateNode(inp.n.pack.outputs[inp.port], vals, prevVals, computing, skipSim, computed, c)
         else:
           Value(power: 0.0)
       else:
-        simulateNode(inp.n, vals, prevVals, computing, skipSim)
+        simulateNode(inp.n, vals, prevVals, computing, skipSim, computed, cacheable)
 
   case n.kind
   of SymN:
@@ -747,9 +807,9 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
         if i < n.inputs.len:
           vals[inpNode] = resolveInp(n.inputs[i])
       if n.pack.outputs.len > 0:
-        vals[n] = simulateNode(n.pack.outputs[0], vals, prevVals, computing, skipSim)
+        vals[n] = simulateNode(n.pack.outputs[0], vals, prevVals, computing, skipSim, computed, cacheable)
         for i in 1..<n.pack.outputs.len:
-          discard simulateNode(n.pack.outputs[i], vals, prevVals, computing, skipSim)
+          discard simulateNode(n.pack.outputs[i], vals, prevVals, computing, skipSim, computed, cacheable)
       else:
         vals[n] = Value(power: 0.0)
     else:
@@ -781,6 +841,7 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
     else:
       discard
 
+  if cacheable: computed.incl n
   computing.excl n
   return vals.getOrDefault(n, Value(power: 0.0))
 
@@ -811,10 +872,11 @@ proc draw*(plot: Plot) =
 
     var simVals = accumVals
     var computing = initHashSet[Node]()
+    var computed = initHashSet[Node]()
     for group in plot.data:
       for node in group:
-        discard simulateNode(node, simVals, accumVals, computing, skipSim)
-    
+        discard simulateNode(node, simVals, accumVals, computing, skipSim, computed)
+
     for group in plot.data:
       for node in group:
         if node in simVals:
@@ -921,9 +983,10 @@ proc echoPlot*(plot: Plot) =
 
     var simVals = accumVals
     var computing = initHashSet[Node]()
+    var computed = initHashSet[Node]()
     for group in plot.data:
       for node in group:
-        discard simulateNode(node, simVals, accumVals, computing, skipSim)
+        discard simulateNode(node, simVals, accumVals, computing, skipSim, computed)
 
     var parts: seq[string]
     parts.add "t=" & stamp.time.formatFloat(ffDecimal, 2)

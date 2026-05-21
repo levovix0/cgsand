@@ -1,4 +1,4 @@
-import std/[strutils, unicode]
+import std/[strutils, unicode, sets]
 import sandbox, geom2d, text
 import annotations/[dimensions]
 
@@ -16,11 +16,13 @@ type
     rect*: KarnaughRect
 
 
-doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(1))
-doc.update globals: add Background color(1, 1, 1)
-doc.update globals: add Foreground color(0, 0, 0)
-doc.update globals: add FontSize 1
-doc.update globals: add AxisYUp
+if not doc.hasComponent(globals, OwnerModule):
+  doc.update globals: add OwnerModule "carnot_map"
+  doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(1))
+  doc.update globals: add Background color(1, 1, 1)
+  doc.update globals: add Foreground color(0, 0, 0)
+  doc.update globals: add FontSize 1
+  doc.update globals: add AxisYUp
 
 
 proc varValues(y, x, nVars: int): seq[int] =
@@ -366,6 +368,47 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
           FontSize 0.4
 
   doc[].drawFigureBrackets()
+
+
+proc stateToKarnaughPos*(state, nVars: int): tuple[y, x: int] =
+  ## Binary state number → (row, col) in a Karnaugh map using Gray-code ordering.
+  let q0 = (state shr 0) and 1
+  let q1 = (state shr 1) and 1
+  let q2 = (state shr 2) and 1
+  let q3 = (state shr 3) and 1
+  if nVars == 3:
+    result.y = q0
+    result.x = q1 * 2 + (q2 xor q1)
+  else:
+    result.y = q0 * 2 + (q1 xor q0)
+    result.x = q2 * 2 + (q3 xor q2)
+
+
+proc buildTInputTables*(nVars: int, excluded: seq[int]): seq[seq[seq[int]]] =
+  ## Returns nVars Karnaugh tables (one per T-flip-flop input) for an up-counter
+  ## that skips excluded states and halts at the maximum valid state.
+  ## Excluded states are marked as don't-care (2).
+  assert nVars >= 3 and nVars <= 4
+  let rows = if nVars >= 4: 4 else: 2
+  result = newSeq[seq[seq[int]]](nVars)
+  for i in 0..<nVars:
+    result[i] = newSeq[seq[int]](rows)
+    for r in 0..<rows:
+      result[i][r] = newSeq[int](4)
+      for c in 0..<4: result[i][r][c] = 2
+
+  let excSet = excluded.toHashSet()
+  let maxState = (1 shl nVars) - 1
+  var valid: seq[int]
+  for s in 0..maxState:
+    if s notin excSet: valid.add s
+  if valid.len == 0: return
+
+  for vi, state in valid:
+    let nextState = if vi + 1 >= valid.len: state else: valid[vi + 1]
+    let (y, x) = stateToKarnaughPos(state, nVars)
+    for i in 0..<nVars:
+      result[i][y][x] = ((state shr i) and 1) xor ((nextState shr i) and 1)
 
 
 mainModule:
