@@ -133,7 +133,7 @@ proc findSknf*(data: seq[seq[int]], variables: seq[string]): seq[KarnaughGroup] 
 
 
 proc drawNormalFormImpl(
-  docPtr: ptr World, groups: seq[KarnaughGroup], origin: Point2, font: Font, isSdnf: bool
+  doc: World, groups: seq[KarnaughGroup], origin: Point2, font: Font, isSdnf: bool
 ) =
   var text = ""
   var overlines: seq[tuple[a, b: int]] = @[]
@@ -162,7 +162,7 @@ proc drawNormalFormImpl(
         addLit(lit)
       text.add ")"
 
-  docPtr[].add Text text:
+  doc.add Text text:
     Position2 origin
     PositionAtLeft
     FontSize float64(font.size)
@@ -197,18 +197,18 @@ proc drawNormalFormImpl(
     if b < sels.len:
       let x0 = float64(sels[a].x - boxX) / float64(sf)
       let x1 = float64(sels[b].x + sels[b].w - boxX) / float64(sf)
-      docPtr[].add lineSection(origin + vec2(x0, oy), origin + vec2(x1, oy))
+      doc.add lineSection(origin + vec2(x0, oy), origin + vec2(x1, oy))
 
 
-proc drawSdnf*(doc: var World, groups: seq[KarnaughGroup], origin: Point2, typeface = font_default, fontSize: float = 1.0) =
-  drawNormalFormImpl(doc.addr, groups, origin, typeface.withSize(fontSize), true)
+proc drawSdnf*(doc: World, groups: seq[KarnaughGroup], origin: Point2, typeface = font_default, fontSize: float = 1.0) =
+  drawNormalFormImpl(doc, groups, origin, typeface.withSize(fontSize), true)
 
-proc drawSknf*(doc: var World, groups: seq[KarnaughGroup], origin: Point2, typeface = font_default, fontSize: float = 1.0) =
-  drawNormalFormImpl(doc.addr, groups, origin, typeface.withSize(fontSize), false)
+proc drawSknf*(doc: World, groups: seq[KarnaughGroup], origin: Point2, typeface = font_default, fontSize: float = 1.0) =
+  drawNormalFormImpl(doc, groups, origin, typeface.withSize(fontSize), false)
 
 
 proc drawKarnaughGroups*(
-  doc: var World,
+  doc: World,
   groups: seq[KarnaughGroup],
   variables: seq[string],
   origin: Point2 = point2(),
@@ -278,28 +278,26 @@ proc drawKarnaughGroups*(
       addArc(origin.x, origin.y, rxLeft * 2, ryTop * 2, 0, Pi / 2)
 
 
-proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]], cellSize: float = 2.0) =
+proc drawCarnotMap*(doc: World, variables: seq[string], data: seq[seq[int]], cellSize: float = 2.0) =
   let tableRows = if variables.len >= 4: 4 else: 2
   let tableSize = vec2(4.0 * cellSize, float(tableRows) * cellSize)
-  let doc = doc.addr  # cannot capture var params
-  # todo: make World a ref? or at least make doc a ref World
 
-  doc[].add RectTable(size: tableSize, cols: 4, rows: tableRows):
+  doc.add RectTable(size: tableSize, cols: 4, rows: tableRows):
     Position2 point2()
 
-  doc[].forEach (r: RectTable, pos: Position2||point2()):
-    doc[].add lineSection(pos, pos + vec2(r.size.x, 0))
-    doc[].add lineSection(pos + vec2(r.size.x, 0), pos + vec2(r.size.x, r.size.y))
-    doc[].add lineSection(pos + vec2(r.size.x, r.size.y), pos + vec2(0, r.size.y))
-    doc[].add lineSection(pos + vec2(0, r.size.y), pos)
+  doc.forEach (r: RectTable, pos: Position2||point2()):
+    doc.add lineSection(pos, pos + vec2(r.size.x, 0))
+    doc.add lineSection(pos + vec2(r.size.x, 0), pos + vec2(r.size.x, r.size.y))
+    doc.add lineSection(pos + vec2(r.size.x, r.size.y), pos + vec2(0, r.size.y))
+    doc.add lineSection(pos + vec2(0, r.size.y), pos)
 
     for i in 1..<r.rows:
       let y = (i / r.rows) * r.size.y
-      doc[].add lineSection(pos + vec2(0, y), pos + vec2(r.size.x, y))
+      doc.add lineSection(pos + vec2(0, y), pos + vec2(r.size.x, y))
 
     for i in 1..<r.cols:
       let x = (i / r.cols) * r.size.x
-      doc[].add lineSection(pos + vec2(x, 0), pos + vec2(x, r.size.y))
+      doc.add lineSection(pos + vec2(x, 0), pos + vec2(x, r.size.y))
 
     let cs = r.size.x / float(r.cols)
     let bH = cs * 0.125
@@ -315,16 +313,16 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
           of PositionAtRight:  vec2(-0.3, -0.5)
           of PositionAtLeft:   vec2(0.3, -0.5)
           else: vec2()
-        doc[].add lineSection(labelPos + v - vec2(0.3, 0), labelPos + v + vec2(0.3, 0))
+        doc.add lineSection(labelPos + v - vec2(0.3, 0), labelPos + v + vec2(0.3, 0))
       name.removePrefix("!")
-      doc[].add Text name:
+      doc.add Text name:
         Position2 labelPos
         anchor
 
     if variables.len == 3:
-      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz, b: pos + vec2(0.5, 0) * sz, h: vec2(0, -bH), power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.5, 0) * sz, b: pos + vec2(1, 0) * sz, h: vec2(0, -bH), power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz, h: vec2(0, bH), power: 2)
+      doc.add FigureBracket(a: pos + vec2(0, 0) * sz, b: pos + vec2(0.5, 0) * sz, h: vec2(0, -bH), power: 2)
+      doc.add FigureBracket(a: pos + vec2(0.5, 0) * sz, b: pos + vec2(1, 0) * sz, h: vec2(0, -bH), power: 2)
+      doc.add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz, h: vec2(0, bH), power: 2)
       drawLabel "!" & variables[0], pos + vec2(0, 1/4) * sz + vec2(-0.2, 0),       PositionAtRight
       drawLabel variables[0],       pos + vec2(0, 3/4) * sz + vec2(-0.2, 0),       PositionAtRight
       drawLabel "!" & variables[1], pos + vec2(0.25, 0) * sz + vec2(0, -(bH+0.1)), PositionAtBottom
@@ -334,12 +332,12 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
       drawLabel variables[2],       pos + vec2(0.5, 1) * sz + vec2(0, bH+0.1),     PositionAtTop
 
     elif variables.len >= 4:
-      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0.5, 0) * sz,    h: vec2(0, -bH),  power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.5, 0) * sz,  b: pos + vec2(1, 0) * sz,      h: vec2(0, -bH),  power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz,   h: vec2(0, bH),   power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0, 0.5) * sz,    h: vec2(-bW, 0),  power: 2)
-      doc[].add FigureBracket(a: pos + vec2(0, 0.5) * sz,  b: pos + vec2(0, 1) * sz,      h: vec2(-bW, 0),  power: 2)
-      doc[].add FigureBracket(a: pos + vec2(1, 0.25) * sz, b: pos + vec2(1, 0.75) * sz,   h: vec2(bW, 0),   power: 2)
+      doc.add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0.5, 0) * sz,    h: vec2(0, -bH),  power: 2)
+      doc.add FigureBracket(a: pos + vec2(0.5, 0) * sz,  b: pos + vec2(1, 0) * sz,      h: vec2(0, -bH),  power: 2)
+      doc.add FigureBracket(a: pos + vec2(0.25, 1) * sz, b: pos + vec2(0.75, 1) * sz,   h: vec2(0, bH),   power: 2)
+      doc.add FigureBracket(a: pos + vec2(0, 0) * sz,    b: pos + vec2(0, 0.5) * sz,    h: vec2(-bW, 0),  power: 2)
+      doc.add FigureBracket(a: pos + vec2(0, 0.5) * sz,  b: pos + vec2(0, 1) * sz,      h: vec2(-bW, 0),  power: 2)
+      doc.add FigureBracket(a: pos + vec2(1, 0.25) * sz, b: pos + vec2(1, 0.75) * sz,   h: vec2(bW, 0),   power: 2)
       drawLabel "!" & variables[2], pos + vec2(0.25, 0) * sz + vec2(0, -(bH+0.1)),  PositionAtBottom
       drawLabel variables[2],       pos + vec2(0.75, 0) * sz + vec2(0, -(bH+0.1)),  PositionAtBottom
       drawLabel "!" & variables[3], pos + vec2(1/8, 1) * sz + vec2(0, bH+0.1),      PositionAtTop
@@ -357,7 +355,7 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
       for y in 0..<r.rows:
         let d = data[y][x]
         let p = pos + vec2(((x*2+1) / (r.cols*2)) * r.size.x, ((y*2+1) / (r.rows*2)) * r.size.y)
-        doc[].add Text (if d == 2: "-" else: $d):
+        doc.add Text (if d == 2: "-" else: $d):
           Position2 p
           PositionAtCenter
         let mintermsText =
@@ -365,12 +363,12 @@ proc drawCarnotMap*(doc: var World, variables: seq[string], data: seq[seq[int]],
             $(y div 2) & $(((y mod 2).bool xor (y div 2).bool).int) & $(x div 2) & $(((x mod 2).bool xor (x div 2).bool).int)
           else:
             $y & $(x div 2) & $(((x mod 2).bool xor (x div 2).bool).int)
-        doc[].add Text mintermsText:
+        doc.add Text mintermsText:
           Position2 p + vec2(cellHalfW, cellHalfH)
           PositionAtBottomRight
           FontSize 0.4
 
-  doc[].drawFigureBrackets()
+  doc.drawFigureBrackets()
 
 
 proc stateToKarnaughPos*(state, nVars: int): tuple[y, x: int] =

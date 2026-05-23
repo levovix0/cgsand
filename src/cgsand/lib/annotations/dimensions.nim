@@ -43,7 +43,7 @@ proc dimensionText*(x: float, units = ""): DimensionText =
 
 
 
-proc drawDimensions*(doc: var World) =
+proc drawDimensions*(doc: World) =
   var entIds: seq[EntityId]
 
   doc.forEach (
@@ -76,7 +76,7 @@ proc drawDimensions*(doc: var World) =
     doc.update x: add AlreadyDrawn()
 
 
-proc drawFigureBrackets*(doc: var World) =
+proc drawFigureBrackets*(doc: World) =
   var entIds: seq[EntityId]
 
   doc.forEach (id: EntityId, f: FigureBracket, not AlreadyDrawn):
