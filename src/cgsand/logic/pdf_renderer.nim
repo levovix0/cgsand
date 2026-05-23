@@ -42,131 +42,198 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
     abs(t[0][2]) > 1e-6 or abs(t[1][2]) > 1e-6
 
   proc textMatrix2D(t: DMat4): tuple[ta, tb, tc, td: float32] =
-    ## Extracts the normalized 2D text-direction matrix for PDF Tm from Transform3.
-    ## Accounts for document-to-PDF y-flip (yDown → yUp).
-    ## Returns (a,b,c,d) where (a,b) is text x-direction and (c,d) is text y-direction in PDF space.
+    ## Builds the PDF Tm 2x2 matrix from Transform3, accounting for the
+    ## document-to-PDF y-flip (yDown doc → y-axis inverted in page space).
+    ## Includes scale so that Transform3 scale is reflected in rendered size.
     let ySign = if yDown: -1.0 else: 1.0
-    let sx = sqrt(t[0][0]*t[0][0] + t[0][1]*t[0][1])
-    let sy = sqrt(t[1][0]*t[1][0] + t[1][1]*t[1][1])
-    let invSx = if sx > 1e-9: 1.0 / sx else: 1.0
-    let invSy = if sy > 1e-9: 1.0 / sy else: 1.0
     (
-      ta: float32(t[0][0] * invSx),
-      tb: float32(-t[0][1] * ySign * invSx),
-      tc: float32(t[1][0] * invSy),
-      td: float32(-t[1][1] * ySign * invSy),
+      ta: float32(t[0][0]),
+      tb: float32(t[0][1] * ySign),
+      tc: float32(t[1][0] * ySign),
+      td: float32(t[1][1]),
     )
 
   let backgroundColor = blendColor(globals.background, color_bg)
   o.pages[pi].fillRect(0, 0, pageWidthPt, pageHeightPt, backgroundColor)
 
-  r.doc.forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
-    let a = t * sandbox.Vec2(line.startPoint).vec2
-    let b = t * sandbox.Vec2(line.endPoint).vec2
-    o.pages[pi].drawLine(
-      toPagePos(a),
-      toPagePos(b),
-      color,
-      if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32,
-    )
+  proc renderWorld(o: var PdfWriter, w: World, wGlobals: DocumentGlobals, extraT: DMat4) =
+    w.forEach (line: LineSection, color: (Foreground|Color)||wGlobals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
+      let ct = extraT * t
+      let a = ct * sandbox.Vec2(line.startPoint).vec2
+      let b = ct * sandbox.Vec2(line.endPoint).vec2
+      o.pages[pi].drawLine(
+        toPagePos(a),
+        toPagePos(b),
+        color,
+        if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32,
+      )
 
-  r.doc.forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
-    let pts = curve.points(count)
-    var pagePts: seq[Vec2]
-    for p in pts:
-      pagePts.add toPagePos(t3 * vec2(p.x.float32, p.y.float32))
+    w.forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
+      let ct = extraT * t3
+      let fg =
+        if has Foreground: the Foreground
+        elif has Color: the Color
+        else: wGlobals.foreground
+      let lw = if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32
 
-    let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
-      else: globals.foreground
-    let lw = if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32
-
-    if curve.closed:
-      if has Background:
-        if Color.has or Foreground.has:
-          o.pages[pi].drawPolylineWithFill(pagePts, fg, the Background, lw)
-        else:
-          o.pages[pi].fillPolygon(pagePts, the Background)
+      if not (has PointCount):
+        let cx = float32(curve.center.x)
+        let cy = float32(curve.center.y)
+        let r  = float32(curve.radius)
+        let doFill   = curve.closed and (has Background)
+        let doStroke = not curve.closed or not (has Background) or (Color.has or Foreground.has)
+        let bg       = if has Background: the Background else: color(0, 0, 0, 0)
+        let transf   = proc(v: Vec2): Vec2 = toPagePos(ct * v)
+        o.pages[pi].drawBezierEllipseArc(
+          cx, cy, r, r,
+          float32(curve.startAngle), float32(curve.angularLength),
+          transf, doStroke, doFill, curve.closed,
+          fg, bg, lw,
+        )
       else:
-        o.pages[pi].drawPolyline(pagePts, fg, lw)
-    else:
-      o.pages[pi].drawPolyline(pagePts, fg, lw)
+        let pts = curve.points(count)
+        var pagePts: seq[Vec2]
+        for p in pts:
+          pagePts.add toPagePos(ct * vec2(p.x.float32, p.y.float32))
+        if curve.closed:
+          if has Background:
+            if Color.has or Foreground.has:
+              o.pages[pi].drawPolylineWithFill(pagePts, fg, the Background, lw)
+            else:
+              o.pages[pi].fillPolygon(pagePts, the Background)
+          else:
+            o.pages[pi].drawPolyline(pagePts, fg, lw)
+        else:
+          o.pages[pi].drawPolyline(pagePts, fg, lw)
 
 
-  r.doc.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
-    let pts = arc.points(count)
-    var pagePts: seq[Vec2]
-    for p in pts:
-      pagePts.add toPagePos(t3 * vec2(p.x.float32, p.y.float32))
-    o.pages[pi].drawPolyline(pagePts, color, if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32)
+    w.forEach (arc: EllipseArc, color: (Foreground|Color)||wGlobals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
+      let ct = extraT * t3
+      let lw = if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32
+
+      if not (has PointCount):
+        let cx = float32(arc.center.x)
+        let cy = float32(arc.center.y)
+        let rx = float32(arc.size.x / 2)
+        let ry = float32(arc.size.y / 2)
+        let transf = proc(v: Vec2): Vec2 = toPagePos(ct * v)
+        o.pages[pi].drawBezierEllipseArc(
+          cx, cy, rx, ry,
+          float32(arc.startAngle), float32(arc.angularLength),
+          transf, true, false, arc.fullEllipse,
+          color, color(0, 0, 0, 0), lw,
+        )
+      else:
+        let pts = arc.points(count)
+        var pagePts: seq[Vec2]
+        for p in pts:
+          pagePts.add toPagePos(ct * vec2(p.x.float32, p.y.float32))
+        o.pages[pi].drawPolyline(pagePts, color, lw)
 
 
-  r.doc.forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, t3: Transform3||dmat4()):
-    let doFill   = Background.has or (Foreground.has.not and Color.has.not)
-    let doStroke = Foreground.has or Color.has
-    let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
-      else: globals.foreground
-    let bg = if has Background: the Background else: color(0, 0, 0, 0)
-    o.pages[pi].drawPath(
-      path,
-      proc(v: Vec2): Vec2 = toPagePos(t3 * v),
-      doStroke,
-      doFill,
-      fg,
-      bg,
-      if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32,
-    )
+    w.forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, t3: Transform3||dmat4()):
+      let ct = extraT * t3
+      let doFill   = Background.has or (Foreground.has.not and Color.has.not)
+      let doStroke = Foreground.has or Color.has
+      let fg =
+        if has Foreground: the Foreground
+        elif has Color: the Color
+        else: wGlobals.foreground
+      let bg = if has Background: the Background else: color(0, 0, 0, 0)
+      o.pages[pi].drawPath(
+        path,
+        proc(v: Vec2): Vec2 = toPagePos(ct * v),
+        doStroke,
+        doFill,
+        fg,
+        bg,
+        if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32,
+      )
 
 
-  r.doc.forEach (
-    text: Text,
-    pos: Position2,
-    posAt: PositionAt || PositionAtTopLeft,
-    font: Typeface || globals.font,
-    fontSize: FontSize || globals.fontSize,
-    opt Foreground, opt Color,
-    t3: Transform3||dmat4(),
-  ):
-    let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
-      else: globals.foreground
+    w.forEach (
+      text: Text,
+      pos: Position2,
+      posAt: PositionAt || PositionAtTopLeft,
+      font: Typeface || wGlobals.font,
+      fontSize: FontSize || wGlobals.fontSize,
+      opt Foreground, opt Color,
+      t3: Transform3||dmat4(),
+    ):
+      let fg =
+        if has Foreground: the Foreground
+        elif has Color: the Color
+        else: wGlobals.foreground
 
-    if is3DRotation(t3): continue
+      let ct     = extraT * t3
+      let sizePt = fontSize.float32 * scale * mmToPt.float32
+      let fnt    = font.withSize(sizePt.float64)
+      let arr    = pixieFonts.typeset(fnt, text)
+      let box    = arr.layoutBounds()
+      let origin = posAt.factor()
+      let offX   = -box.x * origin.x
+      let offY   =  box.y * origin.y
+      let anchor = toPagePos(extraT * vec2(pos.x.float32, pos.y.float32))
 
-    let sizePt    = fontSize.float32 * scale * mmToPt.float32
-    let fnt       = font.withSize(sizePt.float64)
-    let arr       = pixieFonts.typeset(fnt, text)
-    let box       = arr.layoutBounds()
-    let origin    = posAt.factor()
+      if is3DRotation(ct):
+        # Convert glyphs to paths; apply the full projected (non-normalised) transform
+        var glyphPath = newPath()
+        for spanIdx, (spanStart, spanStop) in arr.spans:
+          let spanFont = arr.fonts[spanIdx]
+          for ri in spanStart .. spanStop:
+            let gp = spanFont.typeface.getGlyphPath(arr.runes[ri])
+            gp.transform(translate(arr.positions[ri]) * scale(vec2(spanFont.scale)))
+            glyphPath.addPath(gp)
 
-    let (ta, tb, tc, td) = textMatrix2D(t3)
-    let anchor = toPagePos(vec2(pos.x.float32, pos.y.float32))
+        let ySign = if yDown: -1.0'f32 else: 1.0'f32
+        let ta_f = ct[0][0].float32
+        let tb_f = ct[0][1].float32 * ySign
+        let tc_f = ct[1][0].float32 * ySign
+        let td_f = ct[1][1].float32
+        let (anchX, anchY, oX, oY) = (anchor.x, anchor.y, offX, offY)
+        o.pages[pi].drawPath(
+          glyphPath,
+          proc(p: Vec2): Vec2 =
+            let dx = p.x + oX
+            let dy = oY - p.y
+            vec2(anchX + ta_f * dx + tc_f * dy, anchY + tb_f * dx + td_f * dy),
+          false, true,
+          color(0, 0, 0, 0),
+          fg,
+          0,
+        )
+        continue
 
-    # top-left offset of text box relative to anchor, in PDF space (rotated by ta..td)
-    let offX = -box.x * origin.x
-    let offY =  box.y * origin.y
-    let textTopX = anchor.x + ta * offX + tc * offY
-    let textTopY = anchor.y + tb * offX + td * offY
+      let (ta, tb, tc, td) = textMatrix2D(ct)
 
-    for (lineStart, lineStop) in arr.lines:
-      # find first non-LF rune to get baseline position
-      var firstIdx = lineStart
-      while firstIdx <= lineStop and arr.runes[firstIdx].uint32 == 10:
-        inc firstIdx
-      if firstIdx > lineStop: continue
+      # top-left offset of text box relative to anchor, in PDF space (rotated by ta..td)
+      let textTopX = anchor.x + ta * offX + tc * offY
+      let textTopY = anchor.y + tb * offX + td * offY
 
-      var lineText = $arr.runes[lineStart..lineStop]
-      # per-line offset in text-layout space (x: right, y: down), rotated to PDF space
-      let lx = arr.positions[firstIdx].x
-      let ly = -arr.positions[firstIdx].y  # pixie y-down → PDF y-up
-      let baselineX = textTopX + ta * lx + tc * ly
-      let baselineY = textTopY + tb * lx + td * ly
+      for (lineStart, lineStop) in arr.lines:
+        # find first non-LF rune to get baseline position
+        var firstIdx = lineStart
+        while firstIdx <= lineStop and arr.runes[firstIdx].uint32 == 10:
+          inc firstIdx
+        if firstIdx > lineStop: continue
 
-      o.pages[pi].drawText(o, font, sizePt, fg, baselineX, baselineY, lineText, ta, tb, tc, td)
+        var lineText = $arr.runes[lineStart..lineStop]
+        # per-line offset in text-layout space (x: right, y: down), rotated to PDF space
+        let lx = arr.positions[firstIdx].x
+        let ly = -arr.positions[firstIdx].y  # pixie y-down → PDF y-up
+        let baselineX = textTopX + ta * lx + tc * ly
+        let baselineY = textTopY + tb * lx + td * ly
+
+        o.pages[pi].drawText(o, font, sizePt, fg, baselineX, baselineY, lineText, ta, tb, tc, td)
+
+
+    w.forEach (sub: SubWorld, pos: Position2, t3: Transform3||dmat4()):
+      if sub == nil: continue
+      GC_ref(sub)
+      let subExtraT = extraT * translate(dvec3(pos.x, pos.y, 0)) * t3
+      o.renderWorld(sub, sub.documentGlobals, subExtraT)
+
+  o.renderWorld(r.doc, globals, dmat4())
 
 
 proc writePdf*(filename: string, r: PdfRenerer) =
