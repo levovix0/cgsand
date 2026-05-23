@@ -192,6 +192,7 @@ mainModule:
 
   let tables = buildTInputTables(c.n, c.excluded)
 
+  var x = 0
   for i in 0..<c.n:
     var carnotWorld = World()
     withDocument carnotWorld:

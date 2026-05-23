@@ -126,11 +126,14 @@ proc findGroups*(data: seq[seq[int]], variables: seq[string], targetVal: int): s
   while uncovered != {}:
     var bestPi = -1
     var bestCount = 0
+    var bestSize = 0
     for pi in 0..<primes.len:
       if selected[pi]: continue
       let newCover = card(primeCellSets[pi] * uncovered)
-      if newCover > bestCount:
+      let newSize = primes[pi].h * primes[pi].w
+      if newCover > 0 and (newCover > bestCount or (newCover == bestCount and newSize > bestSize)):
         bestCount = newCover
+        bestSize = newSize
         bestPi = pi
     if bestPi < 0: break
     selected[bestPi] = true

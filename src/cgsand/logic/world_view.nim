@@ -91,7 +91,11 @@ proc draw2dWorld*(
     drawLineSection(ctx, line, color, thk, transform = mat4(transform3))
 
 
-  w.forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+  w.forEach (curve: CircleArc, opt PointCount, opt Color, opt Background, opt Foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+    let screenRadius = float32(curve.radius) * pixelsPerUnit
+    let count =
+      if has PointCount: the PointCount
+      else: clamp(int(screenRadius * abs(float32(curve.angularLength)) / 4.0), 8, 256)
     let points = curve.points(count)
     let fg =
       if has Foreground: the Foreground
@@ -115,7 +119,11 @@ proc draw2dWorld*(
           drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
 
 
-  w.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+  w.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, opt PointCount, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+    let screenRadius = float32(max(arc.size.x, arc.size.y) / 2) * pixelsPerUnit
+    let count =
+      if has PointCount: the PointCount
+      else: clamp(int(screenRadius * abs(float32(arc.angularLength)) / 4.0), 12, 256)
     let points = arc.points(count)
     let thk =
       if has PixelThickness: some(pixThick / pixelsPerUnit)
