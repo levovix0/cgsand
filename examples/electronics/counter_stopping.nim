@@ -1,4 +1,4 @@
-import std/strutils
+import std/[strutils, algorithm]
 import sandbox
 import electronics/schemes
 from pkg/bumpy import Rect
@@ -65,7 +65,7 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
       for term in grp.terms:
         let neg  = term.startsWith("!")
         let base = if neg: term[1..^1] else: term
-        let idx  = varNames.find(base)
+        let idx  = varNames.high - varNames.find(base)
         lits.add Port(n: if neg: r.nQ[idx] else: r.Q[idx], port: 0)
 
       if lits.len == 1:
@@ -189,15 +189,19 @@ mainModule:
 
   var varNames: seq[string]
   for i in 0..<c.n: varNames.add "Q" & subscript[i]
+  varNames = varNames.reversed
 
   let tables = buildTInputTables(c.n, c.excluded)
 
-  var x = 0
+  let mainDoc = doc
+  let mainGlobals = globals
+
   for i in 0..<c.n:
     var carnotWorld = World()
     withDocument carnotWorld:
       let globals = doc.spawn CanvasSettings()
       setCarnotMapGlobals(globals)
+      doc[globals, Foreground] = mainDoc[mainGlobals, Foreground]
 
       doc.drawCarnotMap(varNames, tables[i])
 

@@ -87,7 +87,6 @@ type
     timestamps*: seq[PlotTimestamp]
     origin*: Point2
     timeScale*: float = 1.0
-    axiesColor*: Color = color(0, 0, 0, 0.1)
     skipUnchangedAxes*: bool = false
 
   SchemeTheme* = object
@@ -95,6 +94,7 @@ type
     foreground*: Color = color(0, 0, 0)
     errorColor*: Color = color(1, 0, 0)
     overlapErrorColor*: Color = color(0, 0, 1)
+    axiesColor*: Color = color(0, 0, 0, 0.1)
     canvasMargin*: float32 = 1.0
     baseFontSize*: float32 = 1.0
     branchRadius*: float32 = 0.1
@@ -115,6 +115,7 @@ if darkTheme:
     foreground:               color(0.75, 0.75, 0.8),
     errorColor:               color(1, 0.4, 0.4),
     overlapErrorColor:        color(0.4, 0.4, 1),
+    axiesColor:               color(0.75, 0.75, 0.8) * 0.1,
     canvasMargin:             1.0,
     baseFontSize:             1.0,
     branchRadius:             0.1,
@@ -981,14 +982,14 @@ proc draw*(plot: Plot) =
       doc.add lineSection(
         point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, plot.origin.y),
         point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, y - plot.gap)
-      ), plot.axiesColor
+      ), schemeTheme.axiesColor
   
   when false:
     let t = plot.timestamps[^1]
     doc.add lineSection(
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, plot.origin.y),
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, y - plot.gap)
-    ), plot.axiesColor
+    ), schemeTheme.axiesColor
 
 
 

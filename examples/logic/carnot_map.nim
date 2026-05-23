@@ -426,16 +426,17 @@ proc drawCarnotMap*(doc: World, variables: seq[string], data: seq[seq[int]], cel
 
 proc stateToKarnaughPos*(state, nVars: int): tuple[y, x: int] =
   ## Binary state number → (row, col) in a Karnaugh map using Gray-code ordering.
+  ## Q(nVars-1) is MSB (rows), Q0 is LSB (cols).
   let q0 = (state shr 0) and 1
   let q1 = (state shr 1) and 1
   let q2 = (state shr 2) and 1
   let q3 = (state shr 3) and 1
   if nVars == 3:
-    result.y = q0
-    result.x = q1 * 2 + (q2 xor q1)
+    result.y = q2
+    result.x = q1 * 2 + (q0 xor q1)
   else:
-    result.y = q0 * 2 + (q1 xor q0)
-    result.x = q2 * 2 + (q3 xor q2)
+    result.y = q3 * 2 + (q2 xor q3)
+    result.x = q1 * 2 + (q0 xor q1)
 
 
 proc buildTInputTables*(nVars: int, excluded: seq[int]): seq[seq[seq[int]]] =
