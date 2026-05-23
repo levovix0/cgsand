@@ -11,7 +11,7 @@ import pkg/pixie/paths
 
 type
   PdfRenerer* = object
-    doc*: ptr World
+    doc*: World
 
 
 proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
@@ -60,7 +60,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
   let backgroundColor = blendColor(globals.background, color_bg)
   o.pages[pi].fillRect(0, 0, pageWidthPt, pageHeightPt, backgroundColor)
 
-  r.doc[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
+  r.doc.forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
     let a = t * sandbox.Vec2(line.startPoint).vec2
     let b = t * sandbox.Vec2(line.endPoint).vec2
     o.pages[pi].drawLine(
@@ -70,7 +70,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
       if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32,
     )
 
-  r.doc[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
+  r.doc.forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
     let pts = curve.points(count)
     var pagePts: seq[Vec2]
     for p in pts:
@@ -94,7 +94,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
       o.pages[pi].drawPolyline(pagePts, fg, lw)
 
 
-  r.doc[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
+  r.doc.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
     let pts = arc.points(count)
     var pagePts: seq[Vec2]
     for p in pts:
@@ -102,7 +102,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
     o.pages[pi].drawPolyline(pagePts, color, if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32)
 
 
-  r.doc[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, t3: Transform3||dmat4()):
+  r.doc.forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, t3: Transform3||dmat4()):
     let doFill   = Background.has or (Foreground.has.not and Color.has.not)
     let doStroke = Foreground.has or Color.has
     let fg =
@@ -121,7 +121,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
     )
 
 
-  r.doc[].forEach (
+  r.doc.forEach (
     text: Text,
     pos: Position2,
     posAt: PositionAt || PositionAtTopLeft,

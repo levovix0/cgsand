@@ -130,8 +130,7 @@ const Eps = 1e-4
 const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
 
 
-
-if not doc.hasComponent(globals, OwnerModule):
+proc setElectronicsSchemesGlobals*(globals: EntityId) =
   doc.update globals: add OwnerModule "electronics/schemes"
   
   # todo: ecs bug: not (i == -1)` component was not found in destination archetype [AssertionDefect]
@@ -147,6 +146,9 @@ if not doc.hasComponent(globals, OwnerModule):
   doc.update globals: add FontSize schemeTheme.baseFontSize
   doc.update globals: add Background schemeTheme.background
   doc.update globals: add Foreground schemeTheme.foreground
+
+if not doc.hasComponent(globals, OwnerModule):
+  setElectronicsSchemesGlobals(globals)
 
 
 

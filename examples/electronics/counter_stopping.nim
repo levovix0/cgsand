@@ -181,3 +181,22 @@ mainModule:
     origin:            point2(0, 30),
     skipUnchangedAxes: true,
   )
+
+  var carnot1 = World()
+  withDocument carnot1:
+    let globals = doc.spawn CanvasSettings()
+    setCarnotMapGlobals(globals)
+
+    let variables = @["x", "y", "z", "t"]
+    let data = @[
+      @[0, 2, 1, 0],
+      @[1, 0, 0, 0],
+      @[1, 0, 0, 0],
+      @[0, 0, 0, 1],
+    ]
+
+    doc.drawCarnotMap(variables, data)
+
+  doc.add SubWorld carnot1:
+    Position2 point2(50, 28)
+    Transform3 (translate(vec3(0, 8, 0)) * rotateY(Pi/6) * rotateX(Pi/4))

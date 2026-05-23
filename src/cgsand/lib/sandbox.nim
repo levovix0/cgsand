@@ -31,24 +31,15 @@ type
     PositionAtBottom
     PositionAtCenter
 
+  Position2* = Point2
+    ## used for non-geometry objects that can be displayed (Text)
+
+
   AxisYDirection* = enum
     ## can be added to an entity with CanvasSettings, to specify if axisY is directed up (it is down by default)
     AxisYDown
     AxisYUp
-
-
-  Foreground* = Color
-    ## color of lines of shape, text
-    ## can be added onto entity with CanvasSettings to define a default foreground color (it is color(1, 1, 1) by default)
   
-  Background* = Color
-    ## color of background of shape or document (can be added onto entity with CanvasSettings)
-
-
-  Position2* = Point2
-    ## used for non-geometry objects that can be displayed (Text)
-  
-
 
   Transform3* = Mat4
     ## can be added to arbitrary transform 2D/3D object (for example, rotate text) in 3D space. Applied before Position2
@@ -61,12 +52,19 @@ type
     ## defines height of a line of text
 
 
+  Foreground* = Color
+    ## color of lines of shape, text
+    ## can be added onto entity with CanvasSettings to define a default foreground color (it is color(1, 1, 1) by default)
+  
+  Background* = Color
+    ## color of background of shape or document (can be added onto entity with CanvasSettings)
+
+
   Thickness* = float32
     ## defines thickness of lines (attachable to 2d curves)
   
   PixelThickness* = float32
     ## thickness of lines in pixels. Stays the same no matter how viewport transforms
-    ## todo
 
 
   DarkTheme* = bool
@@ -79,6 +77,12 @@ type
   OwnerModule* = string
 
 
+  SubWorld* = World
+    ## attach to an entity with Position2 (and optionally Transform3) to render another world as a sub-canvas
+    ## the sub-world is drawn at Position2 in the outer world's coordinate space
+    ## the sub-world's background is transparent; its own globals (foreground, font, etc.) are used
+
+
 
 when defined(script) or defined(nimcheck):
   var doc* {.exportc: "world_instance", dynlib.} = World()
@@ -86,7 +90,7 @@ when defined(script) or defined(nimcheck):
 
   var cache* {.exportc: "cache_instance", dynlib.}: ptr World
   
-  var reserveCache: World
+  var reserveCache = World()
   if cache == nil: cache = reserveCache.addr
 
   proc handleErrorAfterNimMain: bool {.exportc, dynlib.} =
@@ -132,7 +136,7 @@ const CanvasSettings_A4_Horizontal* = CanvasSettings(
 
 
 
-proc `[]`*[T](w: var World, t: typedesc[T]): var T =
+proc `[]`*[T](w: World, t: typedesc[T]): var T =
   var res: ptr T
   w.forEach (singletonValue: var T):
     res = singletonValue.addr
@@ -142,7 +146,7 @@ proc `[]`*[T](w: var World, t: typedesc[T]): var T =
       res = singletonValue.addr
   res[]
 
-proc `[]=`*[T](w: var World, t: typedesc[T], v: T) =
+proc `[]=`*[T](w: World, t: typedesc[T], v: T) =
   var got = false
   w.forEach (singletonValue: var T):
     singletonValue = v
@@ -150,7 +154,7 @@ proc `[]=`*[T](w: var World, t: typedesc[T], v: T) =
   if not got:
     w.add v
 
-proc getOrDefault*[T](w: var World, t: typedesc[T], v: T): T =
+proc getOrDefault*[T](w: World, t: typedesc[T], v: T): T =
   var res: ptr T
   w.forEach (singletonValue: var T):
     res = singletonValue.addr
@@ -159,7 +163,7 @@ proc getOrDefault*[T](w: var World, t: typedesc[T], v: T): T =
   else:
     res[]
 
-proc mgetOrPut*[T](w: var World, t: typedesc[T], v: T): var T =
+proc mgetOrPut*[T](w: World, t: typedesc[T], v: T): var T =
   var res: ptr T
   w.forEach (singletonValue: var T):
     res = singletonValue.addr
@@ -169,7 +173,7 @@ proc mgetOrPut*[T](w: var World, t: typedesc[T], v: T): var T =
       res = singletonValue.addr
   res[]
 
-template hasSingleton*[T](w: var World, t: typedesc[T]): bool =
+template hasSingleton*[T](w: World, t: typedesc[T]): bool =
   var hasV = false
   w.forEach (t): hasV = true
   hasV
@@ -196,17 +200,25 @@ proc factor*(posAt: PositionAt): Vec2 =
 
 
 
-proc background*(doc: var World): Background =
+proc background*(doc: World): Background =
   result = color(0, 0, 0, 0)
   doc.forEach (CanvasSettings, Background): return the Background
 
-proc foreground*(doc: var World): Foreground =
+proc foreground*(doc: World): Foreground =
   result = color(1, 1, 1)
   doc.forEach (CanvasSettings, Foreground): return the Foreground
 
-proc fontSize*(doc: var World): FontSize =
+proc fontSize*(doc: World): FontSize =
   result = 1
   doc.forEach (CanvasSettings, FontSize): return the FontSize
+
+
+
+template withDocument*(newDoc: World, body: untyped) =
+  let prevDoc = doc
+  doc = newDoc
+  body
+  doc = prevDoc
 
 
 

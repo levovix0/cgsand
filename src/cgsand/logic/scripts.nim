@@ -18,7 +18,7 @@ type
   ScriptObj* = object
     lib*: LibHandle
     world*: ptr World
-    cache*: ref World
+    cache*: World
     filename*: string
     outfile*: string
     stage* {.guard: lock.}: ScriptStage
@@ -93,7 +93,7 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
 
   let cacheInstanceAddr = s.lib.symAddr("cache_instance")
   if cacheInstanceAddr != nil:
-    cast[ptr ptr World](cacheInstanceAddr)[] = cast[ptr World](s.cache)
+    cast[ptr ptr World](cacheInstanceAddr)[] = s.cache.addr
 
 
   withLock s.lock: s.stage = Executing
@@ -116,7 +116,7 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
 
 
 
-proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: ref World = nil): Script =
+proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: World = nil): Script =
   new result
   initLock result.lock
   withLock result.lock: result.stage = Compiling

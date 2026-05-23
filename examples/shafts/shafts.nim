@@ -54,7 +54,7 @@ type
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
 
-if not doc.hasComponent(globals, OwnerModule):
+proc setShaftsGlobals*(globals: EntityId) =
   doc.update globals: add OwnerModule "shafts"
   doc.update globals: add CanvasSettings(
     autoSize: true,
@@ -66,6 +66,9 @@ if not doc.hasComponent(globals, OwnerModule):
 
   if not darkTheme:
     doc.update globals: add Background color(1, 1, 1)
+
+if not doc.hasComponent(globals, OwnerModule):
+  setShaftsGlobals(globals)
 
 
 

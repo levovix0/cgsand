@@ -31,10 +31,10 @@ proc pageAnchor*(size: Vec2, originAt: PositionAt): Vec2 =
   )
 
 
-proc documentGlobals*(w: ptr World): DocumentGlobals =
+proc documentGlobals*(w: World): DocumentGlobals =
   result = DocumentGlobals(settings: CanvasSettings(autoSize: true))
   result.font = font_default
-  w[].forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize, opt AxisYDirection, opt PositionAt, opt Typeface):
+  w.forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize, opt AxisYDirection, opt PositionAt, opt Typeface):
     result.settings = v
     if has Foreground: result.foreground = the Foreground
     if has Background: result.background = the Background
@@ -44,19 +44,19 @@ proc documentGlobals*(w: ptr World): DocumentGlobals =
     if has Typeface: result.font = the Typeface
 
 
-proc documentLayout*(w: ptr World, globals: DocumentGlobals): DocumentLayout =
+proc documentLayout*(w: World, globals: DocumentGlobals): DocumentLayout =
   result = DocumentLayout()
 
-  w[].forEach (line: LineSection, thickness: opt Thickness):
+  w.forEach (line: LineSection, thickness: opt Thickness):
     result.contentBounds.add(lineBounds(line, if has Thickness: some thickness else: none Thickness))
 
-  w[].forEach (curve: CircleArc, count: PointCount||20):
+  w.forEach (curve: CircleArc, count: PointCount||20):
     result.contentBounds.add(pointsBounds(curve.points(count)))
 
-  w[].forEach (arc: EllipseArc, count: PointCount||32):
+  w.forEach (arc: EllipseArc, count: PointCount||32):
     result.contentBounds.add(pointsBounds(arc.points(count)))
 
-  w[].forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||globals.fontSize):
+  w.forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||globals.fontSize):
     result.contentBounds.add(textBounds(text, pos, posAt, font, size))
 
   if globals.settings.autoSize and not result.contentBounds.empty:

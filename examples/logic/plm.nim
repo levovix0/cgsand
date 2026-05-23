@@ -5,7 +5,7 @@ let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 let SZ = 2.0
 
 
-if not doc.hasComponent(globals, OwnerModule):
+proc setPlmGlobals*(globals: EntityId) =
   doc.update globals: add OwnerModule "plm"
   doc.update globals: add CanvasSettings(
     autoSize: true,
@@ -17,6 +17,9 @@ if not doc.hasComponent(globals, OwnerModule):
 
   if not darkTheme:
     doc.update globals: add Background color(1, 1, 1)
+
+if not doc.hasComponent(globals, OwnerModule):
+  setPlmGlobals(globals)
 
 
 

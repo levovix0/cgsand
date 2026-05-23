@@ -1,13 +1,11 @@
-import std/[locks, options, math]
+import std/[locks, math]
 import pkg/[ecs, shady]
-import pkg/pixie/paths
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
-import pkg/rice/[primitives, antialiasing, transform, texts, paths]
-import ../logic/[scripts, config, bounds, doclayout]
+import pkg/rice/[primitives, antialiasing, transform]
+import ../logic/[scripts, config, bounds, doclayout, world_view]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
-import ../lib/[geom2d]
 
 
 type
@@ -22,51 +20,7 @@ type
 registerComponent DocumentView
 
 
-proc projectionMatrix(pageBounds: Bounds2, width, height: float32, axisYDirection: AxisYDirection): Mat4 =
-  ## returns a matrix to convert coordinates from document to framebuffer
-  ## if viewport matrix is mat4(), whole document will be fit into widget (assuming framebuffer takes whole space of the docuemnt view widget)
-  let pageSize = pageBounds.size
-  let cmin = min(pageSize.x, pageSize.y)
-  let cmax = max(pageSize.x, pageSize.y)
-  let canvasScale =
-    if (pageSize.x < pageSize.y) == (width / pageSize.x < height / pageSize.y):
-      cmax / cmin
-    else:
-      1
-
-  combine(
-    translate(-pageBounds.center.vec3(0)),
-    scale(y = (if axisYDirection == AxisYDown: -1 else: 1)),
-    scale vec3(2/cmax, 2/cmax, 1),
-    (
-      if width / pageSize.x < height / pageSize.y:
-        scale vec3(canvasScale, width / height * canvasScale, 1/1000)
-      else:
-        scale vec3(height / width * canvasScale, canvasScale, 1/1000)
-    ),
-  )
-
-
-proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
-  let glPos = combine(
-    scale(vec3(2 / width, -2 / height, 1)),
-    translate(vec3(-1, 1, 0)),
-  ) * vec4(widgetPos.x, widgetPos.y, 0, 1)
-  (inverse(toGl) * glPos).vec2
-
-
-proc projection*(this: DocumentView): Mat4 =
-  let globals = this.script[].world.documentGlobals
-  projectionMatrix(this.script[].world.documentLayout(globals).pageBounds, this.w[], this.h[], globals.axisYDirection)
-
-proc viewportToGlMatrix*(this: DocumentView): Mat4 =
-  combine(this.viewport, this.projection)
-
-proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
-  widgetToViewportPoint(pos, this.w[], this.h[], this.viewportToGlMatrix)
-
-
-proc fillHatchingRect*(
+proc fillHatchingRect(
   ctx: DrawContext,
   pos, size: Vec2,
   color1, color2: Color,
@@ -87,7 +41,7 @@ proc fillHatchingRect*(
       var uv {.out.}: Vec2
       gl_Position = @(transform) * vec4(pos.x, pos.y, 0, 1)
       uv = pos
-    
+
     proc frag =
       var glCol {.outGl.}: Vec4
       if (uv * @(size) + @(pos)).dot(@(dir.normalize.vec2)) mod (@(l1) + @(l2)) > @(l1):
@@ -99,161 +53,26 @@ proc fillHatchingRect*(
   draw ctx.rect
 
 
-proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
-  if thickness.isSome:
-    ctx.fillCapsule(
-      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
-      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
-      color = color,
-      transform = transform,
-      radius = thickness.get / 2,
-    )
-  else:
-    ctx.drawLine(
-      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
-      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
-      color = color,
-      transform = transform,
-    )
+proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
+  let glPos = combine(
+    scale(vec3(2 / width, -2 / height, 1)),
+    translate(vec3(-1, 1, 0)),
+  ) * vec4(widgetPos.x, widgetPos.y, 0, 1)
+  (inverse(toGl) * glPos).vec2
 
 
+proc projection*(this: DocumentView): Mat4 =
+  let globals = this.script[].world[].documentGlobals
+  let layout = this.script[].world[].documentLayout(globals)
+  projectionMatrix(layout.pageBounds, this.w[], this.h[], globals.axisYDirection)
 
-proc drawText*(
-  ctx: DrawContext,
-  text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float, axisYUp: bool,
-  transform = mat4(),
-) =
-  let ts = typeset(font.withSize(fontSize), text)
-  let origin = posAt.factor().vec2
-  ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true, axisYUp=axisYUp)
+proc viewportToGlMatrix*(this: DocumentView): Mat4 =
+  combine(this.viewport, this.projection)
 
-
-
-proc draw2dDocument(this: DocumentView, w: ptr World, ctx: DrawContext, width, height: float32) =
-  glEnable(GlBlend)
-  glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
-  # glEnable(GlDepthTest)
-
-  glClearColor(0, 0, 0, 0)
-  # glClearDepthf(1)
-  glClear(GL_COLOR_BUFFER_BIT #[or GL_DEPTH_BUFFER_BIT]#)
-
-  let globals = w.documentGlobals
-  let layout = w.documentLayout(globals)
-  
-  let prevView = ctx.viewportMatrix
-  let prevProj = ctx.projectionMatrix
-  defer:
-    ctx.viewport = prevView
-    ctx.projection = prevProj
-  
-  ctx.viewport = this.viewport[]
-  ctx.projection = projectionMatrix(layout.pageBounds, width, height, globals.axisYDirection)
+proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
+  widgetToViewportPoint(pos, this.w[], this.h[], this.viewportToGlMatrix)
 
 
-  glDisable(GlBlend)
-  ctx.fillHatchingRect(
-    vec2(-1, -1 * height / width), vec2(2, 2 * height / width),
-    "#252525".color, "#232323".color,
-    vec2(1, 1),
-    100 / width, 100 / width,
-    transform = scale vec3(1, width / height, 1)
-  )
-  ctx.fillRect(
-    rect(
-      layout.pageBounds.min,
-      layout.pageBounds.size
-    ),
-    color = globals.background,
-  )
-  glEnable(GlBlend)
-  glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
-
-
-  ctx.viewport = this.viewport[]
-
-  let toGl = this.viewportToGlMatrix
-  let pixelsPerUnit = sqrt(toGl[0][0]*toGl[0][0] + toGl[1][0]*toGl[1][0]) * width / 2
-
-  w[].forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
-    let thk =
-      if has PixelThickness: some(pixThick / pixelsPerUnit)
-      elif has Thickness: some thickness
-      else: none float32
-    drawLineSection(ctx, line, color, thk, transform = mat4(transform3))
-
-
-  w[].forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
-    let points = curve.points(count)
-    let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
-      else: globals.foreground
-    let thk =
-      if has PixelThickness: some(pixThick / pixelsPerUnit)
-      elif has Thickness: some thickness
-      else: none float32
-    let t3 = mat4(transform3)
-
-    if curve.closed:
-      if has Background:
-        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count, transform = t3)
-
-      if Background.has.not or Color.has or Foreground.has:
-        for i in 0 ..< points.len - 1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
-
-    else:
-      if Foreground.has or Color.has or Background.has.not:
-        for i in 0 ..< points.len - 1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
-
-
-  w[].forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, count: PointCount||32, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
-    let points = arc.points(count)
-    let thk =
-      if has PixelThickness: some(pixThick / pixelsPerUnit)
-      elif has Thickness: some thickness
-      else: none float32
-    let t3 = mat4(transform3)
-    for i in 0 ..< points.len - 1:
-      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
-  
-
-  w[].forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, transform3: Transform3||dmat4()):
-    let t3 = mat4(transform3)
-    let strokeWidth = if has PixelThickness: pixThick / pixelsPerUnit else: thickness
-    if has Background:
-      ctx.fillPath(path, color = the Background, transform = t3)
-    if has Foreground:
-      ctx.strokePath(path, color = the Foreground, strokeWidth=strokeWidth, transform = t3)
-    elif has Color:
-      ctx.strokePath(path, color = the Color, strokeWidth=strokeWidth, transform = t3)
-    elif not(has Background):
-      ctx.fillPath(path, color = globals.foreground, transform = t3)
-
-
-
-
-  w[].forEach (
-    text: Text,
-    pos: Position2,
-    # todo: color: Foreground|Color||globals.foreground,
-    opt Foreground, opt Color,
-    posAt: PositionAt||PositionAtTopLeft,
-    font: Typeface||globals.font,
-    size: FontSize||globals.fontSize,
-    transform3: Transform3||dmat4(),
-  ):
-    let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
-      else: globals.foreground
-    drawText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform3))
-  
-
-  glDisable(GlBlend)
-  # glDisable(GlDepthTest)
 
 
 proc hasWorldToDraw(script: Script): bool =
@@ -275,7 +94,44 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
 
     let psh = ctx.push(this.documentPixels)
     try:
-      draw2dDocument(this, this.script[].world, ctx, this.w[], this.h[])
+      let w = this.script[].world[]
+      let globals = w.documentGlobals
+      let layout = w.documentLayout(globals)
+      let proj = projectionMatrix(layout.pageBounds, this.w[], this.h[], globals.axisYDirection)
+      let toGl = combine(this.viewport[], proj)
+      let pixelsPerUnit = sqrt(toGl[0][0]*toGl[0][0] + toGl[1][0]*toGl[1][0]) * this.w[] / 2
+
+      glEnable(GlBlend)
+      glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
+      glClearColor(0, 0, 0, 0)
+      glClear(GL_COLOR_BUFFER_BIT)
+
+      let prevView = ctx.viewportMatrix
+      let prevProj = ctx.projectionMatrix
+      defer:
+        ctx.viewport = prevView
+        ctx.projection = prevProj
+      ctx.viewport = this.viewport[]
+      ctx.projection = proj
+
+      glDisable(GlBlend)
+      ctx.fillHatchingRect(
+        vec2(-1, -1 * this.h[] / this.w[]), vec2(2, 2 * this.h[] / this.w[]),
+        "#252525".color, "#232323".color,
+        vec2(1, 1),
+        100 / this.w[], 100 / this.w[],
+        transform = scale vec3(1, this.w[] / this.h[], 1)
+      )
+      ctx.fillRect(
+        rect(layout.pageBounds.min, layout.pageBounds.size),
+        color = globals.background,
+      )
+      glEnable(GlBlend)
+      glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
+
+      draw2dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit)
+
+      glDisable(GlBlend)
     finally:
       ctx.pop psh
 
@@ -404,7 +260,7 @@ method init*(this: DocumentView) =
         on root.scriptStage[] == Idle:
           if root.script[] != nil:
             this.visibility[] =
-              if root.script[].cache[].hasSingleton(DarkTheme):
+              if root.script[].cache.hasSingleton(DarkTheme):
                 Visibility.visible
               else:
                 Visibility.collapsed
@@ -417,6 +273,6 @@ method init*(this: DocumentView) =
         
         on this.activated:
           let cache = root.script[].cache
-          root.darkTheme[] = not cache[][DarkTheme]
-          cache[][DarkTheme] = root.darkTheme[]
+          root.darkTheme[] = not cache[DarkTheme]
+          cache[DarkTheme] = root.darkTheme[]
           rerunScript(root.script[])
