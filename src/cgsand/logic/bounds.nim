@@ -72,24 +72,17 @@ proc pointsBounds*(points: openArray[Point2]): Bounds2 =
     result.addPoint(sandbox.Vec2(p).vec2)
 
 
-# todo: textBounds should depend on AxisYDirection
-proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface, fontSize: float64): Bounds2 =
+proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface, fontSize: float64, axisYDirection: AxisYDirection = AxisYUp): Bounds2 =
   let arrangement = typeset(font.withSize(fontSize), text)
   let box = arrangement.computeBounds()
   let origin = posAt.factor
 
-  let topLeft = vec2(
-    pos.x.float32 - box.w * origin.x,
-    pos.y.float32,
-  )
-
-  let bottomLeft = vec2(
-    topLeft.x,
-    pos.y.float32 - box.h * (1 - origin.y),
-  )
+  let minX = pos.x.float32 - box.w * origin.x
+  let yFactor = if axisYDirection == AxisYUp: 1 - origin.y else: origin.y
+  let minY = pos.y.float32 - box.h * yFactor
 
   bounds2(
-    bottomLeft,
-    bottomLeft + vec2(box.w, box.h),
+    vec2(minX, minY),
+    vec2(minX + box.w, minY + box.h),
   )
 

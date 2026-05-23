@@ -9,10 +9,15 @@ type
     Executing
     # BuildingRenderTree
 
+  ScriptOptLevel* = enum
+    optNone   ## --opt:none (default, checks enabled)
+    optSpeed  ## --opt:speed -d:danger (maximum speed, no checks)
+
   WorkerArgs = object
     script: ptr ScriptObj
     filename, outfile: string
     compile: bool = true
+    optLevel: ScriptOptLevel = optNone
 
   Script* = ref ScriptObj
   ScriptObj* = object
@@ -21,6 +26,7 @@ type
     cache*: World
     filename*: string
     outfile*: string
+    optLevel*: ScriptOptLevel
     stage* {.guard: lock.}: ScriptStage
     lock*: Lock
 
@@ -66,15 +72,19 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
 
 
   if info.compile:
+    let optFlags = case info.optLevel
+      of optNone:   "--opt:none"
+      of optSpeed: "--opt:speed -d:danger"
+    
     when defined(cgsand.script_wrapper):
       let wrapperPath = "build/script_wrapper.nim"
       try:
         writeFile wrapperPath, wrapScript(readFile(info.filename))
       except:
         echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
-      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
+      if (execShellCmd &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
     else:
-      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
+      if (execShellCmd &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
 
     if s.lib != nil: unloadLib(s.lib)
     s.lib = loadLib(outfile)
@@ -116,16 +126,17 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
 
 
 
-proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: World = nil): Script =
+proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: World = nil, optLevel: ScriptOptLevel = optNone): Script =
   new result
   initLock result.lock
   withLock result.lock: result.stage = Compiling
   result.filename = filename
   result.outfile = outfile
+  result.optLevel = optLevel
   result.cache = if existingCache != nil: existingCache else: new World
 
   result.thread.createThread(scriptWorker, WorkerArgs(
-    script: result[].addr, filename: filename, outfile: outfile,
+    script: result[].addr, filename: filename, outfile: outfile, optLevel: optLevel,
   ))
 
 

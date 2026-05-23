@@ -16,6 +16,7 @@ type
     documentPixels: AntialiasedFramebuffer
 
     darkTheme: Property[bool]
+    scriptOptLevel: Property[ScriptOptLevel]
 
 registerComponent DocumentView
 
@@ -169,7 +170,7 @@ proc recompileScript*(this: DocumentView) =
     else:
       nil
   this.script{} = nil  # unload current script
-  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache)
+  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache, this.scriptOptLevel[])
 
 
 
@@ -225,12 +226,26 @@ method init*(this: DocumentView) =
     - globalKeybinding({Key.f5}):
       on this.activated: root.recompileScript()
     
-    - Button.new:
-      text = tr"Recompile"
+    - Layout.row:
+      gap = 10
       centerX = parent.center
       bottom = parent.bottom - 10
-      enabled = binding: root.scriptStage[] == Idle
-      on this.activated: root.recompileScript()
+
+      - Button.new:
+        text = binding:
+          case root.scriptOptLevel[]
+          of optNone:  "--opt:none"
+          of optSpeed: "--opt:speed"
+        accent = binding: root.scriptOptLevel[] == optSpeed
+        enabled = binding: root.scriptStage[] == Idle
+        on this.activated:
+          root.scriptOptLevel[] =
+            if root.scriptOptLevel[] == optNone: optSpeed else: optNone
+
+      - Button.new:
+        text = tr"Recompile"
+        enabled = binding: root.scriptStage[] == Idle
+        on this.activated: root.recompileScript()
     
     - UiRect.new:
       h = 2

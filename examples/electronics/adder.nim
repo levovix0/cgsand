@@ -86,7 +86,7 @@ mainModule:
     data: @[A, B, @[C], O, @[Oc]],
     gap: 0.5,
     groupGap: 0.5,
-    timeScale: 0.6,
+    timeScale: 0.55,
     timestamps: timestamps,
-    origin: point2(40, -2),
+    origin: point2(0, 20),
   )

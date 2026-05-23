@@ -182,21 +182,26 @@ mainModule:
     skipUnchangedAxes: true,
   )
 
-  var carnot1 = World()
-  withDocument carnot1:
-    let globals = doc.spawn CanvasSettings()
-    setCarnotMapGlobals(globals)
+  var varNames: seq[string]
+  for i in 0..<c.n: varNames.add "Q" & subscript[i]
 
-    let variables = @["x", "y", "z", "t"]
-    let data = @[
-      @[0, 2, 1, 0],
-      @[1, 0, 0, 0],
-      @[1, 0, 0, 0],
-      @[0, 0, 0, 1],
-    ]
+  let tables = buildTInputTables(c.n, c.excluded)
 
-    doc.drawCarnotMap(variables, data)
+  for i in 0..<c.n:
+    var carnotWorld = World()
+    withDocument carnotWorld:
+      let globals = doc.spawn CanvasSettings()
+      setCarnotMapGlobals(globals)
 
-  doc.add SubWorld carnot1:
-    Position2 point2(50, 28)
-    Transform3 (translate(vec3(0, 8, 0)) * rotateY(Pi/6) * rotateX(Pi/4))
+      doc.drawCarnotMap(varNames, tables[i])
+
+      let sdnf = findSdnf(tables[i], varNames)
+      doc.drawKarnaughGroups(sdnf, varNames)
+      doc.drawSdnf(sdnf, point2(0, -2.5))
+
+      doc.add Text ("T" & subscript[i]):
+        Position2 point2(4, -5)
+        PositionAtCenter
+
+    doc.add SubWorld carnotWorld:
+      Position2 point2(i.float * 30.0, 44)

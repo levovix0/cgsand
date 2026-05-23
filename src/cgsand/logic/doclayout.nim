@@ -57,7 +57,15 @@ proc documentLayout*(w: World, globals: DocumentGlobals): DocumentLayout =
     result.contentBounds.add(pointsBounds(arc.points(count)))
 
   w.forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||globals.fontSize):
-    result.contentBounds.add(textBounds(text, pos, posAt, font, size))
+    result.contentBounds.add(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
+
+  w.forEach (sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
+    if sub == nil: continue
+    let innerGlobals = sub.documentGlobals
+    let innerLayout = sub.documentLayout(innerGlobals)
+    if innerLayout.contentBounds.empty: continue
+    let innerToOuter = mat4(transform3) * translate(vec3(pos.x, pos.y, 0))
+    result.contentBounds.add(innerToOuter * innerLayout.contentBounds)
 
   if globals.settings.autoSize and not result.contentBounds.empty:
     let margin = globals.settings.margin.vec2
