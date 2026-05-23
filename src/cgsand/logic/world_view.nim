@@ -2,9 +2,10 @@ import std/[options, math]
 import pkg/[ecs, vmath]
 import pkg/pixie/paths
 import pkg/pixie/[fonts]
+import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts]
-import ./[bounds, doclayout]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
+import ./[bounds, doclayout, scripts]
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
 import ../lib/[geom2d]
 
 
@@ -157,8 +158,8 @@ proc draw2dWorld*(
   w.forEach (sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
     if sub == nil: continue
     let innerViewport = combine(
-      translate(vec3(pos.x, pos.y, 0)),
       mat4(transform3),
+      translate(vec3(pos.x, pos.y, 0)),
       viewport,
     )
     let outerToGl = combine(viewport, projection)
@@ -168,3 +169,20 @@ proc draw2dWorld*(
     let innerPixelsPerUnit = if outerScaleX > 0: pixelsPerUnit * innerScaleX / outerScaleX else: pixelsPerUnit
     GC_ref(sub)
     draw2dWorld(ctx, sub, innerViewport, projection, innerPixelsPerUnit)
+
+
+proc worldBoundsCallback(world: World): RawBounds2 {.cdecl.} =
+  let g = world.documentGlobals
+  let layout = world.documentLayout(g)
+  if layout.contentBounds.empty: return RawBounds2(empty: true)
+  let b = layout.contentBounds
+  RawBounds2(empty: false, minX: b.min.x, minY: b.min.y, maxX: b.max.x, maxY: b.max.y)
+
+proc textSizeCallback(text: string, fontSize: float64): Vec2 {.cdecl.} =
+  var f = newFont(toscelFonts.font_default)
+  f.size = fontSize
+  let box = typeset(f, text).computeBounds()
+  vec2(box.w, box.h)
+
+scriptWorldBounds = worldBoundsCallback
+scriptTextSize = textSizeCallback

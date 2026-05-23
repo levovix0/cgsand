@@ -144,7 +144,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
     let origin    = posAt.factor()
 
     let (ta, tb, tc, td) = textMatrix2D(t3)
-    let anchor = toPagePos(t3 * vec2(pos.x.float32, pos.y.float32))
+    let anchor = toPagePos(vec2(pos.x.float32, pos.y.float32))
 
     # top-left offset of text box relative to anchor, in PDF space (rotated by ta..td)
     let offX = -box.x * origin.x

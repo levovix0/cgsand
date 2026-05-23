@@ -1,5 +1,6 @@
 import std/[os, strformat, dynlib, locks]
-import pkg/[ecs]
+import pkg/[ecs, vmath]
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
 
 type
@@ -19,6 +20,10 @@ type
     compile: bool = true
     optLevel: ScriptOptLevel = optNone
 
+  TextSizeCb* = proc(text: string, fontSize: float64): Vec2 {.cdecl.}
+  EntityBoundsCb* = proc(world: World, eid: EntityId): RawBounds2 {.cdecl.}
+  WorldBoundsCb* = proc(world: World): RawBounds2 {.cdecl.}
+
   Script* = ref ScriptObj
   ScriptObj* = object
     lib*: LibHandle
@@ -31,6 +36,11 @@ type
     lock*: Lock
 
     thread: Thread[WorkerArgs]
+
+
+var scriptTextSize*: TextSizeCb
+var scriptEntityBounds*: EntityBoundsCb
+var scriptWorldBounds*: WorldBoundsCb
 
 
 proc `=destroy`(this: ScriptObj) =
@@ -105,6 +115,14 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
   if cacheInstanceAddr != nil:
     cast[ptr ptr World](cacheInstanceAddr)[] = s.cache.addr
 
+  template setScriptCb(sym: string, cb: typed) =
+    let cbAddr = s.lib.symAddr(sym)
+    if cbAddr != nil and cb != nil:
+      cast[ptr typeof(cb)](cbAddr)[] = cb
+  
+  setScriptCb("sandbox_textSizeImpl", scriptTextSize)
+  setScriptCb("sandbox_entityBoundsImpl", scriptEntityBounds)
+  setScriptCb("sandbox_worldBoundsImpl", scriptWorldBounds)
 
   withLock s.lock: s.stage = Executing
   nimMain()

@@ -1,6 +1,7 @@
 import std/strutils
 import sandbox
 import electronics/schemes
+from pkg/bumpy import Rect
 import ./trigger_t
 import ./trigger_ms
 import ../logic/carnot_map
@@ -91,7 +92,7 @@ proc counterStop*(excluded: seq[int], nBits: int): CounterStop =
     r.ttN[i].inputs.add r.C
 
 
-proc place*(c: CounterStop) =
+proc place*(c: CounterStop): seq[Rect] =
   const offsetX = 8.0
   const stepX = 26.0
   const stepY = 4.0
@@ -115,6 +116,10 @@ proc place*(c: CounterStop) =
     baseRules.add bus(point2(i.float * stepX + offsetX + 5.5, -2), c.C, @[c.ttN[i]])
 
   let rects = placeNodes(baseRules)
+
+  result = newSeq[Rect](c.n)
+  for i in 0..<c.n:
+    result[i] = rects[c.ttN[i]]
 
   var connRules: seq[PlacementRule]
   for i in 0..<c.n:
@@ -162,7 +167,7 @@ mainModule:
   let excluded = @[0, 1, 10, 12]
   let c = counterStop(excluded, 4)
 
-  place(c)
+  let placement = place(c)
   drawComponents()
 
   var validStates: seq[int]
@@ -199,9 +204,8 @@ mainModule:
       doc.drawKarnaughGroups(sdnf, varNames)
       doc.drawSdnf(sdnf, point2(0, -2.5))
 
-      doc.add Text ("T" & subscript[i]):
-        Position2 point2(4, -5)
-        PositionAtCenter
-
+    let b = worldBounds(carnotWorld)
+    let tr = placement[i]
     doc.add SubWorld carnotWorld:
-      Position2 point2(i.float * 30.0, 44)
+      Position2 point2(tr.x - b.min.x, tr.y + tr.h - b.min.y)
+      Transform3 scale(vec3(0.5, 0.5, 0.5))

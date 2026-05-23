@@ -3,7 +3,7 @@ import pkg/[ecs, vmath]
 import pkg/pixie/[fonts]
 import pkg/toscel/[fonts]
 import ./[bounds]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
 import ../lib/[geom2d]
 
 
@@ -64,7 +64,7 @@ proc documentLayout*(w: World, globals: DocumentGlobals): DocumentLayout =
     let innerGlobals = sub.documentGlobals
     let innerLayout = sub.documentLayout(innerGlobals)
     if innerLayout.contentBounds.empty: continue
-    let innerToOuter = mat4(transform3) * translate(vec3(pos.x, pos.y, 0))
+    let innerToOuter = translate(vec3(pos.x, pos.y, 0)) * mat4(transform3)
     result.contentBounds.add(innerToOuter * innerLayout.contentBounds)
 
   if globals.settings.autoSize and not result.contentBounds.empty:

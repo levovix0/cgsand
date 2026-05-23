@@ -80,6 +80,9 @@ proc findGroups*(data: seq[seq[int]], variables: seq[string], targetVal: int): s
       for dx in 0..<imp.w:
         result.incl uint8((imp.y0 + dy) mod rows * cols + (imp.x0 + dx) mod cols)
 
+  # Filter to prime implicants
+  var primes: seq[ImplicantInfo]
+  var primeCellSets: seq[set[uint8]]
   for i in 0..<implicants.len:
     let aCells = cellsOf(implicants[i])
     var isPrime = true
@@ -88,9 +91,56 @@ proc findGroups*(data: seq[seq[int]], variables: seq[string], targetVal: int): s
       if aCells < cellsOf(implicants[j]):
         isPrime = false
         break
-    if not isPrime: continue
+    if isPrime:
+      primes.add implicants[i]
+      primeCellSets.add aCells
 
-    let imp = implicants[i]
+  # Collect all targetVal cells
+  var targetCells: set[uint8]
+  for y in 0..<rows:
+    for x in 0..<cols:
+      if data[y][x] == targetVal:
+        targetCells.incl uint8(y * cols + x)
+
+  if targetCells == {}:
+    return
+
+  # Select essential PIs (sole cover for at least one target cell)
+  var selected = newSeq[bool](primes.len)
+  for ci in targetCells:
+    var soloIdx = -1
+    for pi in 0..<primes.len:
+      if ci in primeCellSets[pi]:
+        if soloIdx == -1: soloIdx = pi
+        else: soloIdx = -2; break
+    if soloIdx >= 0:
+      selected[soloIdx] = true
+
+  var covered: set[uint8]
+  for pi in 0..<primes.len:
+    if selected[pi]:
+      covered = covered + (primeCellSets[pi] * targetCells)
+
+  # Greedy cover for remaining uncovered target cells
+  var uncovered = targetCells - covered
+  while uncovered != {}:
+    var bestPi = -1
+    var bestCount = 0
+    for pi in 0..<primes.len:
+      if selected[pi]: continue
+      let newCover = card(primeCellSets[pi] * uncovered)
+      if newCover > bestCount:
+        bestCount = newCover
+        bestPi = pi
+    if bestPi < 0: break
+    selected[bestPi] = true
+    covered = covered + (primeCellSets[bestPi] * targetCells)
+    uncovered = targetCells - covered
+
+  # Build output groups for selected primes
+  for pi in 0..<primes.len:
+    if not selected[pi]: continue
+    let imp = primes[pi]
 
     let xRange =
       if imp.x0 + imp.w <= cols: imp.x0..(imp.x0 + imp.w - 1)
