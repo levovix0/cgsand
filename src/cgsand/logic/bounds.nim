@@ -88,7 +88,12 @@ proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface
   )
 
 
-proc worldBoundsAlongAxis*(w: World, axis: Vec3, globals: DocumentGlobals): (float32, float32) =
+proc worldBoundsAlongAxis*(
+  w: World,
+  axis: Vec3,
+  globals: DocumentGlobals,
+  filter: proc(eid: EntityId): bool = proc(eid: EntityId): bool = true,
+): (float32, float32) =
   ## Returns the (min, max) projection of all world content onto the given axis vector.
   var minP, maxP: float32
   var found = false
@@ -105,23 +110,28 @@ proc worldBoundsAlongAxis*(w: World, axis: Vec3, globals: DocumentGlobals): (flo
     for c in [b.min, vec2(b.max.x, b.min.y), vec2(b.min.x, b.max.y), b.max]:
       update(c.x * axis.x + c.y * axis.y)
 
-  w.forEach (line: LineSection, thickness: opt Thickness):
+  w.forEach (EntityId, line: LineSection, thickness: opt Thickness):
+    if not filter(the EntityId): continue
     addBounds2(lineBounds(line, if has Thickness: some thickness else: none Thickness))
 
-  w.forEach (curve: CircleArc, count: PointCount||20):
+  w.forEach (EntityId, curve: CircleArc, count: PointCount||20):
+    if not filter(the EntityId): continue
     for pt in curve.points(count):
       let v = sandbox.Vec2(pt).vec2
       update(v.x * axis.x + v.y * axis.y)
 
-  w.forEach (arc: EllipseArc, count: PointCount||32):
+  w.forEach (EntityId, arc: EllipseArc, count: PointCount||32):
+    if not filter(the EntityId): continue
     for pt in arc.points(count):
       let v = sandbox.Vec2(pt).vec2
       update(v.x * axis.x + v.y * axis.y)
 
-  w.forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize):
+  w.forEach (EntityId, text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize):
+    if not filter(the EntityId): continue
     addBounds2(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
 
-  w.forEach (sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
+  w.forEach (EntityId, sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
+    if not filter(the EntityId): continue
     if sub == nil: continue
     let m = translate(vec3(pos.x, pos.y, 0)) * mat4(transform3)
     # Transform outer axis to inner space: inner_axis[j] = dot(column j of m, outer axis)

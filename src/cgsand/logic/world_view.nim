@@ -242,6 +242,12 @@ proc draw3dWorld*(
 
 
 
+proc entityBoundsCallback(world: World, eid: EntityId): RawBounds2 {.cdecl.} =
+  let globals = world.documentGlobals
+  let (minX, maxX) = world.worldBoundsAlongAxis(vec3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  let (minY, maxY) = world.worldBoundsAlongAxis(vec3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  RawBounds2(empty: false, minX: minX, minY: minY, maxX: maxX, maxY: maxY)
+
 proc worldBoundsCallback(world: World): RawBounds2 {.cdecl.} =
   let g = world.documentGlobals
   let layout = world.documentLayout(g)
@@ -255,5 +261,6 @@ proc textSizeCallback(text: string, fontSize: float64): Vec2 {.cdecl.} =
   let box = typeset(f, text).computeBounds()
   vec2(box.w, box.h)
 
+scriptEntityBounds = entityBoundsCallback
 scriptWorldBounds = worldBoundsCallback
 scriptTextSize = textSizeCallback
