@@ -164,7 +164,7 @@ proc startup*(c: CounterStop, startState: int = -1): seq[ValChange] =
 
 
 mainModule:
-  let excluded = @[0, 1, 10, 12]
+  let excluded = @[0, 1, 2, 3, 4, 10, 12]
   let c = counterStop(excluded, 4)
 
   let placement = place(c)

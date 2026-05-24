@@ -17,6 +17,7 @@ type
 
     darkTheme: Property[bool]
     scriptOptLevel: Property[ScriptOptLevel]
+    rotate3dMode*: Property[bool]
 
 registerComponent DocumentView
 
@@ -83,6 +84,34 @@ proc hasWorldToDraw(script: Script): bool =
     if script.world == nil: return false
   true
 
+
+proc worldBoundsAlongAxis*(w: World, axis: Vec3): (float32, float32) =
+  ## Returns the (min, max) extent of world content projected onto the given axis vector.
+  let globals = w.documentGlobals
+  let layout = w.documentLayout(globals)
+  if layout.pageBounds.empty: return (0'f32, 0'f32)
+  let b = layout.pageBounds
+  let corners: array[4, Vec3] = [
+    vec3(b.min.x, b.min.y, 0'f32),
+    vec3(b.max.x, b.min.y, 0'f32),
+    vec3(b.min.x, b.max.y, 0'f32),
+    vec3(b.max.x, b.max.y, 0'f32),
+  ]
+  var minP = corners[0].x*axis.x + corners[0].y*axis.y + corners[0].z*axis.z
+  var maxP = minP
+  for i in 1..3:
+    let p = corners[i].x*axis.x + corners[i].y*axis.y + corners[i].z*axis.z
+    if p < minP: minP = p
+    elif p > maxP: maxP = p
+  (minP, maxP)
+
+
+proc worldCenter3D*(w: World): Vec3 =
+  ## Returns the center of the 3D bounding box of the world.
+  let (x0, x1) = w.worldBoundsAlongAxis(vec3(1, 0, 0))
+  let (y0, y1) = w.worldBoundsAlongAxis(vec3(0, 1, 0))
+  let (z0, z1) = w.worldBoundsAlongAxis(vec3(0, 0, 1))
+  vec3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 
 
 proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
@@ -191,22 +220,25 @@ method init*(this: DocumentView) =
       color = "#282828".color
       layer = before root
 
-    - MouseArea.new as cameraMouse:
+    - MouseArea.new:
       this.fill(parent)
       acceptedButtons = {MouseButton.middle}
 
       this.mouseButton.connectTo root, e:
-        if e.button == MouseButton.middle and e.pressed:
+        if e.pressed:
           prevDragPos = this.mouseXy[]
 
       this.moved.connectTo root, e:
         if root.script[].hasWorldToDraw.not: return
         if this.pressed[]:
           let currentMousePos = this.mouseXy[]
-          let currentPos = root.widgetToViewportPoint(currentMousePos)
-          let previousPos = root.widgetToViewportPoint(prevDragPos)
+          let d = currentMousePos - prevDragPos
+          let toGl = root.viewportToGlMatrix
+          # w=0: direction vector — inverse gives world-space pan delta with correct z
+          let glDelta = vec4(d.x * 2 / root.w[], -d.y * 2 / root.h[], 0, 0)
+          let worldDelta = inverse(toGl) * glDelta
           root.viewport[] = combine(
-            translate((currentPos - previousPos).vec3(0)),  # pan
+            translate(vec3(worldDelta.x, worldDelta.y, worldDelta.z)),
             root.viewport[]
           )
           prevDragPos = currentMousePos
@@ -214,14 +246,57 @@ method init*(this: DocumentView) =
       this.scrolled.connectTo root, delta:
         if root.script[].hasWorldToDraw.not: return
         if delta.y != 0:
-          let anchor = root.widgetToViewportPoint(this.mouseXy[])
+          let toGl = root.viewportToGlMatrix
+          # w=1: point — inverse gives correct 3D world anchor under mouse
+          let mouseGl = vec4(
+            this.mouseXy[].x * 2 / root.w[] - 1,
+            1 - this.mouseXy[].y * 2 / root.h[],
+            0, 1
+          )
+          let anchorV = inverse(toGl) * mouseGl
+          let anchor = vec3(anchorV.x, anchorV.y, anchorV.z)
           let zoomFactor = pow(1.1'f32, -delta.y)
           root.viewport[] = combine(
-            translate(-anchor.vec3(0)),
-            scale(vec3(zoomFactor, zoomFactor, 1)),  # zoom
-            translate((anchor).vec3(0)),
+            translate(-anchor),
+            scale(zoomFactor, zoomFactor, zoomFactor),
+            translate(anchor),
             root.viewport[],
           )
+
+    - MouseArea.new:
+      this.fill(parent)
+      visibility = binding:
+        if root.rotate3dMode[]: Visibility.visible
+        else: Visibility.collapsed
+      acceptedButtons = {MouseButton.right}
+
+      this.mouseButton.connectTo root, e:
+        if e.pressed:
+          prevDragPos = this.mouseXy[]
+
+      this.moved.connectTo root, e:
+        if root.script[].hasWorldToDraw.not: return
+        if this.pressed[]:
+          let currentMousePos = this.mouseXy[]
+          let d = currentMousePos - prevDragPos
+          let h = root.h[]
+          let w = root.w[]
+          let dn = d / vec2(h, h) * 2
+          let zv = vec2(
+            (prevDragPos.y / h - 0.5),
+            (prevDragPos.x / w - 0.5) * (w / h)
+          )
+          let worldCenter = root.script[].world[].worldCenter3D()
+          root.viewport[] = combine(
+            root.viewport[],
+            translate(-worldCenter),
+            rotateY(-dn.x * float32(Pi), vec3(0, 0, 0)),
+            rotateX(dn.y * float32(Pi), vec3(0, 0, 0)),
+            rotateZ(dn.x / h * 500 * float32(Pi) * zv.x, vec3(0, 0, 0)),
+            rotateZ(-dn.y / h * 500 * float32(Pi) * zv.y, vec3(0, 0, 0)),
+            translate(worldCenter),
+          )
+          prevDragPos = currentMousePos
 
     - globalKeybinding({Key.f5}):
       on this.activated: root.recompileScript()
@@ -267,6 +342,13 @@ method init*(this: DocumentView) =
       - Button.new:
         text = tr"Reset view"
         on this.activated: root.viewport[] = mat4()
+
+      - Button.new:
+        text = binding:
+          if root.rotate3dMode[]: tr"3D: on" else: tr"3D: off"
+        accent = binding: root.rotate3dMode[]
+        on this.activated:
+          root.rotate3dMode[] = not root.rotate3dMode[]
 
 
       - Button.new:
