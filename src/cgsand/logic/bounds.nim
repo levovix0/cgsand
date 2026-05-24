@@ -3,6 +3,7 @@ import pkg/[vmath]
 import pkg/pixie/[fonts]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, text]
+import ./[document_globals]
 
 
 type
@@ -86,3 +87,54 @@ proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface
     vec2(minX + box.w, minY + box.h),
   )
 
+
+proc worldBoundsAlongAxis*(w: World, axis: Vec3, globals: DocumentGlobals): (float32, float32) =
+  ## Returns the (min, max) projection of all world content onto the given axis vector.
+  var minP, maxP: float32
+  var found = false
+
+  proc update(p: float32) =
+    if not found:
+      minP = p; maxP = p; found = true
+    else:
+      if p < minP: minP = p
+      elif p > maxP: maxP = p
+
+  proc addBounds2(b: Bounds2) =
+    if b.empty: return
+    for c in [b.min, vec2(b.max.x, b.min.y), vec2(b.min.x, b.max.y), b.max]:
+      update(c.x * axis.x + c.y * axis.y)
+
+  w.forEach (line: LineSection, thickness: opt Thickness):
+    addBounds2(lineBounds(line, if has Thickness: some thickness else: none Thickness))
+
+  w.forEach (curve: CircleArc, count: PointCount||20):
+    for pt in curve.points(count):
+      let v = sandbox.Vec2(pt).vec2
+      update(v.x * axis.x + v.y * axis.y)
+
+  w.forEach (arc: EllipseArc, count: PointCount||32):
+    for pt in arc.points(count):
+      let v = sandbox.Vec2(pt).vec2
+      update(v.x * axis.x + v.y * axis.y)
+
+  w.forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize):
+    addBounds2(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
+
+  w.forEach (sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
+    if sub == nil: continue
+    let m = translate(vec3(pos.x, pos.y, 0)) * mat4(transform3)
+    # Transform outer axis to inner space: inner_axis[j] = dot(column j of m, outer axis)
+    let innerAxis = vec3(
+      m[0].x*axis.x + m[0].y*axis.y + m[0].z*axis.z,
+      m[1].x*axis.x + m[1].y*axis.y + m[1].z*axis.z,
+      m[2].x*axis.x + m[2].y*axis.y + m[2].z*axis.z,
+    )
+    let offset = m[3].x*axis.x + m[3].y*axis.y + m[3].z*axis.z
+    let innerGlobals = sub.documentGlobals
+    let (innerMin, innerMax) = sub.worldBoundsAlongAxis(innerAxis, innerGlobals)
+    if innerMin <= innerMax:
+      update(innerMin + offset)
+      update(innerMax + offset)
+
+  if found: (minP, maxP) else: (0'f32, 0'f32)

@@ -4,7 +4,7 @@ import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
 import pkg/rice/[primitives, antialiasing, transform]
-import ../logic/[scripts, config, bounds, doclayout, world_view]
+import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
 
@@ -85,32 +85,12 @@ proc hasWorldToDraw(script: Script): bool =
   true
 
 
-proc worldBoundsAlongAxis*(w: World, axis: Vec3): (float32, float32) =
-  ## Returns the (min, max) extent of world content projected onto the given axis vector.
-  let globals = w.documentGlobals
-  let layout = w.documentLayout(globals)
-  if layout.pageBounds.empty: return (0'f32, 0'f32)
-  let b = layout.pageBounds
-  let corners: array[4, Vec3] = [
-    vec3(b.min.x, b.min.y, 0'f32),
-    vec3(b.max.x, b.min.y, 0'f32),
-    vec3(b.min.x, b.max.y, 0'f32),
-    vec3(b.max.x, b.max.y, 0'f32),
-  ]
-  var minP = corners[0].x*axis.x + corners[0].y*axis.y + corners[0].z*axis.z
-  var maxP = minP
-  for i in 1..3:
-    let p = corners[i].x*axis.x + corners[i].y*axis.y + corners[i].z*axis.z
-    if p < minP: minP = p
-    elif p > maxP: maxP = p
-  (minP, maxP)
-
-
 proc worldCenter3D*(w: World): Vec3 =
   ## Returns the center of the 3D bounding box of the world.
-  let (x0, x1) = w.worldBoundsAlongAxis(vec3(1, 0, 0))
-  let (y0, y1) = w.worldBoundsAlongAxis(vec3(0, 1, 0))
-  let (z0, z1) = w.worldBoundsAlongAxis(vec3(0, 0, 1))
+  let globals = w.documentGlobals
+  let (x0, x1) = w.worldBoundsAlongAxis(vec3(1, 0, 0), globals)
+  let (y0, y1) = w.worldBoundsAlongAxis(vec3(0, 1, 0), globals)
+  let (z0, z1) = w.worldBoundsAlongAxis(vec3(0, 0, 1), globals)
   vec3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 
 

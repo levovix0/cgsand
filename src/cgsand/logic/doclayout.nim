@@ -1,27 +1,13 @@
-import std/[options, math]
 import pkg/[ecs, vmath]
-import pkg/pixie/[fonts]
-import pkg/toscel/[fonts]
-import ./[bounds]
+import ./[bounds, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
-import ../lib/[geom2d]
 
 
 type
-  DocumentGlobals* = object
-    settings*: CanvasSettings
-    foreground*: Color = color(1, 1, 1)
-    background*: Color = color(0, 0, 0, 0)
-    fontSize*: float64 = 1
-    font*: Typeface
-    axisYDirection*: AxisYDirection = AxisYUp
-    originAt*: PositionAt = PositionAtCenter
- 
   DocumentLayout* = object
     contentBounds*: Bounds2
     pageBounds*: Bounds2
 
-  
 
 proc pageAnchor*(size: Vec2, originAt: PositionAt): Vec2 =
   let factor = originAt.factor()
@@ -31,48 +17,19 @@ proc pageAnchor*(size: Vec2, originAt: PositionAt): Vec2 =
   )
 
 
-proc documentGlobals*(w: World): DocumentGlobals =
-  result = DocumentGlobals(settings: CanvasSettings(autoSize: true))
-  result.font = font_default
-  w.forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize, opt AxisYDirection, opt PositionAt, opt Typeface):
-    result.settings = v
-    if has Foreground: result.foreground = the Foreground
-    if has Background: result.background = the Background
-    if has FontSize: result.fontSize = the FontSize
-    if has AxisYDirection: result.axisYDirection = the AxisYDirection
-    if has PositionAt: result.originAt = the PositionAt
-    if has Typeface: result.font = the Typeface
-
-
 proc documentLayout*(w: World, globals: DocumentGlobals): DocumentLayout =
   result = DocumentLayout()
 
-  w.forEach (line: LineSection, thickness: opt Thickness):
-    result.contentBounds.add(lineBounds(line, if has Thickness: some thickness else: none Thickness))
+  let (xMin, xMax) = w.worldBoundsAlongAxis(vec3(1, 0, 0), globals)
+  let (yMin, yMax) = w.worldBoundsAlongAxis(vec3(0, 1, 0), globals)
 
-  w.forEach (curve: CircleArc, count: PointCount||20):
-    result.contentBounds.add(pointsBounds(curve.points(count)))
-
-  w.forEach (arc: EllipseArc, count: PointCount||32):
-    result.contentBounds.add(pointsBounds(arc.points(count)))
-
-  w.forEach (text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||font_default, size: FontSize||globals.fontSize):
-    result.contentBounds.add(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
-
-  w.forEach (sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
-    if sub == nil: continue
-    let innerGlobals = sub.documentGlobals
-    let innerLayout = sub.documentLayout(innerGlobals)
-    if innerLayout.contentBounds.empty: continue
-    let innerToOuter = translate(vec3(pos.x, pos.y, 0)) * mat4(transform3)
-    result.contentBounds.add(innerToOuter * innerLayout.contentBounds)
+  if xMin <= xMax and yMin <= yMax:
+    result.contentBounds = bounds2(vec2(xMin, yMin), vec2(xMax, yMax))
 
   if globals.settings.autoSize and not result.contentBounds.empty:
     let margin = globals.settings.margin.vec2
     result.pageBounds = result.contentBounds.expanded(margin)
-  
+
   else:
     let size = globals.settings.size.vec2
     result.pageBounds = bounds2(-size / 2, size / 2)
-
-

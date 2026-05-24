@@ -4,7 +4,7 @@ import pkg/pixie/paths
 import pkg/pixie/[fonts]
 import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts]
-import ./[bounds, doclayout, scripts]
+import ./[bounds, doclayout, scripts, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
 import ../lib/[geom2d]
 
