@@ -1,12 +1,38 @@
-import std/[options, math]
+import std/[options, math, tables]
 import pkg/[ecs, vmath]
 import pkg/pixie/paths
 import pkg/pixie/[fonts]
 import pkg/toscel/fonts as toscelFonts
-import pkg/rice/[primitives, transform, texts, paths, contexts]
+import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl]
+import pkg/sigeo/grids/[extrusions, smoothshading]
 import ./[bounds, doclayout, scripts, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
 import ../lib/[geom2d]
+
+
+type
+  Grid3MeshCache* = ref object
+    entries: Table[pointer, Mesh]
+
+
+proc grid3ToMesh(grid: Grid3): Mesh =
+  var g = grid
+  let tri = triangulate(g)
+  var intIndices = newSeq[int](tri.indices.len)
+  for i, idx in tri.indices:
+    intIndices[i] = int(idx)
+  let normals = computeVertexNormals(tri.points, intIndices)
+  var verts = newSeq[tuple[pos: Vec3, normal: Vec3]](tri.points.len)
+  for i, pt in tri.points:
+    let n = normals[i]
+    verts[i] = (
+      vec3(pt.x.float32, pt.y.float32, pt.z.float32),
+      vec3(n.x.float32, n.y.float32, n.z.float32),
+    )
+  var glIdx = newSeq[GlUint](tri.indices.len)
+  for i, idx in tri.indices:
+    glIdx[i] = GlUint(idx)
+  newMesh(verts, glIdx)
 
 
 proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirection: AxisYDirection): Mat4 =
@@ -69,9 +95,10 @@ proc draw2dWorld*(
   w: World,
   viewport, projection: Mat4,
   pixelsPerUnit: float32,
+  meshCache: Grid3MeshCache,
 ) =
-  ## draws the content of a world (entities) using the given viewport and projection
-  ## does not touch GL blend state or background — caller is responsible for that
+  ## draws the 2d objects of a world using the given viewport and projection
+  ## does not touch GL state or background — caller is responsible for that
   let prevView = ctx.viewportMatrix
   let prevProj = ctx.projectionMatrix
   defer:
@@ -176,7 +203,43 @@ proc draw2dWorld*(
     let innerScaleX = sqrt(innerToGl[0][0]*innerToGl[0][0] + innerToGl[1][0]*innerToGl[1][0])
     let innerPixelsPerUnit = if outerScaleX > 0: pixelsPerUnit * innerScaleX / outerScaleX else: pixelsPerUnit
     GC_ref(sub)
-    draw2dWorld(ctx, sub, innerViewport, projection, innerPixelsPerUnit)
+    draw2dWorld(ctx, sub, innerViewport, projection, innerPixelsPerUnit, meshCache)
+
+
+
+proc draw3dWorld*(
+  ctx: DrawContext,
+  w: World,
+  viewport, projection: Mat4,
+  pixelsPerUnit: float32,
+  meshCache: Grid3MeshCache,
+) =
+  ## draws the 3d objects of a world using the given viewport and projection
+  ## does not touch GL state — caller is responsible for that
+  let prevView = ctx.viewportMatrix
+  let prevProj = ctx.projectionMatrix
+  defer:
+    ctx.viewport = prevView
+    ctx.projection = prevProj
+
+  ctx.viewport = viewport
+  ctx.projection = projection
+
+  let globals = w.documentGlobals
+
+
+  w.forEach (surface: PolygonalSurface3, color: (Foreground|Color)||globals.foreground, transform3: Transform3||dmat4()):
+    if surface == nil: continue
+    let key = cast[pointer](surface)
+    if key notin meshCache.entries:
+      meshCache.entries[key] = grid3ToMesh(surface[])
+    ctx.fill3dMeshShadedByNormalsSingleSide(
+      meshCache.entries[key],
+      color = color,
+      transform = mat4(transform3),
+      lightDir = vec3(-0.8, -1, -1.2).normalize,
+    )
+
 
 
 proc worldBoundsCallback(world: World): RawBounds2 {.cdecl.} =

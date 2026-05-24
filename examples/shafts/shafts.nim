@@ -1,4 +1,6 @@
-import sandbox
+import std/sequtils
+import sandbox, geom2d
+import annotations/[dimensions]
 
 
 const useCustomFont = not defined(nimcheck)
@@ -53,6 +55,9 @@ type
 
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
+let mainLine* = PixelThickness 3
+let dimFontSize* = FontSize 0.5
+
 
 proc setShaftsGlobals*(globals: EntityId) =
   doc.update globals: add OwnerModule "shafts"
@@ -90,6 +95,113 @@ proc cylindricSegment*(
     section: Section(shape: Circle, circle: (radius: d/2), material: material),
     length: l, left: left, right: right
   )
+
+
+
+
+proc drawConjunction(sketch: World, origin: Position2, dir: Vec2, conjunction: ShaftConjunction, h: float, scale: float) =
+  let angle = dir.planarAngle
+  proc pt(v: Vec2): Point2 = origin + v.rotate(angle) * scale
+
+  case conjunction.kind
+  of None:
+    sketch.add lineSection(
+      vec2(0, -h/2).pt,
+      vec2(0, h/2).pt
+    ), mainLine
+
+  of Bevel:
+    sketch.add lineSection(
+      vec2(0, -h/2 + conjunction.radius).pt,
+      vec2(0, h/2 - conjunction.radius).pt
+    ), mainLine
+    sketch.add lineSection(
+      vec2(0, -h/2 + conjunction.radius).pt,
+      vec2(conjunction.radius, -h/2).pt
+    ), mainLine
+    sketch.add lineSection(
+      vec2(0, h/2 - conjunction.radius).pt,
+      vec2(conjunction.radius, h/2).pt
+    ), mainLine
+
+  of Fillet:
+    sketch.add lineSection(
+      vec2(0, -h/2 + conjunction.radius).pt,
+      vec2(0, h/2 - conjunction.radius).pt
+    ), mainLine
+    sketch.add circleArc(
+      center = vec2(conjunction.radius, -h/2 - conjunction.radius).pt,
+      radius = conjunction.radius * scale,
+      startAngle = 0, endAngle = -Pi/2,
+    ), mainLine
+    sketch.add circleArc(
+      center = vec2(conjunction.radius, h/2 + conjunction.radius).pt,
+      radius = conjunction.radius * scale,
+      startAngle = 0, endAngle = Pi/2,
+    ), mainLine
+
+
+proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimensions = doc, sketch = doc) =
+  proc pt(v: Vec2): Point2 = origin + v * scale
+
+  proc height(segment: ShaftSegment): float =
+    case segment.section.shape
+    of Circle: segment.section.circle.radius*2
+    of Rectangle: max(segment.section.rectangle.w, segment.section.rectangle.h)
+
+  let maxH = shaft.segments.mapIt(it.height).max
+  let dimlineY = maxH/2 + 5/scale
+
+  var x = 0.0
+  for segment in shaft.segments:
+    let h = segment.height
+
+    let leftOffset = case segment.left.kind
+      of Bevel, Fillet: segment.left.radius
+      of None: 0
+
+    let rightOffset = case segment.right.kind
+      of Bevel, Fillet: segment.right.radius
+      of None: 0
+
+    if sketch != nil:
+      sketch.drawConjunction(vec2(x, 0).pt, vec2(1, 0), segment.left, h, scale=scale)
+      sketch.drawConjunction(vec2(x + segment.length, 0).pt, vec2(-1, 0), segment.right, h, scale=scale)
+
+      sketch.add lineSection(
+        vec2(x + leftOffset, -h/2).pt,
+        vec2(x + segment.length - rightOffset, -h/2).pt
+      ), mainLine
+      sketch.add lineSection(
+        vec2(x + leftOffset, h/2).pt,
+        vec2(x + segment.length - rightOffset, h/2).pt
+      ), mainLine
+
+      for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segment.length, segment.right, -1.0)]:
+        sketch.add lineSection(
+          vec2(xc + conjunction.radius * dir, -h/2).pt,
+          vec2(xc + conjunction.radius * dir, h/2).pt
+        ), mainLine
+
+    if dimensions != nil:
+      dimensions.add LinearDimension2(
+        a: vec2(x, h/2 - leftOffset).pt,
+        b: vec2(x + segment.length, h/2 - rightOffset).pt,
+        dir: vec2(1, 0),
+        dimline: vec2(x, dimlineY).pt,
+      ), dimensionText segment.length * 1000, dimFontSize
+
+      dimensions.add LinearDimension2(
+        a: vec2(x + segment.length - rightOffset - 0.5/scale, h/2).pt,
+        b: vec2(x + segment.length - rightOffset - 0.5/scale, -h/2).pt,
+        dir: vec2(0, 1),
+        dimline: vec2(x + segment.length - rightOffset - 0.5/scale, 0).pt,
+      ), dimensionText h * 1000, dimFontSize
+
+    x += segment.length
+
+  if dimensions != nil:
+    dimensions.drawDimensions()
 
 
 

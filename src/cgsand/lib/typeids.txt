@@ -19,5 +19,6 @@ Transform3
 Color
 PixelThickness
 Path
+PolygonalSurface3
 DarkTheme
 bool

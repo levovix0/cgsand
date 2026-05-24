@@ -3,7 +3,7 @@ import pkg/[ecs, shady]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
-import pkg/rice/[primitives, antialiasing, transform]
+import pkg/rice/[primitives, antialiasing, transform, contextutils]
 import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
@@ -17,7 +17,8 @@ type
 
     darkTheme: Property[bool]
     scriptOptLevel: Property[ScriptOptLevel]
-    rotate3dMode*: Property[bool]
+    mode3d*: Property[bool]
+    grid3MeshCache: Grid3MeshCache
 
 registerComponent DocumentView
 
@@ -94,11 +95,11 @@ proc worldCenter3D*(w: World): Vec3 =
   vec3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 
 
-proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
+proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
   if this.script[].hasWorldToDraw:
     let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32)
     if this.documentPixels == nil:
-      this.documentPixels = ctx.newAntialiasedFramebuffer(efSize)
+      this.documentPixels = ctx.newAntialiasedFramebuffer(efSize, depth = true)
     else:
       ctx.resize(this.documentPixels, efSize)
 
@@ -113,8 +114,14 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
 
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
-      glClearColor(0, 0, 0, 0)
-      glClear(GL_COLOR_BUFFER_BIT)
+
+      if this.mode3d[]:
+        glClearColor(globals.background.r, globals.background.g, globals.background.b, globals.background.a)
+      else:
+        glClearColor(0, 0, 0, 0)
+      
+      glClearDepthf(1)
+      glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
       let prevView = ctx.viewportMatrix
       let prevProj = ctx.projectionMatrix
@@ -124,22 +131,32 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
       ctx.viewport = this.viewport[]
       ctx.projection = proj
 
-      glDisable(GlBlend)
-      ctx.fillHatchingRect(
-        vec2(-1, -1 * this.h[] / this.w[]), vec2(2, 2 * this.h[] / this.w[]),
-        "#252525".color, "#232323".color,
-        vec2(1, 1),
-        100 / this.w[], 100 / this.w[],
-        transform = scale vec3(1, this.w[] / this.h[], 1)
-      )
-      ctx.fillRect(
-        rect(layout.pageBounds.min, layout.pageBounds.size),
-        color = globals.background,
-      )
+      if not this.mode3d[]:
+        glDisable(GlBlend)
+        glDisable(GL_DEPTH_TEST)
+        ctx.fillHatchingRect(
+          vec2(-1, -1 * this.h[] / this.w[]), vec2(2, 2 * this.h[] / this.w[]),
+          "#252525".color, "#232323".color,
+          vec2(1, 1),
+          100 / this.w[], 100 / this.w[],
+          transform = scale vec3(1, this.w[] / this.h[], 1)
+        )
+        ctx.fillRect(
+          rect(layout.pageBounds.min, layout.pageBounds.size),
+          color = globals.background,
+        )
+
+      if this.grid3MeshCache == nil:
+        this.grid3MeshCache = Grid3MeshCache()
+
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
+      
+      glEnable(GL_DEPTH_TEST)
+      draw3dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.grid3MeshCache)
+      glDisable(GL_DEPTH_TEST)
 
-      draw2dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit)
+      draw2dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.grid3MeshCache)
 
       glDisable(GlBlend)
     finally:
@@ -163,7 +180,7 @@ proc draw2dDocumentView(this: DocumentView, ctx: DrawContext) =
 method draw*(this: DocumentView, ctx: DrawContext) =
   this.drawBefore(ctx)
   if this.visibility[] == visible:
-    this.draw2dDocumentView(ctx)
+    this.drawDocumentView(ctx)
   this.drawAfter(ctx)
 
 
@@ -173,6 +190,7 @@ proc recompileScript*(this: DocumentView) =
     withLock this.script[].lock:
       if this.script[].stage != Idle:
         return  # ignore recompile request while still compiling
+  this.grid3MeshCache = nil
   let oldCache =
     if this.script[] != nil and this.script[].filename == currentScript[]:
       this.script[].cache
@@ -246,7 +264,7 @@ method init*(this: DocumentView) =
     - MouseArea.new:
       this.fill(parent)
       visibility = binding:
-        if root.rotate3dMode[]: Visibility.visible
+        if root.mode3d[]: Visibility.visible
         else: Visibility.collapsed
       acceptedButtons = {MouseButton.right}
 
@@ -270,10 +288,10 @@ method init*(this: DocumentView) =
           root.viewport[] = combine(
             root.viewport[],
             translate(-worldCenter),
-            rotateY(-dn.x * float32(Pi), vec3(0, 0, 0)),
-            rotateX(dn.y * float32(Pi), vec3(0, 0, 0)),
-            rotateZ(dn.x / h * 500 * float32(Pi) * zv.x, vec3(0, 0, 0)),
-            rotateZ(-dn.y / h * 500 * float32(Pi) * zv.y, vec3(0, 0, 0)),
+            rotateY(dn.x * float32(Pi), vec3(0, 0, 0)),
+            rotateX(-dn.y * float32(Pi), vec3(0, 0, 0)),
+            rotateZ(dn.x / h * 1000 * float32(Pi) * zv.x, vec3(0, 0, 0)),
+            rotateZ(-dn.y / h * 1000 * float32(Pi) * zv.y, vec3(0, 0, 0)),
             translate(worldCenter),
           )
           prevDragPos = currentMousePos
@@ -325,10 +343,10 @@ method init*(this: DocumentView) =
 
       - Button.new:
         text = binding:
-          if root.rotate3dMode[]: tr"3D: on" else: tr"3D: off"
-        accent = binding: root.rotate3dMode[]
+          if root.mode3d[]: tr"3D" else: tr"2D"
+        accent = binding: root.mode3d[]
         on this.activated:
-          root.rotate3dMode[] = not root.rotate3dMode[]
+          root.mode3d[] = not root.mode3d[]
 
 
       - Button.new:

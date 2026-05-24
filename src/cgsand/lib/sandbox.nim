@@ -1,5 +1,6 @@
 {.used.}
 import pkg/[ecs, sigeo/core, chroma]
+import pkg/sigeo/grids/extrusions
 export ecs, core, chroma
 
 when defined(script):
@@ -82,11 +83,18 @@ type
     ## the sub-world is drawn at Position2 in the outer world's coordinate space
     ## the sub-world's background is transparent; its own globals (foreground, font, etc.) are used
 
+  PolygonalSurface3* = ref Grid3
+    ## ref-wrapped Grid3 for ECS component storage; use polygonalSurface3() to construct
+
   RawBounds2* = object
     ## ABI-stable bounds type used for app -> script callbacks (float32 storage)
     empty*: bool = true
     minX*, minY*, maxX*, maxY*: float32
 
+
+converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
+  new result
+  result[] = grid
 
 
 when defined(script) or defined(nimcheck):
