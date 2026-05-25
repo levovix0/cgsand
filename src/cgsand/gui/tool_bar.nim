@@ -6,38 +6,42 @@ import ../logic/[config, pdf_renderer]
 import std/[os]
 import icons
 
-type
-  ToolBar* = ref object of Uiobj
-    codeEditor*: Uiobj
-    doc*: Property[ptr World]
-
-registerComponent ToolBar
+const startDirName = "examples"
 
 type
   BrowserItem = object
-    display: string # То, что видит юзер
-    path: string    # Реальный путь к объекту
-    isDir: bool     # Флаг: папка это или нет
+    display: string # Displayed name
+    path: string    # Real path to object
+    isDir: bool     # Is this folder or not
 
-var browserItems: seq[BrowserItem] = @[] # Здесь храним всю скрытую логику
+  ToolBar* = ref object of Uiobj
+    codeEditor*: Uiobj
+    doc*: Property[ptr World]
+    browserItems: seq[BrowserItem] # Component state for hidden logic
+    rootPath: string               # Hardcoded root reference path
+    currentPath: string            # Current directory path that changes on click
 
-const startDirName = "examples"
-let rootPath = absolutePath(startDirName) # Жесткая точка отсчета
-var currentPath = rootPath # Переменная текущего положения, которая меняется при кликах
+  TitleButton = ref object of Uiobj
+    pressedColor: Property[Color]
+    hoveredColor: Property[Color]
+    icon: Property[Image]
+    activated: Event[void]
 
+registerComponent ToolBar
+registerComponent TitleButton
 
-proc updateFileBrowser(dir: string): seq[string] =
+proc updateFileBrowser(this: ToolBar, dir: string): seq[string] =
   result = @[]
-  browserItems = @[] # Очищаем старые данные
+  this.browserItems = @[] # Clear old data
   
   if parentDir(dir) != dir:
-    browserItems.add(BrowserItem(display: "..", path: parentDir(dir), isDir: true))
+    this.browserItems.add(BrowserItem(display: "..", path: parentDir(dir), isDir: true))
     
-  # Списки для разделения (чтобы папки всегда были сверху)
+  # Separate lists to keep folders on top
   var folders: seq[BrowserItem] = @[]
   var files: seq[BrowserItem] = @[]
   
-  # Читаем диск и проверяем типы системными средствами (kind)
+  # Read disk and check types using system tools
   for kind, path in walkDir(dir, relative = true):
     let fullPath = dir / path
     if kind in {pcDir, pcLinkToDir}:
@@ -45,29 +49,58 @@ proc updateFileBrowser(dir: string): seq[string] =
     else:
       files.add(BrowserItem(display: path, path: fullPath, isDir: false))
       
-  # Собираем всё воедино в наш скрытый массив состояний
-  browserItems.add(folders)
-  browserItems.add(files)
+  # Combine everything into the internal state array
+  this.browserItems.add(folders)
+  this.browserItems.add(files)
   
-  # Возвращаем массив строк для ComboBox
-  for item in browserItems:
+  # Return an array of strings for the ComboBox
+  for item in this.browserItems:
     result.add(item.display)
 
-proc getCurrentRelativePath(): string =
-  if currentPath == rootPath:
+proc getCurrentRelativePath(this: ToolBar): string =
+  if this.currentPath == this.rootPath:
     return startDirName
   else:
-    # Возвращает путь вида: examples/subfolder1/subfolder2
-    return startDirName / relativePath(currentPath, rootPath)
-
+    # Returns a path like: examples/subfolder1/subfolder2
+    return startDirName / relativePath(this.currentPath, this.rootPath)
 
 proc windowControlsWidth*(this: ToolBar): float32 =
   180
 
+method init(this: TitleButton) =
+  procCall this.super.init()
 
+  this.makeLayout:
+    - MouseArea.new as mouse:
+      this.fill(parent)
+
+      - UiRect.new:
+        this.fill(parent)
+
+        color = binding:
+          if mouse.pressed[]: root.pressedColor[]
+          elif mouse.hovered[]: root.hoveredColor[]
+          else: "#00000000".color
+      
+        - this.color.transition(0.1's):
+          easing = outSquareEasing
+
+        - UiImage.new:
+          this.centerIn(parent)
+          this.w[] = 32
+          this.h[] = 32
+          this.image = binding: root.icon[]
+      
+      on this.mouseDownAndUpInside:
+        root.activated.emit()
 
 method init*(this: ToolBar) =
   procCall this.super.init()
+
+  # Initialize state fields
+  this.rootPath = absolutePath(startDirName)
+  this.currentPath = this.rootPath
+  this.browserItems = @[]
 
   this.makeLayout:
     - UiRect.new:
@@ -80,33 +113,6 @@ method init*(this: ToolBar) =
       this.clicked.connectTo this, e:
         if e.double:
           this.parentWindow.maximized = not this.parentWindow.maximized
-    
-
-    - MouseArea.new as mouse: # Закрыть
-      this.fillVertical(parent)
-      right = parent.right
-      w = 60
-
-      - UiRect.new:
-        this.fill(parent)
-
-        color = binding:
-          if mouse.pressed[]: "#ca3e3eff".color
-          elif mouse.hovered[]: "#ff5959ff".color
-          else: "#00000000".color
-      
-        - this.color.transition(0.1's):
-          easing = outSquareEasing
-
-        - UiImage.new:
-          this.centerIn(parent)
-          this.w[] = 32
-          this.h[] = 32
-          this.image = closeIcon()
-      
-      on this.mouseDownAndUpInside:
-        close this.parentWindow
-    
 
     - Layout.row:
       centerY = parent.center
@@ -122,7 +128,7 @@ method init*(this: ToolBar) =
 
       - ComboBox.new:
         text = binding: config.currentScript[]
-        this.options[] = updateFileBrowser(currentPath)
+        this.options[] = root.updateFileBrowser(root.currentPath)
         w = 300
 
         on this.textEdited:
@@ -132,31 +138,31 @@ method init*(this: ToolBar) =
           let selectedOptionText = this.options[][this.selectedOption[]]
           
           var foundItem: BrowserItem
-          for item in browserItems:
+          for item in root.browserItems:
             if item.display == selectedOptionText:
               foundItem = item
               break
           
           if foundItem.isDir:
-            # Смена директории
-            currentPath = foundItem.path 
+            # Changing directory
+            root.currentPath = foundItem.path 
             
-            # Обновляем список файлов для новой папки
-            this.options[] = updateFileBrowser(currentPath)
+            # Updating file list for new folder
+            this.options[] = root.updateFileBrowser(root.currentPath)
             this.w[] = 300
             this.selectedOption[] = -1
             this.dropdownOpened[] = true
             
-            # Выводим новый относительный путь в текстовое поле ComboBox
-            this.text[] = getCurrentRelativePath() 
+            # Display new relative path in ComboBox text field.
+            this.text[] = root.getCurrentRelativePath() 
             
           else:
-            # Выбран файл — записываем его путь в конфиг
-            config.currentScript[] = startDirName / relativePath(foundItem.path, rootPath) #foundItem.path
+            # If file is selected - we write its path to the config
+            config.currentScript[] = startDirName / relativePath(foundItem.path, root.rootPath)
             
-            # Опционально: можно оставить имя файла в текстовом поле, 
-            # чтобы пользователь видел, какой именно файл сейчас выбран
-            this.text[] = startDirName / relativePath(foundItem.path, rootPath)
+            # Optional: You can leave the file name in the text field,
+            # so the user can see which file is currently selected
+            this.text[] = startDirName / relativePath(foundItem.path, root.rootPath)
 
       - Button.new:
         text = tr"Export PDF"
@@ -170,54 +176,40 @@ method init*(this: ToolBar) =
           if filename != "":
             writePdf filename, r
 
+    # --- Window header buttons ---
 
-    - MouseArea.new as mouse1: # Свернуть
+    - TitleButton.new: # Close
       this.fillVertical(parent)
-      right = parent.right-120
+      right = parent.right
       w = 60
 
-      - UiRect.new:
-        this.fill(parent)
+      pressedColor = "#ca3e3eff".color
+      hoveredColor = "#ff5959ff".color
+      icon = closeIcon()
 
-        color = binding:
-          if mouse1.pressed[]: "#3a5270ff".color # Глубокий пастельный синий
-          elif mouse1.hovered[]: "#5c7ca6ff".color # Мягкий джинсово-синий
-          else: "#00000000".color
+      on this.activated:
+        close this.parentWindow
 
-        - this.color.transition(0.1's):
-          easing = outSquareEasing
+    - TitleButton.new: # Minimize 
+      this.fillVertical(parent)
+      right = parent.right - 120
+      w = 60
 
-        - UiImage.new:
-          this.centerIn(parent)
-          this.w[] = 32
-          this.h[] = 32
-          this.image = minimizeIcon()
-      
-      on this.mouseDownAndUpInside:
+      pressedColor = "#3a5270ff".color # Deep pastel blue
+      hoveredColor = "#5c7ca6ff".color # Soft denim blue
+      icon = minimizeIcon()
+
+      on this.activated:
         this.parentWindow.minimized = true
 
-
-    - MouseArea.new as mouse2: # Развернуть
+    - TitleButton.new: # Maximize 
       this.fillVertical(parent)
-      right = parent.right-60
+      right = parent.right - 60
       w = 60
 
-      - UiRect.new:
-        this.fill(parent)
+      pressedColor = "#3b6146ff".color # Muted pine
+      hoveredColor = "#609470ff".color # Soft sage
+      icon = maximizeIcon()
 
-        color = binding:
-          if mouse2.pressed[]: "#3b6146ff".color # Приглушенный хвойный
-          elif mouse2.hovered[]: "#609470ff".color # Мягкий шалфейный
-          else: "#00000000".color
-
-        - this.color.transition(0.1's):
-          easing = outSquareEasing
-      
-        - UiImage.new:
-          this.centerIn(parent)
-          this.w[] = 32
-          this.h[] = 32
-          this.image = maximizeIcon()
-      on this.mouseDownAndUpInside:
+      on this.activated:
         this.parentWindow.maximized = not this.parentWindow.maximized
-
