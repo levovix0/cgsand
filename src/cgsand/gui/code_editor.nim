@@ -234,11 +234,11 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
         case e.key
         of Key.left:
-          this.arrangement.moveCursorLeft(extend = shift)
+          this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
           redraw(this)
 
         of Key.right:
-          this.arrangement.moveCursorRight(extend = shift)
+          this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
           redraw(this)
 
         of Key.up:
