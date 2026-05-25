@@ -6,9 +6,9 @@ type
     `-`
 
 
-# doc.add CanvasSettings(autoSize: true, margin: vec2(10))
-# doc.add CanvasSettings_A4_Vertical
-# doc.add CanvasSettings_A4_Horizontal
+# doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(10))
+# doc.update globals: add CanvasSettings_A4_Vertical
+# doc.update globals: add CanvasSettings_A4_Horizontal
 
 
 let p = [

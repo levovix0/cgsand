@@ -14,6 +14,11 @@ PointCount
 EllipseArc
 Text
 Position2
-Color
+SubWorld
 Transform3
+Color
+PixelThickness
 Path
+PolygonalSurface3
+DarkTheme
+bool

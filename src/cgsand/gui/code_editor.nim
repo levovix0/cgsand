@@ -210,6 +210,13 @@ proc saveFile(this: CodeEditorContent) =
 
 method recieve*(this: CodeEditorContent, signal: Signal) =
   procCall this.super.recieve(signal)
+  
+  block:
+    var n = this.Uiobj
+    while n != nil:
+      if n.visibility[] == collapsed: return
+      n = n.parent
+
   if signal of WindowEvent and signal.WindowEvent.handled == false:
     if signal.WindowEvent.event of TextInputEvent:
       let e = (ref TextInputEvent)signal.WindowEvent.event

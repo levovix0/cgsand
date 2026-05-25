@@ -43,14 +43,27 @@ type
     path*: seq[Point2]
     color*: Color = color(0, 0, 0)
 
+  HOffset* = object
+    left*: float
+    right*: float
+
+  LoopbackPath* = object
+    output*: Port
+    input*: Port
+    offset*: float
+    hOffset*: HOffset
+    color*: Color = color(0, 0, 0)
+
   PlacementRuleKind* = enum
     LineR
     BusR
+    LoopbackPathR
 
   PlacementRule* = object
     case kind*: PlacementRuleKind
     of LineR: line*: Line
     of BusR: bus*: Bus
+    of LoopbackPathR: loopbackPath*: LoopbackPath
 
   Value* = object
     power*: float
@@ -74,19 +87,70 @@ type
     timestamps*: seq[PlotTimestamp]
     origin*: Point2
     timeScale*: float = 1.0
-    axiesColor*: Color = color(0, 0, 0, 0.1)
     skipUnchangedAxes*: bool = false
+
+  SchemeTheme* = object
+    background*: Color = color(1, 1, 1)
+    foreground*: Color = color(0, 0, 0)
+    errorColor*: Color = color(1, 0, 0)
+    overlapErrorColor*: Color = color(0, 0, 1)
+    axiesColor*: Color = color(0, 0, 0, 0.1)
+    canvasMargin*: float32 = 1.0
+    baseFontSize*: float32 = 1.0
+    branchRadius*: float32 = 0.1
+    negationCircleRadius*: float32 = 0.1
+    negationLineThickness*: float32 = 0.05
+    errorCircleRadius*: float32 = 0.15
+    errorConnectionThickness*: float32 = 0.15
+    plotSignalHeight*: float32 = 1.0
+    plotValueFontSize*: float32 = 0.5
+
+
+let darkTheme* = cache[].mgetOrPut(DarkTheme, false)
+
+var schemeTheme* = SchemeTheme()
+if darkTheme:
+  schemeTheme = SchemeTheme(
+    background:               parseHtmlHex "#202020",
+    foreground:               color(0.75, 0.75, 0.8),
+    errorColor:               color(1, 0.4, 0.4),
+    overlapErrorColor:        color(0.4, 0.4, 1),
+    axiesColor:               color(0.75, 0.75, 0.8) * 0.1,
+    canvasMargin:             1.0,
+    baseFontSize:             1.0,
+    branchRadius:             0.1,
+    negationCircleRadius:     0.1,
+    negationLineThickness:    0.05,
+    errorCircleRadius:        0.15,
+    errorConnectionThickness: 0.15,
+    plotSignalHeight:         1.0,
+    plotValueFontSize:        0.5,
+  )
 
 const Eps = 1e-4
 const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
 
 
-proc addDefaultElectronicsGlobals* =
-  doc.add CanvasSettings(autoSize: true, margin: vec2(1)):
-    AxisYDown
-    FontSize 1
-    Background color(1, 1, 1)
-    Foreground color(0, 0, 0)
+proc setElectronicsSchemesGlobals*(globals: EntityId) =
+  doc.update globals: add OwnerModule "electronics/schemes"
+  
+  # todo: ecs bug: not (i == -1)` component was not found in destination archetype [AssertionDefect]
+  # doc.update globals:
+  #   add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+  #   add AxisYDown
+  #   add FontSize schemeTheme.baseFontSize
+  #   add Background schemeTheme.background
+  #   add Foreground schemeTheme.foreground
+
+  doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+  doc.update globals: add AxisYDown
+  doc.update globals: add FontSize schemeTheme.baseFontSize
+  doc.update globals: add Background schemeTheme.background
+  doc.update globals: add Foreground schemeTheme.foreground
+
+if not doc.hasComponent(globals, OwnerModule):
+  setElectronicsSchemesGlobals(globals)
+
 
 
 converter toNode*(name: string): Node = Node(kind: SymN, name: name)
@@ -96,6 +160,8 @@ converter toPort*(n: Node): Port = Port(n: n, port: 0)
 converter toPort*(n: (Node, int)): Port = Port(n: n[0], port: n[1])
 
 proc delayed*(n: Node, port = 0): Port = Port(n: n, port: port, delayed: true)
+
+proc `[]`*(n: Node, port: int): Port = Port(n: n, port: port)
 
 proc `$`*(n: Node): string = n.name
 
@@ -132,14 +198,28 @@ proc packN*(pack: Pack, name: string, inputs: varargs[Port]): Node =
   Node(kind: PackN, name: name, inputs: @inputs, pack: pack, outputs: newSeqWith(pack.outputs.len, true))
 
 
+converter toHOffset*(v: float): HOffset = HOffset(left: -v, right: v)
+converter toHOffset*(v: (float, float)): HOffset = HOffset(left: v[0], right: v[1])
+
 converter toPlacementRule*(l: Line): PlacementRule = PlacementRule(kind: LineR, line: l)
 converter toPlacementRule*(b: Bus): PlacementRule = PlacementRule(kind: BusR, bus: b)
+converter toPlacementRule*(lp: LoopbackPath): PlacementRule = PlacementRule(kind: LoopbackPathR, loopbackPath: lp)
 
-proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+proc loopbackPath*(output: Port, input: Port, offset: float = 0, hOffset: HOffset = 0.0, color = schemeTheme.foreground): LoopbackPath =
+  LoopbackPath(output: output, input: input, offset: offset, hOffset: hOffset, color: color)
+
+proc loopbackPath*(output: Port, offset: float = 0, hOffset: HOffset = 0.0, color = schemeTheme.foreground): LoopbackPath =
+  LoopbackPath(output: output.n.inputs[output.port], input: output, offset: offset, hOffset: hOffset, color: color)
+
+proc bus*(path: openArray[Point2], input: Port, outputs: openArray[Node], color = schemeTheme.foreground): Bus =
   Bus(path: @path, input: input, outputs: @outputs, color: color)
 
-proc bus*(origin: Point2, input: Port, outputs: openArray[Node], color = color(0, 0, 0)): Bus =
+proc bus*(origin: Point2, input: Port, outputs: openArray[Node], color = schemeTheme.foreground): Bus =
   Bus(origin: origin, input: input, outputs: @outputs, color: color)
+
+proc buses*(originX, originY, stepX: float, inputs: openArray[Node], outputs: openArray[Node], color = schemeTheme.foreground): seq[PlacementRule] =
+  for i, inp in inputs:
+    result.add bus(point2(originX + i.float * stepX, originY), input = inp, outputs = outputs, color = color)
 
 
 proc placementRules*(rules: varargs[PlacementRule]): seq[PlacementRule] = @rules
@@ -153,6 +233,8 @@ proc move*(rules: var seq[PlacementRule], v: Vec2) =
       x.bus.origin += v
       for x in x.bus.path.mitems:
         x += v
+    of LoopbackPathR:
+      discard
 
 
 
@@ -193,25 +275,97 @@ proc setVal*(node: Node, value: Value): ValChange =
 proc `not`*(v: Value): Value =
   Value(power: 1 - v.power)
 
+proc bitVal*(x, bit: int): Value = Value(power: float((x shr bit) and 1))
+
+proc clockPulse*(clk: Node, atTime: float, halfPeriod = 0.5, settle = 0.0): seq[PlotTimestamp] =
+  result.add PlotTimestamp(time: atTime, changes: @[setVal(clk, 1)])
+  if settle > 0: result.add PlotTimestamp(time: atTime + settle)
+  result.add PlotTimestamp(time: atTime + halfPeriod, changes: @[setVal(clk, 0)])
+  if settle > 0: result.add PlotTimestamp(time: atTime + halfPeriod + settle)
+
+proc clockPulses*(clk: Node, n: int, startTime = 1.0, halfPeriod = 0.5, settle = 0.0): seq[PlotTimestamp] =
+  for i in 0..<n:
+    result.add clockPulse(clk, startTime + i.float * halfPeriod * 2, halfPeriod, settle)
+
+proc exhaustiveInputStamps*(inputs: openArray[Node], startTime = 0.0, step = 1.0): seq[PlotTimestamp] =
+  let count = 1 shl inputs.len
+  for i in 0..<count:
+    var changes: seq[ValChange]
+    for bit in 0..<inputs.len:
+      changes.add setVal(inputs[bit], bitVal(i, bit))
+    result.add PlotTimestamp(time: startTime + i.float * step, changes: changes)
 
 
-proc placeComponents*(rules: seq[PlacementRule]) =
-  var nodeRects = initTable[Node, Rect]()
-  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool]]
 
-  type ConnKey = tuple[n: pointer, port: int]
-  var busHandled = initHashSet[ConnKey]()
+proc segmentIntersectsRectBorder(a, b: Point2, r: Rect): bool =
+  let seg = lineSection(a, b)
+  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y      ), point2(r.x + r.w, r.y      ))) or
+  hasIntersectedSegments(seg, lineSection(point2(r.x + r.w, r.y      ), point2(r.x + r.w, r.y + r.h))) or
+  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y + r.h), point2(r.x + r.w, r.y + r.h))) or
+  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y      ), point2(r.x,       r.y + r.h)))
 
-  # Pass 1: collect which (node, portIdx) pairs are connected via buses
-  for rule in rules:
-    if rule.kind == BusR:
-      let elem = rule.bus
-      for outNode in elem.outputs:
-        for portIdx, inp in outNode.inputs:
-          if inp.n == elem.input.n and inp.port == elem.input.port:
-            busHandled.incl (cast[pointer](outNode), portIdx)
 
-  # Build successor table: node -> [(consuming node, port index)]
+proc segmentPassesThroughRect(a, b: Point2, r: Rect): bool =
+  # Returns true if the open segment interior crosses the shrunk rect interior.
+  # The margin excludes endpoint-on-border touches (port connections).
+  const margin = 0.01f32
+  let xMin = r.x + margin
+  let xMax = r.x + r.w - margin
+  let yMin = r.y + margin
+  let yMax = r.y + r.h - margin
+  if xMin >= xMax or yMin >= yMax: return false
+  var tMin = 0f32
+  var tMax = 1f32
+  let dx = b.x - a.x
+  let dy = b.y - a.y
+  if abs(dx) < 1e-9f32:
+    if a.x < xMin or a.x > xMax: return false
+  else:
+    let tLeft  = (xMin - a.x) / dx
+    let tRight = (xMax - a.x) / dx
+    if dx > 0:
+      tMin = max(tMin, tLeft);  tMax = min(tMax, tRight)
+    else:
+      tMin = max(tMin, tRight); tMax = min(tMax, tLeft)
+  if tMin >= tMax: return false
+  if abs(dy) < 1e-9f32:
+    if a.y < yMin or a.y > yMax: return false
+  else:
+    let tBot = (yMin - a.y) / dy
+    let tTop = (yMax - a.y) / dy
+    if dy > 0:
+      tMin = max(tMin, tBot);  tMax = min(tMax, tTop)
+    else:
+      tMin = max(tMin, tTop); tMax = min(tMax, tBot)
+  return tMin < tMax
+
+
+const overlapPalette = [
+  color(0.85f32, 0.15f32, 0.15f32),
+  color(0.15f32, 0.60f32, 0.15f32),
+  color(0.15f32, 0.15f32, 0.85f32),
+  color(0.85f32, 0.50f32, 0.00f32),
+  color(0.60f32, 0.10f32, 0.75f32),
+  color(0.00f32, 0.60f32, 0.65f32),
+  color(0.70f32, 0.65f32, 0.00f32),
+  color(0.80f32, 0.00f32, 0.50f32),
+]
+
+proc segmentsOverlap(a1, a2, b1, b2: Point2): bool =
+  const eps = 1e-3f32
+  if abs(a1.y - a2.y) < eps and abs(b1.y - b2.y) < eps and abs(a1.y - b1.y) < eps:
+    let aMin = min(a1.x, a2.x); let aMax = max(a1.x, a2.x)
+    let bMin = min(b1.x, b2.x); let bMax = max(b1.x, b2.x)
+    return min(aMax, bMax) - max(aMin, bMin) > eps
+  if abs(a1.x - a2.x) < eps and abs(b1.x - b2.x) < eps and abs(a1.x - b1.x) < eps:
+    let aMin = min(a1.y, a2.y); let aMax = max(a1.y, a2.y)
+    let bMin = min(b1.y, b2.y); let bMax = max(b1.y, b2.y)
+    return min(aMax, bMax) - max(aMin, bMin) > eps
+  return false
+
+
+proc placeNodes*(rules: seq[PlacementRule]): Table[Node, Rect] =
+  # Build successor table needed for Outputs alignment
   var successors = initTable[Node, seq[tuple[n: Node, port: int]]]()
   for rule in rules:
     case rule.kind
@@ -223,8 +377,11 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       for outNode in rule.bus.outputs:
         for portIdx, inp in outNode.inputs:
           successors.mgetOrPut(inp.n, @[]).add (outNode, portIdx)
+    of LoopbackPathR:
+      let lp = rule.loopbackPath
+      successors.mgetOrPut(lp.output.n, @[]).add (lp.input.n, lp.input.port)
 
-  # Pass 2a: place nodes from Lines with no alignment (no inter-node dependencies)
+  # Pass 2a: place nodes from Lines with no alignment
   for rule in rules:
     if rule.kind == LineR and rule.line.align == None:
       let elem = rule.line
@@ -233,7 +390,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         let sz = nodeSize(node)
         let r = rect(pos.x.float32, pos.y.float32, sz.x.float32, sz.y.float32)
         pos.y += sz.y + elem.gap.float
-        nodeRects[node] = r
+        result[node] = r
         doc.add node, r
 
   # Pass 2b: place nodes from Lines with alignment, preserving original order
@@ -251,15 +408,15 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         of Inputs:
           if node.inputs.len > 0:
             let inp0 = node.inputs[0]
-            if nodeRects.hasKey(inp0.n):
-              let connectY = outputPortY(inp0.n, nodeRects[inp0.n], inp0.port)
+            if result.hasKey(inp0.n):
+              let connectY = outputPortY(inp0.n, result[inp0.n], inp0.port)
               r = rect(pos.x.float32, connectY - inputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
               positioned = true
         of Outputs:
           if successors.hasKey(node):
             for succ in successors[node]:
-              if succ.n in nodeRects:
-                let targetY = inputPortY(succ.n, nodeRects[succ.n], succ.port)
+              if succ.n in result:
+                let targetY = inputPortY(succ.n, result[succ.n], succ.port)
                 r = rect(pos.x.float32, targetY - outputPortY(node, zeroRect, 0), sz.x.float32, sz.y.float32)
                 positioned = true
                 break
@@ -269,24 +426,60 @@ proc placeComponents*(rules: seq[PlacementRule]) =
         if not positioned:
           pos.y += sz.y + elem.gap.float
 
-        nodeRects[node] = r
+        result[node] = r
         doc.add node, r
+
+
+proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) =
+  type ConnSource = tuple[n: pointer, port: int]
+  var allConns: seq[tuple[pts: Connection, color: Color, startsFromElement: bool, eid: EntityId, source: ConnSource]]
+
+  type ConnKey = tuple[n: pointer, port: int]
+  var busHandled = initHashSet[ConnKey]()
+  var handledPorts = initHashSet[ConnKey]()
+
+  # Pass 1: collect which (node, portIdx) pairs are connected via buses or loopbacks
+  for rule in rules:
+    if rule.kind == BusR:
+      let elem = rule.bus
+      for outNode in elem.outputs:
+        for portIdx, inp in outNode.inputs:
+          if inp.n == elem.input.n and inp.port == elem.input.port:
+            let key = (cast[pointer](outNode), portIdx)
+            busHandled.incl key
+            handledPorts.incl key
+    elif rule.kind == LoopbackPathR:
+      let elem = rule.loopbackPath
+      let inNode = elem.input.n
+      for portIdx, inp in inNode.inputs:
+        if inp.n == elem.output.n and inp.port == elem.output.port:
+          let key = (cast[pointer](inNode), portIdx)
+          busHandled.incl key
+          handledPorts.incl key
+
+  var lineNodes = initHashSet[pointer]()
+  for rule in rules:
+    if rule.kind == LineR:
+      for node in rule.line.nodes:
+        lineNodes.incl cast[pointer](node)
 
   # Pass 3: place Connection and collect for branch detection
   for rule in rules:
     case rule.kind
+    of LoopbackPathR: discard
     of LineR:
       let elem {.cursor.} = rule.line
       for node in elem.nodes:
         let r = nodeRects[node]
         for portIdx, inp in node.inputs:
           if (cast[pointer](node), portIdx) notin busHandled and inp.n in nodeRects:
+            handledPorts.incl (cast[pointer](node), portIdx)
             let inRect = nodeRects[inp.n]
             if node.height != 0 and inp.n.outputs.len == 1:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let pts = Connection(@[point2(inRect.x + inRect.w, fromY), point2(r.x, fromY)])
-              doc.add pts
-              allConns.add (pts, color(0, 0, 0), true)
+              let eid = doc.spawn(pts)
+              allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
             else:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let toY = inputPortY(node, r, portIdx)
@@ -294,13 +487,13 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               let p2 = point2(r.x, toY)
               if abs(fromY - toY) < Eps:
                 let pts = Connection(@[p1, p2])
-                doc.add pts
-                allConns.add (pts, color(0, 0, 0), true)
+                let eid = doc.spawn(pts)
+                allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
               else:
                 let midX = (p1.x + p2.x) / 2.0
                 let pts = Connection(@[p1, point2(midX, fromY), point2(midX, toY), p2])
-                doc.add pts
-                allConns.add (pts, color(0, 0, 0), true)
+                let eid = doc.spawn(pts)
+                allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
 
     of BusR:
       let elem {.cursor.} = rule.bus
@@ -335,20 +528,99 @@ proc placeComponents*(rules: seq[PlacementRule]) =
             minBusY = min(minBusY, portY)
             maxBusY = max(maxBusY, portY)
 
+          let busSource: ConnSource = (cast[pointer](inNode), inPort)
+
           let lead = Connection(leadPts)
-          doc.add lead, elem.color
-          allConns.add (lead, elem.color, true)
+          let leadEid = doc.spawn(lead, elem.color)
+          allConns.add (lead, elem.color, true, leadEid, busSource)
 
           let vertBus = Connection(@[point2(busX, minBusY), point2(busX, maxBusY)])
-          doc.add vertBus, elem.color
-          allConns.add (vertBus, elem.color, false)
+          let vertEid = doc.spawn(vertBus, elem.color)
+          allConns.add (vertBus, elem.color, false, vertEid, busSource)
 
           for bc in busConns:
             let outRect = nodeRects[bc.n]
             let portY = inputPortY(bc.n, outRect, bc.port)
             let stub = Connection(@[point2(busX, portY), point2(outRect.x, portY)])
-            doc.add stub, elem.color
-            allConns.add (stub, elem.color, false)
+            let stubEid = doc.spawn(stub, elem.color)
+            allConns.add (stub, elem.color, false, stubEid, busSource)
+
+  # Pass 3b: draw LoopbackPath connections
+  for rule in rules:
+    if rule.kind == LoopbackPathR:
+      let elem = rule.loopbackPath
+      let outNode = elem.output.n
+      let inNode = elem.input.n
+      if outNode notin nodeRects or inNode notin nodeRects: continue
+
+      let outRect = nodeRects[outNode]
+      let inRect = nodeRects[inNode]
+      let outY = outputPortY(outNode, outRect, elem.output.port)
+      let inY = inputPortY(inNode, inRect, elem.input.port)
+
+      let topBound = min(outRect.y, inRect.y)
+      let bottomBound = max(outRect.y + outRect.h, inRect.y + inRect.h)
+
+      let midY: float32 =
+        if elem.offset == 0:
+          if outY - topBound < bottomBound - outY:
+            topBound - 1
+          else:
+            bottomBound + 1
+        elif elem.offset > 0:
+          bottomBound + elem.offset.float32
+        else:
+          topBound + elem.offset.float32
+
+      let (rightX, leftX) =
+        if inRect.x > outRect.x:
+          # input is to the right of output: route right-stub → up/down → right-long → down/up → port
+          (outRect.x + outRect.w + 1.float32 + elem.hOffset.right.float32,
+           inRect.x - 1.float32 + elem.hOffset.left.float32)
+        else:
+          # loopback: input is to the left; wrap around both nodes
+          (max(outRect.x + outRect.w, inRect.x + inRect.w) + 1.float32 + elem.hOffset.right.float32,
+           min(outRect.x, inRect.x) - 1.float32 + elem.hOffset.left.float32)
+
+      let pts = Connection(@[
+        point2(outRect.x + outRect.w, outY),
+        point2(rightX, outY),
+        point2(rightX, midY),
+        point2(leftX,  midY),
+        point2(leftX,  inY),
+        point2(inRect.x, inY),
+      ])
+
+      let connected = elem.input.port < inNode.inputs.len and
+                      inNode.inputs[elem.input.port].n == outNode and
+                      inNode.inputs[elem.input.port].port == elem.output.port
+      var eid: EntityId
+      if connected:
+        eid = doc.spawn(pts, elem.color)
+      else:
+        eid = doc.spawn(pts, schemeTheme.errorColor, Thickness schemeTheme.errorConnectionThickness)
+      allConns.add (pts, (if connected: elem.color else: schemeTheme.errorColor), true, eid, (cast[pointer](elem.output.n), elem.output.port))
+
+  # Pass 3c: draw error markers for ports with real connections not covered by any rule
+  for node, r in nodeRects:
+    for portIdx, inp in node.inputs:
+      if (cast[pointer](node) notin lineNodes) == (cast[pointer](inp.n) notin lineNodes): continue
+      if (cast[pointer](node), portIdx) in handledPorts: continue
+
+      if cast[pointer](node) in lineNodes:
+        let px = r.x
+        let py = inputPortY(node, r, portIdx)
+        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius):
+          Foreground schemeTheme.errorColor
+          Background schemeTheme.errorColor
+
+      if cast[pointer](inp.n) in lineNodes:
+        let inRect = nodeRects[inp.n]
+        let px = inRect.x + inRect.w
+        let py = outputPortY(inp.n, inRect, inp.port)
+        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius):
+          Foreground schemeTheme.errorColor
+          Background schemeTheme.errorColor
 
   # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch
@@ -359,7 +631,7 @@ proc placeComponents*(rules: seq[PlacementRule]) =
       for starter in starters.mitems:
         if starter.p ~== conn.pts[0] and not isParallel(conn.pts[1] - conn.pts[0], starter.dir):
           inc starter.count
-          if starter.color == color(0, 0, 0):
+          if starter.color == schemeTheme.foreground:
             starter.color = conn.color
           break hasStarter
       # not hasStarter
@@ -386,6 +658,47 @@ proc placeComponents*(rules: seq[PlacementRule]) =
               doc.add Branch v, conn2.color
             break
 
+  # Pass 6: redraw connections that pass through any node rect in bold blue
+  for conn in allConns:
+    var passesThrough = false
+    for i in 0 ..< conn.pts.high:
+      if passesThrough: break
+      for n, nodeRect in nodeRects:
+        if segmentPassesThroughRect(conn.pts[i], conn.pts[i + 1], nodeRect) or
+           segmentIntersectsRectBorder(conn.pts[i], conn.pts[i + 1], nodeRect):
+          passesThrough = true
+          break
+    if passesThrough:
+      doc.update conn.eid: add schemeTheme.overlapErrorColor
+      doc.update conn.eid: add Thickness schemeTheme.errorConnectionThickness
+
+  # Pass 7: highlight overlapping segments from different sources with palette colors
+  var overlapSources: seq[ConnSource]
+  for i in 0 ..< allConns.len:
+    for j in i+1 ..< allConns.len:
+      if allConns[i].source == allConns[j].source: continue
+      block checkPair:
+        let pi = allConns[i].pts
+        let pj = allConns[j].pts
+        for si in 0 ..< pi.high:
+          for sj in 0 ..< pj.high:
+            if segmentsOverlap(pi[si], pi[si+1], pj[sj], pj[sj+1]):
+              if allConns[i].source notin overlapSources:
+                overlapSources.add allConns[i].source
+              if allConns[j].source notin overlapSources:
+                overlapSources.add allConns[j].source
+              break checkPair
+
+  if overlapSources.len > 0:
+    for conn in allConns:
+      let idx = overlapSources.find(conn.source)
+      if idx >= 0:
+        let c = overlapPalette[idx mod overlapPalette.len]
+        doc.update conn.eid: add Color c
+
+
+proc placeComponents*(rules: seq[PlacementRule]) =
+  placeConnections(rules, placeNodes(rules))
 
 
 proc drawRect(r: Rect) =
@@ -397,13 +710,15 @@ proc drawRect(r: Rect) =
 
 
 proc drawComponents* =
-  doc.forEach (c: Connection, color: Color||color(0, 0, 0)):
+  doc.forEach (c: Connection, color: Color||schemeTheme.foreground, thickness: opt Thickness):
     for i in 0..<(c.len-1):
-      doc.add lineSection(c[i], c[i + 1]):
-        color
+      if has Thickness:
+        doc.add lineSection(c[i], c[i + 1]), Thickness thickness, color
+      else:
+        doc.add lineSection(c[i], c[i + 1]), color
 
-  doc.forEach (b: Branch, color: Color||color(0, 0, 0)):
-    doc.add circle(center = b.Point2, radius = 0.1):
+  doc.forEach (b: Branch, color: Color||schemeTheme.foreground):
+    doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius):
       Foreground color
       Background color
 
@@ -419,9 +734,9 @@ proc drawComponents* =
       for i, o in n.outputs:
         let p = point2(r.x + r.w, outputPortY(n, r, i))
         if not o:
-          doc.add circle(center = p, radius = 0.1):
-            Foreground color(0, 0, 0)
-            Background color(1, 1, 1)
+          doc.add circle(center = p, radius = schemeTheme.negationCircleRadius):
+            Foreground schemeTheme.foreground
+            Background schemeTheme.background
     
     of SymN:
       var name = n.name
@@ -434,7 +749,7 @@ proc drawComponents* =
         PositionAtBottom
       
       if negate:
-        doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness 0.05
+        doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness schemeTheme.negationLineThickness
 
     of PackN:
       assert(n.pack != nil)
@@ -463,7 +778,7 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness 0.05
+          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
 
       for i, outN in n.pack.outputs:
         let y = r.y + i.float * outH
@@ -477,18 +792,20 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness 0.05
-          doc.add circle(point2(r.x + 6, y + outH/2), radius = 0.1):
-            Foreground color(0, 0, 0)
-            Background color(1, 1, 1)
+          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
+          doc.add circle(point2(r.x + 6, y + outH/2), radius = schemeTheme.negationCircleRadius):
+            Foreground schemeTheme.foreground
+            Background schemeTheme.background
 
 
-proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node]): Value =
+proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node], computed: var HashSet[Node], cacheable: bool = true): Value =
+  if n in computed: return vals[n]
   if n in vals and (n.inputs.len == 0 or n in skipSim): return vals[n]
   if n in computing:  # force delay
     return prevVals.getOrDefault(n, Value(power: 0.0))
   if n.inputs.len == 0:
     vals[n] = Value(power: 0.0)
+    if cacheable: computed.incl n
     return vals[n]
 
   computing.incl n
@@ -502,13 +819,16 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
         prevVals.getOrDefault(inp.n, Value(power: 0.0))
     else:
       if inp.n.kind == PackN and inp.n.pack != nil:
-        discard simulateNode(inp.n, vals, prevVals, computing, skipSim)
+        discard simulateNode(inp.n, vals, prevVals, computing, skipSim, computed, cacheable)
         if inp.port < inp.n.pack.outputs.len:
-          simulateNode(inp.n.pack.outputs[inp.port], vals, prevVals, computing, skipSim)
+          # If the PackN is currently in a computing cycle, its internal nodes
+          # are traversed with stale pack inputs — don't cache those results.
+          let c = cacheable and not (inp.n in computing)
+          simulateNode(inp.n.pack.outputs[inp.port], vals, prevVals, computing, skipSim, computed, c)
         else:
           Value(power: 0.0)
       else:
-        simulateNode(inp.n, vals, prevVals, computing, skipSim)
+        simulateNode(inp.n, vals, prevVals, computing, skipSim, computed, cacheable)
 
   case n.kind
   of SymN:
@@ -520,9 +840,9 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
         if i < n.inputs.len:
           vals[inpNode] = resolveInp(n.inputs[i])
       if n.pack.outputs.len > 0:
-        vals[n] = simulateNode(n.pack.outputs[0], vals, prevVals, computing, skipSim)
+        vals[n] = simulateNode(n.pack.outputs[0], vals, prevVals, computing, skipSim, computed, cacheable)
         for i in 1..<n.pack.outputs.len:
-          discard simulateNode(n.pack.outputs[i], vals, prevVals, computing, skipSim)
+          discard simulateNode(n.pack.outputs[i], vals, prevVals, computing, skipSim, computed, cacheable)
       else:
         vals[n] = Value(power: 0.0)
     else:
@@ -554,12 +874,13 @@ proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, V
     else:
       discard
 
+  if cacheable: computed.incl n
   computing.excl n
   return vals.getOrDefault(n, Value(power: 0.0))
 
 
 proc draw*(plot: Plot) =
-  const signalH = 1.0
+  let signalH = schemeTheme.plotSignalHeight
   var stamps = plot.timestamps
   stamps.sort(proc(a, b: PlotTimestamp): int = cmp(a.time, b.time))
   if stamps.len == 0: return
@@ -584,10 +905,11 @@ proc draw*(plot: Plot) =
 
     var simVals = accumVals
     var computing = initHashSet[Node]()
+    var computed = initHashSet[Node]()
     for group in plot.data:
       for node in group:
-        discard simulateNode(node, simVals, accumVals, computing, skipSim)
-    
+        discard simulateNode(node, simVals, accumVals, computing, skipSim, computed)
+
     for group in plot.data:
       for node in group:
         if node in simVals:
@@ -643,12 +965,12 @@ proc draw*(plot: Plot) =
             doc.add Text valStr:
               Position2 point2(x1 + 0.2, rowY + 0.2)
               PositionAtTopLeft
-              FontSize 0.5
+              FontSize schemeTheme.plotValueFontSize
           else:
             doc.add Text valStr:
               Position2 point2(x1 + 0.2, rowY + signalH - 0.2)
               PositionAtBottomLeft
-              FontSize 0.5
+              FontSize schemeTheme.plotValueFontSize
 
       y += signalH + plot.gap
 
@@ -660,14 +982,14 @@ proc draw*(plot: Plot) =
       doc.add lineSection(
         point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, plot.origin.y),
         point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, y - plot.gap)
-      ), plot.axiesColor
+      ), schemeTheme.axiesColor
   
   when false:
     let t = plot.timestamps[^1]
     doc.add lineSection(
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, plot.origin.y),
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, y - plot.gap)
-    ), plot.axiesColor
+    ), schemeTheme.axiesColor
 
 
 
@@ -694,9 +1016,10 @@ proc echoPlot*(plot: Plot) =
 
     var simVals = accumVals
     var computing = initHashSet[Node]()
+    var computed = initHashSet[Node]()
     for group in plot.data:
       for node in group:
-        discard simulateNode(node, simVals, accumVals, computing, skipSim)
+        discard simulateNode(node, simVals, accumVals, computing, skipSim, computed)
 
     var parts: seq[string]
     parts.add "t=" & stamp.time.formatFloat(ffDecimal, 2)
@@ -710,8 +1033,6 @@ proc echoPlot*(plot: Plot) =
 
 
 mainModule:
-  addDefaultElectronicsGlobals()
-
   let inputs = @[Node "x3", "x2", "x1"]
   let inverted = inputs.mapIt(norN(it))
 

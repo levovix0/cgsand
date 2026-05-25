@@ -1,7 +1,7 @@
 import std/[os]
 import pkg/[ecs]
 import pkg/siwin
-import pkg/sigui/uibase
+import pkg/sigui/[uibase, window]
 import ./cgsand/gui/[code_editor, document_view, tool_bar]
 import ./cgsand/logic/[config, scripts]
 
@@ -19,6 +19,13 @@ win.makeLayout:
   this.clearColor = "#00000000".color
 
   on currentScript.changed: saveConfig()
+
+  this.onSignal.connectTo this, e:
+    type Ev = ref DropEvent
+    if e of WindowEvent and e.WindowEvent.event of Ev:
+      let files = win.siwinWindow.dragndropClipboard.files
+      if files.len > 0:
+        currentScript[] = files[0]
 
   proc onWindowResize =
     when defined(windows):

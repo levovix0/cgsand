@@ -8,11 +8,23 @@
     }
   },
   "src/cgsand/gui/document_view.nim": {
+    "Theme: light": {
+      "": "Тема: светлая"
+    },
     "Recompile": {
       "": "Пересобрать"
     },
-    "Reset": {
-      "": "Сброс"
+    "Theme: dark": {
+      "": "Тема: тёмная"
+    },
+    "3D": {
+      "": "3D"
+    },
+    "2D": {
+      "": "2D"
+    },
+    "Reset view": {
+      "": "Сброс вида"
     }
   },
   "src/cgsand/gui/tool_bar.nim": {

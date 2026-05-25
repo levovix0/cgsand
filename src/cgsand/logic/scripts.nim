@@ -1,5 +1,6 @@
 import std/[os, strformat, dynlib, locks]
-import pkg/[ecs]
+import pkg/[ecs, vmath]
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
 
 type
@@ -9,14 +10,37 @@ type
     Executing
     # BuildingRenderTree
 
+  ScriptOptLevel* = enum
+    optNone   ## --opt:none (default, checks enabled)
+    optSpeed  ## --opt:speed -d:danger (maximum speed, no checks)
+
+  WorkerArgs = object
+    script: ptr ScriptObj
+    filename, outfile: string
+    compile: bool = true
+    optLevel: ScriptOptLevel = optNone
+
+  TextSizeCb* = proc(text: string, fontSize: float64): Vec2 {.cdecl.}
+  EntityBoundsCb* = proc(world: World, eid: EntityId): RawBounds2 {.cdecl.}
+  WorldBoundsCb* = proc(world: World): RawBounds2 {.cdecl.}
+
   Script* = ref ScriptObj
   ScriptObj* = object
     lib*: LibHandle
     world*: ptr World
+    cache*: World
+    filename*: string
+    outfile*: string
+    optLevel*: ScriptOptLevel
     stage* {.guard: lock.}: ScriptStage
     lock*: Lock
-    
-    thread: Thread[tuple[script: ptr ScriptObj, filename, outfile: string]]
+
+    thread: Thread[WorkerArgs]
+
+
+var scriptTextSize*: TextSizeCb
+var scriptEntityBounds*: EntityBoundsCb
+var scriptWorldBounds*: WorldBoundsCb
 
 
 proc `=destroy`(this: ScriptObj) =
@@ -44,52 +68,108 @@ when defined(cgsand.script_wrapper):
 
 
 
-proc compileAndRunScript*(filename: string, outfile: string = "script"): Script =
-  new result
-  initLock result.lock
-  withLock result.lock: result.stage = Compiling
+proc scriptWorker(info: WorkerArgs) {.thread.} =
+  let s = info.script
+  let outfile = info.outfile.withDllExtension
 
-  proc worker(info: tuple[script: ptr ScriptObj, filename, outfile: string]) =
-    template result: untyped = info.script[]
-    template fail {.dirty.} =
-      if result.lib != nil: unloadLib(result.lib)
-      result.lib = nil
-      withLock result.lock: result.stage = Idle
-      return
+  template fail {.dirty.} =
+    if info.compile:
+      if s.lib != nil:
+        unloadLib(s.lib)
+        s.lib = nil
+    withLock s.lock: s.stage = Idle
+    return
 
-    let outfile = info.outfile.withDllExtension
+
+  if info.compile:
+    let optFlags = case info.optLevel
+      of optNone:   "--opt:none"
+      of optSpeed: "--opt:speed -d:danger"
     
     when defined(cgsand.script_wrapper):
       let wrapperPath = "build/script_wrapper.nim"
-    
       try:
         writeFile wrapperPath, wrapScript(readFile(info.filename))
       except:
         echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
-
-      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
+      if (execShellCmd &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
     else:
-      if (execShellCmd &"nim c --app:lib --noMain -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
-    
-    result.lib = loadLib(outfile)
-    if result.lib == nil: fail()
+      if (execShellCmd &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
 
-    let nimMain = cast[proc() {.cdecl, gcsafe.}](result.lib.symAddr("NimMain"))
-    if nimMain == nil: fail()
-
-    withLock result.lock: result.stage = Executing
-    nimMain()
-
-    let scriptHandleError = cast[proc: bool {.cdecl, gcsafe.}](result.lib.symAddr("handleErrorAfterNimMain"))
-    if scriptHandleError != nil:
-      if scriptHandleError(): fail()
-
-    let w = result.lib.symAddr("world_instance")
-    if w == nil: fail()
+    if s.lib != nil: unloadLib(s.lib)
+    s.lib = loadLib(outfile)
+    if s.lib == nil: fail()
   
-    result.world = cast[ptr World](w)
-    withLock result.lock: result.stage = Idle
-    
-  result.thread.createThread(worker, (result[].addr, filename, outfile))
-  
+  else:
+    if s.lib != nil: unloadLib(s.lib)
+    s.lib = loadLib(outfile)
+    if s.lib == nil: fail()
 
+
+  if s.lib == nil: fail()
+
+  let nimMain = cast[proc() {.cdecl, gcsafe.}](s.lib.symAddr("NimMain"))
+  if nimMain == nil: fail()
+
+  let cacheInstanceAddr = s.lib.symAddr("cache_instance")
+  if cacheInstanceAddr != nil:
+    cast[ptr ptr World](cacheInstanceAddr)[] = s.cache.addr
+
+  template setScriptCb(sym: string, cb: typed) =
+    let cbAddr = s.lib.symAddr(sym)
+    if cbAddr != nil and cb != nil:
+      cast[ptr typeof(cb)](cbAddr)[] = cb
+  
+  setScriptCb("sandbox_textSizeImpl", scriptTextSize)
+  setScriptCb("sandbox_entityBoundsImpl", scriptEntityBounds)
+  setScriptCb("sandbox_worldBoundsImpl", scriptWorldBounds)
+
+  withLock s.lock: s.stage = Executing
+  nimMain()
+
+
+  let scriptHandleError = cast[proc: bool {.cdecl, gcsafe.}](s.lib.symAddr("handleErrorAfterNimMain"))
+  if scriptHandleError != nil:
+    if scriptHandleError(): fail()
+
+  let w = s.lib.symAddr("world_instance")
+  if w == nil: fail()
+  s.world = cast[ptr World](w)
+
+  let syncCache = cast[proc() {.cdecl, gcsafe.}](s.lib.symAddr("syncCacheFromDoc"))
+  if syncCache != nil:
+    syncCache()
+
+  withLock s.lock: s.stage = Idle
+
+
+
+proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: World = nil, optLevel: ScriptOptLevel = optNone): Script =
+  new result
+  initLock result.lock
+  withLock result.lock: result.stage = Compiling
+  result.filename = filename
+  result.outfile = outfile
+  result.optLevel = optLevel
+  result.cache = if existingCache != nil: existingCache else: new World
+
+  result.thread.createThread(scriptWorker, WorkerArgs(
+    script: result[].addr, filename: filename, outfile: outfile, optLevel: optLevel,
+  ))
+
+
+proc rerunScript*(script: Script) =
+  ## Re-execute the already-compiled script .so without recompilation.
+  if script.lib == nil: return
+  
+  withLock script.lock:
+    if script.stage != Idle: return
+    script.stage = Compiling
+  
+  if script.thread.running:
+    joinThread script.thread
+  
+  script.thread.createThread(scriptWorker, WorkerArgs(
+    script: script[].addr, filename: script.filename, outfile: script.outfile,
+    compile: false,
+  ))

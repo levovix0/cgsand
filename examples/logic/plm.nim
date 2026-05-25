@@ -1,21 +1,25 @@
 import sandbox, geom2d
 
 
-let darkTheme* = false
+let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 let SZ = 2.0
 
 
-let globals* = doc.spawn(
-  CanvasSettings(
+proc setPlmGlobals*(globals: EntityId) =
+  doc.update globals: add OwnerModule "plm"
+  doc.update globals: add CanvasSettings(
     autoSize: true,
     margin: vec2(2, 2),
-  ),
-  AxisYDown,
-  (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0)),
-  FontSize 1,
-)
-if not darkTheme:
-  doc.update globals: add Background color(1, 1, 1)
+  )
+  doc.update globals: add AxisYDown
+  doc.update globals: add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
+  doc.update globals: add FontSize 1
+
+  if not darkTheme:
+    doc.update globals: add Background color(1, 1, 1)
+
+if not doc.hasComponent(globals, OwnerModule):
+  setPlmGlobals(globals)
 
 
 

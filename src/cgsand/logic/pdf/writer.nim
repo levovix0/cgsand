@@ -25,6 +25,8 @@ type
     colorSet, lwSet: bool
     lastFR, lastFG, lastFB: float32
     fillColorSet: bool
+    lastLineCap: int8
+    lineCapSet: bool
     usedFonts: seq[int]
 
   PdfWriter* = object
@@ -98,6 +100,12 @@ proc setLineWidth*(p: var PdfPage; w: float32) =
     p.lastLW = w
     p.lwSet = true
 
+proc setLineCap*(p: var PdfPage; cap: int) =
+  if not p.lineCapSet or p.lastLineCap != int8(cap):
+    p.content.add $cap & " J\n"
+    p.lastLineCap = int8(cap)
+    p.lineCapSet = true
+
 
 proc moveTo*(p: var PdfPage; pos: Vec2) =
   p.content.add pdfNum(pos.x) & " " & pdfNum(pos.y) & " m\n"
@@ -122,6 +130,7 @@ proc fillStroke*(p: var PdfPage) =
 proc drawLine*(p: var PdfPage; a, b: Vec2; color: Color; lw: float32) =
   p.setStrokeColor(color)
   p.setLineWidth(lw)
+  p.setLineCap(1)
   p.moveTo(a)
   p.lineTo(b)
   p.stroke()
@@ -170,7 +179,7 @@ proc pathCubicTo*(p: var PdfPage; c1, c2, ep: Vec2) =
                pdfNum(ep.x) & " " & pdfNum(ep.y) & " c\n"
 
 
-proc arcSegmentToBeziers(cx, cy, rx, ry, phi, theta, dtheta: float32): seq[(Vec2, Vec2, Vec2)] =
+proc arcSegmentToBeziers*(cx, cy, rx, ry, phi, theta, dtheta: float32): seq[(Vec2, Vec2, Vec2)] =
   let n = max(1, int(abs(dtheta) / (Pi * 0.5) + 0.9999))
   let step = dtheta / float32(n)
   let cosPhi = cos(phi)
@@ -194,6 +203,29 @@ proc arcSegmentToBeziers(cx, cy, rx, ry, phi, theta, dtheta: float32): seq[(Vec2
     result.add((cur + dt(angle) * alpha, ep - dt(next) * alpha, ep))
     cur = ep
     angle = next
+
+
+proc drawBezierEllipseArc*(
+  p: var PdfPage;
+  cx, cy, rx, ry, startAngle, dtheta: float32;
+  transform: proc(v: Vec2): Vec2;
+  doStroke, doFill, closed: bool;
+  strokeColor, fillColor: Color;
+  lw: float32;
+) =
+  if not doStroke and not doFill: return
+  let segs = arcSegmentToBeziers(cx, cy, rx, ry, 0, startAngle, dtheta)
+  if segs.len == 0: return
+  if doStroke: p.setStrokeColor(strokeColor)
+  if doFill:   p.setFillColor(fillColor)
+  if doStroke: p.setLineWidth(lw)
+  p.moveTo(transform(vec2(cx + rx * cos(startAngle), cy + ry * sin(startAngle))))
+  for (c1, c2, ep) in segs:
+    p.pathCubicTo(transform(c1), transform(c2), transform(ep))
+  if closed or doFill: p.closePath()
+  if doFill and doStroke: p.fillStroke()
+  elif doFill:            p.fill()
+  elif doStroke:          p.stroke()
 
 
 proc svgArcToBeziers(p1: Vec2; rx0, ry0, phi, fA, fS: float32; p2: Vec2): seq[(Vec2, Vec2, Vec2)] =
