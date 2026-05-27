@@ -27,17 +27,20 @@ let transparent* = color(0, 0, 0, 0)
 let textMargin* = 0.1
 
 
-var globals*: EntityId
-
-
 proc setupLevel* =
-  globals = doc.spawn(  # todo: `spawn` should allow same syntax as `add`
-    CanvasSettings(autoSize: true, margin: vec2(2, 2)),
-    AxisYDown,
-    FontSize 1,
-    fg,
-    bg,
-  )
+  # globals = doc.spawn(  # todo: `spawn` should allow same syntax as `add`
+  #   CanvasSettings(autoSize: true, margin: vec2(2, 2)),
+  #   AxisYDown,
+  #   FontSize 1,
+  #   fg,
+  #   bg,
+  # )
+  doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(2, 2))
+  doc.update globals: add AxisYDown
+  doc.update globals: add FontSize 1
+  doc.update globals: add fg
+  doc.update globals: add bg
+
 
 template finishLevel* =
   updateTranslations()

@@ -1,10 +1,9 @@
 import sandbox
 import electronics/schemes
 
-addDefaultElectronicsGlobals()
 
-
-type RsTrigger* = tuple[pack: Pack, placement: seq[PlacementRule], T: seq[Node]]
+type
+  RsTrigger* = tuple[pack: Pack, placement: seq[PlacementRule], T: seq[Node]]
 
 
 proc rsTrigger*: RsTrigger =
@@ -61,18 +60,17 @@ mainModule:
   placeComponents(placement)
   drawComponents()
 
-
   let S {.used.} = n.inputs[0]
   let R {.used.} = n.inputs[1]
 
   var timestamps = @[
-    PlotTimestamp(time: 0, changes: @[setVal(S, 0), setVal(R, 0), setVal(T[0], 0), setVal(T[1], 1)]),
+    PlotTimestamp(time: 0, changes: @[setVal(S, 0), setVal(R, 1), setVal(T[0], 0), setVal(T[1], 1)]),
     PlotTimestamp(time: 0.05),
-    PlotTimestamp(time: 1, changes: @[setVal(S, 1)]),
+    PlotTimestamp(time: 1, changes: @[setVal(S, 1), setVal(R, 0)]),
     PlotTimestamp(time: 1.05),
     PlotTimestamp(time: 2, changes: @[setVal(S, 0)]),
     PlotTimestamp(time: 2.05),
-    PlotTimestamp(time: 3, changes: @[setVal(R, 1)]),
+    PlotTimestamp(time: 3, changes: @[setVal(R, 1), setVal(S, 0)]),
     PlotTimestamp(time: 3.05),
     PlotTimestamp(time: 4, changes: @[setVal(R, 0)]),
     PlotTimestamp(time: 4.05),

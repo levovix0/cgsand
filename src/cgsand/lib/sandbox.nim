@@ -1,5 +1,6 @@
 {.used.}
 import pkg/[ecs, sigeo/core, chroma]
+import pkg/sigeo/grids/extrusions
 export ecs, core, chroma
 
 when defined(script):
@@ -31,24 +32,15 @@ type
     PositionAtBottom
     PositionAtCenter
 
+  Position2* = Point2
+    ## used for non-geometry objects that can be displayed (Text)
+
+
   AxisYDirection* = enum
     ## can be added to an entity with CanvasSettings, to specify if axisY is directed up (it is down by default)
     AxisYDown
     AxisYUp
-
-
-  Foreground* = Color
-    ## color of lines of shape, text
-    ## can be added onto entity with CanvasSettings to define a default foreground color (it is color(1, 1, 1) by default)
   
-  Background* = Color
-    ## color of background of shape or document (can be added onto entity with CanvasSettings)
-
-
-  Position2* = Point2
-    ## used for non-geometry objects that can be displayed (Text)
-  
-
 
   Transform3* = Mat4
     ## can be added to arbitrary transform 2D/3D object (for example, rotate text) in 3D space. Applied before Position2
@@ -61,19 +53,109 @@ type
     ## defines height of a line of text
 
 
+  Foreground* = Color
+    ## color of lines of shape, text
+    ## can be added onto entity with CanvasSettings to define a default foreground color (it is color(1, 1, 1) by default)
+  
+  Background* = Color
+    ## color of background of shape or document (can be added onto entity with CanvasSettings)
+
+
   Thickness* = float32
     ## defines thickness of lines (attachable to 2d curves)
   
   PixelThickness* = float32
     ## thickness of lines in pixels. Stays the same no matter how viewport transforms
-    ## todo
 
+
+  DarkTheme* = bool
+    ## set in cache by the app to indicate the current UI theme; scripts read this at startup
+
+  CacheVariable* = string
+    ## a name for an entity, that persists between script re-runs
+  
+
+  OwnerModule* = string
+
+
+  SubWorld* = World
+    ## attach to an entity with Position2 (and optionally Transform3) to render another world as a sub-canvas
+    ## the sub-world is drawn at Position2 in the outer world's coordinate space
+    ## the sub-world's background is transparent; its own globals (foreground, font, etc.) are used
+
+  PolygonalSurface3* = ref Grid3
+    ## ref-wrapped Grid3 for ECS component storage; use polygonalSurface3() to construct
+
+  RawBounds2* = object
+    ## ABI-stable bounds type used for app -> script callbacks (float32 storage)
+    empty*: bool = true
+    minX*, minY*, maxX*, maxY*: float32
+
+
+converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
+  new result
+  result[] = grid
 
 
 when defined(script) or defined(nimcheck):
+  type
+    Bounds2* = object
+      ## bounding box in document coordinates
+      empty*: bool = true
+      min*, max*: Vec2
+
+  proc bounds2*(min, max: Vec2): Bounds2 =
+    Bounds2(empty: false, min: min, max: max)
+
+  proc size*(b: Bounds2): Vec2 = b.max - b.min
+  proc center*(b: Bounds2): Vec2 = (b.min + b.max) / 2
+
+  proc addPoint*(b: var Bounds2, p: Vec2) =
+    if b.empty:
+      b = bounds2(p, p)
+      return
+    b.min.x = min(b.min.x, p.x)
+    b.min.y = min(b.min.y, p.y)
+    b.max.x = max(b.max.x, p.x)
+    b.max.y = max(b.max.y, p.y)
+
+  proc add*(b: var Bounds2, other: Bounds2) =
+    if other.empty: return
+    b.addPoint(other.min)
+    b.addPoint(other.max)
+
+  proc expanded*(b: Bounds2, margin: Vec2): Bounds2 =
+    if b.empty: return b
+    bounds2(b.min - margin, b.max + margin)
+
+  proc toBounds2*(raw: RawBounds2): Bounds2 =
+    if raw.empty: return Bounds2(empty: true)
+    bounds2(vec2(raw.minX.float64, raw.minY.float64), vec2(raw.maxX.float64, raw.maxY.float64))
+
+  var textSizeImpl* {.exportc: "sandbox_textSizeImpl", dynlib.}: proc(text: string, fontSize: FontSize): FVec2 {.cdecl.}
+  var entityBoundsImpl* {.exportc: "sandbox_entityBoundsImpl", dynlib.}: proc(world: World, eid: EntityId): RawBounds2 {.cdecl.}
+  var worldBoundsImpl* {.exportc: "sandbox_worldBoundsImpl", dynlib.}: proc(world: World): RawBounds2 {.cdecl.}
+
+  proc textSize*(text: string, fontSize: FontSize): Vec2 =
+    if textSizeImpl != nil:
+      let r = textSizeImpl(text, fontSize)
+      return vec2(r.x.float64, r.y.float64)
+
+  proc entityBounds*(world: World, eid: EntityId): Bounds2 =
+    if entityBoundsImpl != nil: return entityBoundsImpl(world, eid).toBounds2
+
+  proc worldBounds*(world: World): Bounds2 =
+    if worldBoundsImpl != nil: return worldBoundsImpl(world).toBounds2
+  
+  
   var doc* {.exportc: "world_instance", dynlib.} = World()
     ## in the sandbox we have an entire World!
+
+  var cache* {.exportc: "cache_instance", dynlib.}: ptr World
   
+  var reserveCache = World()
+  if cache == nil: cache = reserveCache.addr
+
   proc handleErrorAfterNimMain: bool {.exportc, dynlib.} =
     try: discard
     except Defect:
@@ -82,6 +164,24 @@ when defined(script) or defined(nimcheck):
     except:
       echo "script error: ", getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
       result = true
+
+  proc syncCacheFromDoc {.exportc, dynlib.} =
+    if cache == nil: return
+    var toDelete: seq[EntityId]
+    cache[].forEach (eid: EntityId, CacheVariable, float):
+      toDelete.add eid
+    for eid in toDelete:
+      cache[].despawn(eid)
+    cache[].cleanupDeleted()
+    doc.forEach (cv: CacheVariable, v: float):
+      discard cache[].spawn(cv, v)
+  
+
+  var globals* = doc.spawn(
+    CanvasSettings(),
+    Foreground color(1, 1, 1),
+    Background color(0, 0, 0, 0)
+  )
 
 
 
@@ -99,7 +199,7 @@ const CanvasSettings_A4_Horizontal* = CanvasSettings(
 
 
 
-proc `[]`*[T](w: var World, t: typedesc[T]): var T =
+proc `[]`*[T](w: World, t: typedesc[T]): var T =
   var res: ptr T
   w.forEach (singletonValue: var T):
     res = singletonValue.addr
@@ -109,13 +209,37 @@ proc `[]`*[T](w: var World, t: typedesc[T]): var T =
       res = singletonValue.addr
   res[]
 
-proc `[]=`*[T](w: var World, t: typedesc[T], v: T) =
+proc `[]=`*[T](w: World, t: typedesc[T], v: T) =
   var got = false
   w.forEach (singletonValue: var T):
     singletonValue = v
     got = true
   if not got:
     w.add v
+
+proc getOrDefault*[T](w: World, t: typedesc[T], v: T): T =
+  var res: ptr T
+  w.forEach (singletonValue: var T):
+    res = singletonValue.addr
+  if res == nil:
+    v
+  else:
+    res[]
+
+proc mgetOrPut*[T](w: World, t: typedesc[T], v: T): var T =
+  var res: ptr T
+  w.forEach (singletonValue: var T):
+    res = singletonValue.addr
+  if res == nil:
+    w.add v
+    w.forEach (singletonValue: var T):
+      res = singletonValue.addr
+  res[]
+
+template hasSingleton*[T](w: World, t: typedesc[T]): bool =
+  var hasV = false
+  w.forEach (t): hasV = true
+  hasV
 
 
 
@@ -139,17 +263,25 @@ proc factor*(posAt: PositionAt): Vec2 =
 
 
 
-proc background*(doc: var World): Background =
+proc background*(doc: World): Background =
   result = color(0, 0, 0, 0)
   doc.forEach (CanvasSettings, Background): return the Background
 
-proc foreground*(doc: var World): Foreground =
+proc foreground*(doc: World): Foreground =
   result = color(1, 1, 1)
   doc.forEach (CanvasSettings, Foreground): return the Foreground
 
-proc fontSize*(doc: var World): FontSize =
+proc fontSize*(doc: World): FontSize =
   result = 1
   doc.forEach (CanvasSettings, FontSize): return the FontSize
+
+
+
+template withDocument*(newDoc: World, body: untyped) =
+  let prevDoc = doc
+  doc = newDoc
+  body
+  doc = prevDoc
 
 
 
