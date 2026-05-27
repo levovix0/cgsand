@@ -1,7 +1,7 @@
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
-import pkg/toscel/[colors, comboBox, lineEdit, button]
+import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, fonts]
 import ../logic/[config, pdf_renderer]
 import std/[os]
 import icons
@@ -20,6 +20,8 @@ type
     browserItems: seq[BrowserItem] # Component state for hidden logic
     rootPath: string               # Hardcoded root reference path
     currentPath: string            # Current directory path that changes on click
+
+    saveFileDialogOpened: Property[bool]
 
   TitleButton = ref object of Uiobj
     pressedColor: Property[Color]
@@ -187,15 +189,110 @@ method init*(this: ToolBar) =
 
       - Button.new:
         text = tr"Export PDF"
-        enabled = binding: root.doc[] != nil
+        # enabled = binding: root.doc[] != nil
 
         on this.activated:
-          if root.doc[] == nil: return
-          let r = PdfRenerer(doc: root.doc[][])
-          let filters = ["*.pdf".cstring, "*".cstring]
-          let filename = "out.pdf"
-          if filename != "":
-            writePdf filename, r
+          
+          root.saveFileDialogOpened[] = not root.saveFileDialogOpened[]
+          
+
+        --- UiObj.new:
+          <--- UiObj.new: root.saveFileDialogOpened[]
+          
+          if root.saveFileDialogOpened[]:
+            - Panel.new:
+              x = 0
+              y = 60
+              w = 500
+              h = 400
+
+              - MouseArea.new:
+                this.fill parent.border
+
+              + this.background:
+                color = "#303030".color
+
+              - Label.new:
+                left = parent.left
+                centerY = parent.top + 2
+                text = "Сохранить как PDF"
+                fontSize = 18
+              
+              - Label.new:
+                right = parent.right
+                centerY = parent.top + 2
+                text = "Выберите расположение"
+                color = "#8c8c8c".color
+                fontSize = 14
+              
+              - UiRect.new as file_list:
+                left = parent.border.left + 1
+                right = parent.border.right - 1
+                top = parent.top + 24
+                bottom = parent.bottom - 100
+                color = "#282828"
+
+              # File selector
+              --- Layout.new:
+
+                this.col()
+
+                # for file in root.updateFileBrowser(root.currentPath):
+                #   - UiText.new:
+                #     font = font_default.withSize(14)
+                #     text = file
+                #     color = color_fg
+
+              - Label.new as title_label:
+                left = parent.left
+                centerY = file_list.bottom + 32
+                text = "Имя:"
+                fontSize = 14
+              
+              - ComboBox.new as file_type:
+                right = parent.right
+                centerY = file_list.bottom + 32
+                w = 100
+                otherTextCanBeEntered = false
+                fitOptionsWidth = false
+                options = @["Portable Document Format, *.pdf", "All Files"]
+
+              - LineEdit.new:
+                right = file_type.left - 10
+                left = title_label.right + 10
+                centerY = file_list.bottom + 32
+
+              - Label.new:
+                left = parent.left
+                centerY = file_type.bottom + 32
+                text = "~/Documents/Exports/trigger_d.pdf"
+                color = "#8c8c8c".color
+                fontSize = 14
+              
+              - Button.new as save_button:
+                right = parent.right 
+                centerY = file_type.bottom + 32
+                text = "Сохранить"
+                accent = true
+
+                on this.activated:
+                  if root.doc[] == nil: return
+                  let r = PdfRenerer(doc: root.doc[][])
+                  # let filters = ["*.pdf".cstring, "*".cstring]
+                  let filename = "out.pdf"
+                  if filename != "":
+                    writePdf filename, r
+                  root.saveFileDialogOpened[] = false
+
+              
+              - Button.new as cancel_button:
+                right = save_button.left - 10 
+                centerY = file_type.bottom + 32
+                text = "Отмена"
+
+                on this.activated:
+                  root.saveFileDialogOpened[] = false
+              
 
     # --- Window header buttons ---
 
