@@ -3,7 +3,7 @@ import pkg/[ecs, shady]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
-import pkg/rice/[primitives, antialiasing, transform, contextutils]
+import pkg/rice/[primitives, antialiasing, transform]
 import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 

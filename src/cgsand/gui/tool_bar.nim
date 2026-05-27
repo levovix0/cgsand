@@ -171,7 +171,7 @@ method init*(this: ToolBar) =
         on this.activated:
           if root.doc[] == nil: return
           let r = PdfRenerer(doc: root.doc[][])
-          let filters = ["*.pdf".cstring, "*".cstring]
+          # let filters = ["*.pdf".cstring, "*".cstring]
           let filename = "out.pdf"
           if filename != "":
             writePdf filename, r

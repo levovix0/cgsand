@@ -1,6 +1,6 @@
 import std/[json, os]
 import pkg/[localize, chroma, jsony]
-import pkg/sigui/[properties]
+import pkg/sigui/[events, properties]
 import ./syntax_highlighting
 export localize
 
@@ -9,31 +9,9 @@ requireLocalesToBeTranslated ("ru", "")
 
 type
   Config* = object
-    lastOpenedScript*: string
+    lastOpenedScript*: string = "examples/tutorial_use.nim"
+    codeEditorPortion*: float = 0.5
 
-
-var currentScript*: Property[string] = "examples/tutorial_use.nim".property
-
-
-let configFilePath* = getConfigDir() / "cgsand" / "config.json"
-
-proc loadConfig*() =
-  if fileExists(configFilePath):
-    try:
-      let cfg = fromJson(readFile(configFilePath), Config)
-      if cfg.lastOpenedScript != "":
-        currentScript[] = cfg.lastOpenedScript
-    except: discard
-
-proc saveConfig*() =
-  try:
-    createDir(configFilePath.parentDir)
-    let cfg = Config(lastOpenedScript: currentScript[])
-    writeFile(configFilePath, pretty(%*cfg))
-  except: discard
-
-
-type
   ColorTheme* = object
     cActive*: Color
     cInActive*: Color
@@ -67,6 +45,52 @@ type
     sLineNumber*: Color
 
     sText*: Color
+
+
+let configFilePath* = getConfigDir() / "cgsand" / "config.json"
+
+proc loadConfig*: Config =
+  if fileExists(configFilePath):
+    try:
+      fromJson(readFile(configFilePath), Config)
+    except: Config()
+  else: Config()
+
+proc save*(cfg: Config) =
+  try:
+    createDir(configFilePath.parentDir)
+    writeFile(configFilePath, pretty(%*cfg))
+  except: discard
+
+
+var currentConfig* = loadConfig()
+
+var bindings_configAutosave: EventHandler
+
+
+template autosaveProperty*[T](p: var Property[T], fieldOfConfig) =
+  bind bindings_configAutosave
+  bind save
+
+  proc `saveConfigOn p change` =
+    currentConfig.fieldOfConfig = p[]
+    save(currentConfig)
+  p[] = currentConfig.fieldOfConfig
+  connect(p.changed, bindings_configAutosave, `saveConfigOn p change`)
+
+template autosaveProperty*[T](p: var Property[T]) =
+  bind bindings_configAutosave
+  bind save
+
+  proc `saveConfigOn p change` =
+    currentConfig.p = p[]
+    save(currentConfig)
+  p[] = currentConfig.p
+  connect(p.changed, bindings_configAutosave, `saveConfigOn p change`)
+
+
+var currentScript*: Property[string]
+autosaveProperty currentScript, lastOpenedScript
 
 
 const vscodeThemeJson* = staticRead("../../../themes/vscode.json")

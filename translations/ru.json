@@ -9,7 +9,7 @@
   },
   "src/cgsand/lib/tutorial/l2_text.nim": {
     "Call `checkLevel()` to check for completion": {
-      "": "Call `checkLevel()` to check for completion"
+      "": "Вызовите `checkLevel()` для завершения уровня"
     },
     "Create a square on points above": {
       "": "Create a square on points above"
@@ -44,8 +44,14 @@
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {
+    "Do not import `tutorial` and `tutorial/lXXX_levelname` at the same time!": {
+      "": "Не импортируйте одновременно и `tutorial` и `tutorial/lXXX_levelname`!"
+    },
     "Basics": {
       "": "Основы"
+    },
+    "Text": {
+      "": "Текст"
     }
   }
 }
