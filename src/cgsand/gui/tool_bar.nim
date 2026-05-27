@@ -145,7 +145,7 @@ method init*(this: ToolBar) =
           
           if foundItem.isDir:
             # Changing directory
-            root.currentPath = foundItem.path 
+            root.currentPath = foundItem.path
             
             # Updating file list for new folder
             this.options[] = root.updateFileBrowser(root.currentPath)
@@ -154,7 +154,7 @@ method init*(this: ToolBar) =
             this.dropdownOpened[] = true
             
             # Display new relative path in ComboBox text field.
-            this.text[] = root.getCurrentRelativePath() 
+            this.text[] = root.getCurrentRelativePath()
             
           else:
             # If file is selected - we write its path to the config
@@ -190,7 +190,7 @@ method init*(this: ToolBar) =
       on this.activated:
         close this.parentWindow
 
-    - TitleButton.new: # Minimize 
+    - TitleButton.new: # Minimize
       this.fillVertical(parent)
       right = parent.right - 120
       w = 60
@@ -202,7 +202,7 @@ method init*(this: ToolBar) =
       on this.activated:
         this.parentWindow.minimized = true
 
-    - TitleButton.new: # Maximize 
+    - TitleButton.new: # Maximize
       this.fillVertical(parent)
       right = parent.right - 60
       w = 60
