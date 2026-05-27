@@ -1,7 +1,7 @@
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
-import pkg/toscel/[comboBox, lineEdit, button]
+import pkg/toscel/[colors, comboBox, lineEdit, button]
 import ../logic/[config, pdf_renderer]
 import std/[os]
 import icons
@@ -130,13 +130,16 @@ method init*(this: ToolBar) =
         text = binding: config.currentScript[]
         this.options[] = root.updateFileBrowser(root.currentPath)
         w = 300
+        fitOptionsWidth = false
+
+        # Disconnecting valid binding and making it always true
+        disconnect this.binding_valid
+        this.valid[] = true
 
         on this.textEdited:
           config.currentScript[] = this.text[]
         
-        on this.optionSelected:
-          let selectedOptionText = this.options[][this.selectedOption[]]
-          
+        proc fileChangeConfirmHandler(selectedOptionText: string) =
           var foundItem: BrowserItem
           for item in root.browserItems:
             if item.display == selectedOptionText:
@@ -145,24 +148,42 @@ method init*(this: ToolBar) =
           
           if foundItem.isDir:
             # Changing directory
-            root.currentPath = foundItem.path 
+            root.currentPath = foundItem.path
             
             # Updating file list for new folder
             this.options[] = root.updateFileBrowser(root.currentPath)
-            this.w[] = 300
             this.selectedOption[] = -1
             this.dropdownOpened[] = true
+
+            # Changing accent color to default (folder)
+            this.lineEdit.border.color[] = color_border_lineEdit
             
             # Display new relative path in ComboBox text field.
-            this.text[] = root.getCurrentRelativePath() 
-            
+            this.text[] = root.getCurrentRelativePath()
           else:
             # If file is selected - we write its path to the config
             config.currentScript[] = startDirName / relativePath(foundItem.path, root.rootPath)
             
+            # Changing border color to accent (valid file)
+            this.lineEdit.border.color[] = color_border_accent_lineEdit
+
             # Optional: You can leave the file name in the text field,
             # so the user can see which file is currently selected
             this.text[] = startDirName / relativePath(foundItem.path, root.rootPath)
+
+        this.onSignal.connectTo this, signal:
+          if signal of WindowEvent and signal.WindowEvent.event of KeyEvent:
+            let e = (ref KeyEvent)(signal.WindowEvent.event)
+            if e.pressed:
+              if this.lineEdit.textArea.active[] and not signal.WindowEvent.handled:
+                if e.key == Key.enter:
+                  fileChangeConfirmHandler(this.text[])
+        this.optionSelected.connectTo this, e:
+          let selectedOptionText = this.options[][this.selectedOption[]]
+          if e == ClickSelection:
+            fileChangeConfirmHandler(selectedOptionText)
+          else:
+            this.lineEdit.border.color[] = color_border_lineEdit
 
       - Button.new:
         text = tr"Export PDF"
