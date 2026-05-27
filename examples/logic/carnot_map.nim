@@ -368,7 +368,7 @@ mainModule:
     FontSize 1
     AxisYUp
 
-  let variables = @["x", "y", "z", "t"]
+  let variables = @["x", "y", "z"]
   let data = @[
     @[0, 2, 1, 0],
     @[1, 0, 0, 0],

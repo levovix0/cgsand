@@ -123,4 +123,3 @@ method init*(this: ToolBar) =
           easing = outSquareEasing
       on this.mouseDownAndUpInside:
         this.parentWindow.maximized = not this.parentWindow.maximized
-
