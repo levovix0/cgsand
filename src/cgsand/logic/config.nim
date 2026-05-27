@@ -15,7 +15,16 @@ type
 var currentScript*: Property[string] = "examples/tutorial_use.nim".property
 
 
-let configFilePath* = getConfigDir() / "cgsand" / "config.json"
+proc getConfigFilePath*(): string =
+  # Checking local path next to the binary
+  let localPath = getAppDir() / "config.json"
+  if fileExists(localPath):
+    return localPath
+    
+  # If there is no local path, we return the system path.
+  return getConfigDir() / "cgsand" / "config.json"
+
+let configFilePath* = getConfigFilePath()
 
 proc loadConfig*() =
   if fileExists(configFilePath):

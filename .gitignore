@@ -12,6 +12,7 @@
 *.so
 *.dll
 *.out
+config.json
 /docs
 /deps
 /nim.cfg
