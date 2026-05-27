@@ -323,18 +323,17 @@ method init*(this: CodeEditorContent) =
 
       allowEventFallthrough = true
 
-      on this.mouseButton:
-        if e.button == MouseButton.left and e.pressed:
-          setFocus root
-          for i, line in root.arrangement.lines:
-            if line.isHidden: continue
-            if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
-              let col = line.posToCol(vec2(this.mouseX[], this.mouseY[] - line.rect.y))
-              let append = Key.lalt in e.window.keyboard.pressed or Key.ralt in e.window.keyboard.pressed
-              root.arrangement.setCursorPos(i, col, append)
-              root.dragingCursorI = root.arrangement.cursors.high
-              redraw(root)
-              break
+      on this.pressed[] == true:
+        setFocus root
+        for i, line in root.arrangement.lines:
+          if line.isHidden: continue
+          if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
+            let col = line.posToCol(vec2(this.mouseX[], this.mouseY[] - line.rect.y))
+            let append = Key.lalt in this.parentWindow.keyboard.pressed or Key.ralt in this.parentWindow.keyboard.pressed
+            root.arrangement.setCursorPos(i, col, append)
+            root.dragingCursorI = root.arrangement.cursors.high
+            redraw(root)
+            break
 
       on this.moved:
         if this.pressed[]:
