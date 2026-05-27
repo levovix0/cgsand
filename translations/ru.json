@@ -7,6 +7,14 @@
       "": "Создайте квадрат по точкам выше"
     }
   },
+  "src/cgsand/lib/tutorial/l2_text.nim": {
+    "Call `checkLevel()` to check for completion": {
+      "": "Call `checkLevel()` to check for completion"
+    },
+    "Create a square on points above": {
+      "": "Create a square on points above"
+    }
+  },
   "src/cgsand/gui/document_view.nim": {
     "Theme: light": {
       "": "Тема: светлая"
