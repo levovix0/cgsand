@@ -74,7 +74,7 @@ proc setShaftsGlobals*(globals: EntityId) =
     autoSize: true,
     margin: vec2(2, 2),
   )
-  doc.update globals: add  AxisYDown
+  doc.update globals: add AxisYDown
   doc.update globals: add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
   doc.update globals: add FontSize 1
 

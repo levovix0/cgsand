@@ -284,14 +284,16 @@ method init*(this: DocumentView) =
             (prevDragPos.y / h - 0.5),
             (prevDragPos.x / w - 0.5) * (w / h)
           )
+          let axY = (if root.script[].world[].documentGlobals.axisYDirection == AxisYUp: -1'f32 else: 1'f32)
+
           let worldCenter = root.script[].world[].worldCenter3D()
           root.viewport[] = combine(
             root.viewport[],
             translate(-worldCenter),
-            rotateY(dn.x * float32(Pi), vec3(0, 0, 0)),
-            rotateX(-dn.y * float32(Pi), vec3(0, 0, 0)),
-            rotateZ(dn.x / h * 1000 * float32(Pi) * zv.x, vec3(0, 0, 0)),
-            rotateZ(-dn.y / h * 1000 * float32(Pi) * zv.y, vec3(0, 0, 0)),
+            rotateY(-dn.x * float32(Pi), vec3(0, 0, 0)),
+            rotateX(axY * dn.y * float32(Pi), vec3(0, 0, 0)),
+            rotateZ(-dn.x / h * 1000 * float32(Pi) * zv.x, vec3(0, 0, 0)),
+            rotateZ(axY * dn.y / h * 1000 * float32(Pi) * zv.y, vec3(0, 0, 0)),
             translate(worldCenter),
           )
           prevDragPos = currentMousePos
