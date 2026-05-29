@@ -6,7 +6,7 @@ import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl]
 import pkg/sigeo/grids/[extrusions, smoothshading]
 import ./[bounds, doclayout, scripts, document_globals]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d]
 
 
@@ -242,18 +242,16 @@ proc draw3dWorld*(
 
 
 
-proc entityBoundsCallback(world: World, eid: EntityId): RawBounds2 {.cdecl.} =
+proc entityBoundsCallback(world: World, eid: EntityId): Bounds2 {.cdecl.} =
   let globals = world.documentGlobals
-  let (minX, maxX) = world.worldBoundsAlongAxis(vec3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  let (minY, maxY) = world.worldBoundsAlongAxis(vec3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  RawBounds2(empty: false, minX: minX, minY: minY, maxX: maxX, maxY: maxY)
+  let (minX, maxX) = world.worldBoundsAlongAxis(sandbox.vec3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  let (minY, maxY) = world.worldBoundsAlongAxis(sandbox.vec3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  bounds2(sandbox.vec2(minX, minY), sandbox.vec2(maxX, maxY))
 
-proc worldBoundsCallback(world: World): RawBounds2 {.cdecl.} =
+proc worldBoundsCallback(world: World): Bounds2 {.cdecl.} =
   let g = world.documentGlobals
   let layout = world.documentLayout(g)
-  if layout.contentBounds.empty: return RawBounds2(empty: true)
-  let b = layout.contentBounds
-  RawBounds2(empty: false, minX: b.min.x, minY: b.min.y, maxX: b.max.x, maxY: b.max.y)
+  layout.contentBounds
 
 proc textSizeCallback(text: string, fontSize: float64): Vec2 {.cdecl.} =
   var f = newFont(toscelFonts.font_default)

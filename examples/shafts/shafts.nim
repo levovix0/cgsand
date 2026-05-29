@@ -13,9 +13,15 @@ type
   SectionShape* = enum
     Circle
     Rectangle
+    Gear
 
   Material* = object
     tension_limit*: float  ## in pascals
+
+
+  GearSection* = object
+    modulo*: float  # in meters
+    teethCount*: int
 
   Section* = object
     case shape*: SectionShape
@@ -28,6 +34,9 @@ type
       rectangle*: tuple[
         w, h: float  # in meters
       ]
+    
+    of Gear:
+      gear*: GearSection
     
     material*: Material
     unknownDimensions*: bool
@@ -86,7 +95,7 @@ when useCustomFont:
 let steel* = Material(tension_limit: 160 * 1e6)
 
 proc cylindricSegment*(
-  d, l: float,
+  l, d: float,
   material = steel,
   left = ShaftConjunction(),
   right = ShaftConjunction(),
@@ -96,6 +105,40 @@ proc cylindricSegment*(
     length: l, left: left, right: right
   )
 
+
+
+
+proc adhendiumDiameter*(g: GearSection): float =
+  g.modulo * (g.teethCount.float + 2)
+
+proc pitchDiameter*(g: GearSection): float =
+  g.modulo * (g.teethCount.float)
+
+proc rootDiameter*(g: GearSection): float =
+  g.modulo * (g.teethCount.float - 2.5)
+
+
+proc gearSegment*(
+  l: float,
+  z: int, modulo: float,
+  material = steel,
+  left = ShaftConjunction(),
+  right = ShaftConjunction(),
+): ShaftSegment =
+  ShaftSegment(
+    section: Section(shape: Gear, gear: GearSection(teethCount: z, modulo: modulo), material: material),
+    length: l, left: left, right: right
+  )
+
+
+
+
+proc `==`*(a, b: Section): bool =
+  if a.shape != b.shape: return false
+  case a.shape
+  of Circle: a.circle == b.circle
+  of Rectangle: a.rectangle == b.rectangle
+  of Gear: a.gear == b.gear
 
 
 
@@ -148,6 +191,7 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
     case segment.section.shape
     of Circle: segment.section.circle.radius*2
     of Rectangle: max(segment.section.rectangle.w, segment.section.rectangle.h)
+    of Gear: segment.section.gear.adhendiumDiameter
 
   let maxH = shaft.segments.mapIt(it.height).max
   let dimlineY = maxH/2 + 5/scale
@@ -182,6 +226,19 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
           vec2(xc + conjunction.radius * dir, -h/2).pt,
           vec2(xc + conjunction.radius * dir, h/2).pt
         ), mainLine
+
+      if segment.section.shape == Gear:
+        let g = segment.section.gear
+        for yc in [-h/2 + (g.adhendiumDiameter - g.rootDiameter)/2, h/2 - (g.adhendiumDiameter - g.rootDiameter)/2]:
+          sketch.add lineSection(
+            vec2(x, yc).pt,
+            vec2(x + segment.length, yc).pt
+          ), mainLine
+        for yc in [-h/2 + (g.adhendiumDiameter - g.pitchDiameter)/2, h/2 - (g.adhendiumDiameter - g.pitchDiameter)/2]:
+          sketch.add lineSection(
+            vec2(x, yc).pt,
+            vec2(x + segment.length, yc).pt
+          )
 
     if dimensions != nil:
       dimensions.add LinearDimension2(

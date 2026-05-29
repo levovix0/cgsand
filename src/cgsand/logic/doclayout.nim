@@ -1,6 +1,6 @@
-import pkg/[ecs, vmath]
+import pkg/[ecs]
 import ./[bounds, document_globals]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
+import ../lib/sandbox
 
 
 type

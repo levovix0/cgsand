@@ -89,9 +89,9 @@ proc hasWorldToDraw(script: Script): bool =
 proc worldCenter3D*(w: World): Vec3 =
   ## Returns the center of the 3D bounding box of the world.
   let globals = w.documentGlobals
-  let (x0, x1) = w.worldBoundsAlongAxis(vec3(1, 0, 0), globals)
-  let (y0, y1) = w.worldBoundsAlongAxis(vec3(0, 1, 0), globals)
-  let (z0, z1) = w.worldBoundsAlongAxis(vec3(0, 0, 1), globals)
+  let (x0, x1) = w.worldBoundsAlongAxis(sandbox.vec3(1, 0, 0), globals)
+  let (y0, y1) = w.worldBoundsAlongAxis(sandbox.vec3(0, 1, 0), globals)
+  let (z0, z1) = w.worldBoundsAlongAxis(sandbox.vec3(0, 0, 1), globals)
   vec3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 
 
@@ -142,7 +142,7 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
           transform = scale vec3(1, this.w[] / this.h[], 1)
         )
         ctx.fillRect(
-          rect(layout.pageBounds.min, layout.pageBounds.size),
+          rect(layout.pageBounds.min.vec2, layout.pageBounds.size.vec2),
           color = globals.background,
         )
 

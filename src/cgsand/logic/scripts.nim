@@ -21,8 +21,8 @@ type
     optLevel: ScriptOptLevel = optNone
 
   TextSizeCb* = proc(text: string, fontSize: float64): Vec2 {.cdecl.}
-  EntityBoundsCb* = proc(world: World, eid: EntityId): RawBounds2 {.cdecl.}
-  WorldBoundsCb* = proc(world: World): RawBounds2 {.cdecl.}
+  EntityBoundsCb* = proc(world: World, eid: EntityId): Bounds2 {.cdecl.}
+  WorldBoundsCb* = proc(world: World): Bounds2 {.cdecl.}
 
   Script* = ref ScriptObj
   ScriptObj* = object
