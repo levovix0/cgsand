@@ -12,13 +12,13 @@ Thickness
 CircleArc
 PointCount
 EllipseArc
+PolygonalSurface3
+Transform3
 Text
 Position2
 SubWorld
-Transform3
 Color
 PixelThickness
 Path
-PolygonalSurface3
 DarkTheme
 bool
