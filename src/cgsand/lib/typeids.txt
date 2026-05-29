@@ -1,5 +1,4 @@
 EntityId
-DeletedEntity
 CanvasSettings
 Background
 Foreground

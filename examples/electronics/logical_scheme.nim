@@ -44,11 +44,12 @@ doc.add Scheme norN(nandN(norN(nandN("!x", "z")), "y"))
 
 
 
-doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(2))
-doc.update globals: add Background color(1, 1, 1)
-doc.update globals: add Foreground color(0, 0, 0)
-# doc.update globals: add Foreground color(0.75, 0.75, 0.8)
-doc.update globals: add FontSize 1
+doc.update globals:
+  add CanvasSettings(autoSize: true, margin: vec2(2))
+  add Background color(1, 1, 1)
+  add Foreground color(0, 0, 0)
+  # add Foreground color(0.75, 0.75, 0.8)
+  add FontSize 1
 
 
 proc cost(n: Node): int =

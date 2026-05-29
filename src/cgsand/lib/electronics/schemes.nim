@@ -132,21 +132,13 @@ const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈
 
 
 proc setElectronicsSchemesGlobals*(globals: EntityId) =
-  doc.update globals: add OwnerModule "electronics/schemes"
-  
-  # todo: ecs bug: not (i == -1)` component was not found in destination archetype [AssertionDefect]
-  # doc.update globals:
-  #   add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
-  #   add AxisYDown
-  #   add FontSize schemeTheme.baseFontSize
-  #   add Background schemeTheme.background
-  #   add Foreground schemeTheme.foreground
-
-  doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
-  doc.update globals: add AxisYDown
-  doc.update globals: add FontSize schemeTheme.baseFontSize
-  doc.update globals: add Background schemeTheme.background
-  doc.update globals: add Foreground schemeTheme.foreground
+  doc.update globals:
+    add OwnerModule "electronics/schemes"
+    add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+    add AxisYDown
+    add FontSize schemeTheme.baseFontSize
+    add Background schemeTheme.background
+    add Foreground schemeTheme.foreground
 
 if not doc.hasComponent(globals, OwnerModule):
   setElectronicsSchemesGlobals(globals)
@@ -710,14 +702,14 @@ proc drawRect(r: Rect) =
 
 
 proc drawComponents* =
-  doc.forEach (c: Connection, color: Color||schemeTheme.foreground, thickness: opt Thickness):
+  doc.forEach (c: Connection, color: (Color|Foreground)||schemeTheme.foreground, thickness: opt Thickness):
     for i in 0..<(c.len-1):
       if has Thickness:
         doc.add lineSection(c[i], c[i + 1]), Thickness thickness, color
       else:
         doc.add lineSection(c[i], c[i + 1]), color
 
-  doc.forEach (b: Branch, color: Color||schemeTheme.foreground):
+  doc.forEach (b: Branch, color: (Color|Foreground)||schemeTheme.foreground):
     doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius):
       Foreground color
       Background color

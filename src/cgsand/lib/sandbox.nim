@@ -159,12 +159,8 @@ when defined(script) or defined(nimcheck):
 
   proc syncCacheFromDoc {.exportc, dynlib.} =
     if cache == nil: return
-    var toDelete: seq[EntityId]
     cache[].forEach (eid: EntityId, CacheVariable, float):
-      toDelete.add eid
-    for eid in toDelete:
       cache[].despawn(eid)
-    cache[].cleanupDeleted()
     doc.forEach (cv: CacheVariable, v: float):
       discard cache[].spawn(cv, v)
   
