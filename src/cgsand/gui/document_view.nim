@@ -110,7 +110,11 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
       let layout = w.documentLayout(globals)
       let proj = projectionMatrix(layout.pageBounds, this.w[], this.h[], globals.axisYDirection)
       let toGl = combine(this.viewport[], proj)
-      let pixelsPerUnit = sqrt(toGl[0][0]*toGl[0][0] + toGl[1][0]*toGl[1][0]) * this.w[] / 2
+      let pixelsPerUnit = block:
+        let sX = sqrt(toGl[0][0]*toGl[0][0] + toGl[0][1]*toGl[0][1])
+        let sY = sqrt(toGl[1][0]*toGl[1][0] + toGl[1][1]*toGl[1][1])
+        let sZ = sqrt(toGl[2][0]*toGl[2][0] + toGl[2][1]*toGl[2][1])
+        max(sX, max(sY, sZ)) * this.w[] / 2
 
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)

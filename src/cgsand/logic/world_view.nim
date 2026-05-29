@@ -62,12 +62,24 @@ proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirecti
 
 proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
   if thickness.isSome:
+    # todo: find simpler way to make lines same thickness, independent of their direction
+    let a = sandbox.Vec2(obj.startPoint).vec2.vec3(0)
+    let b = sandbox.Vec2(obj.endPoint).vec2.vec3(0)
+    let m = ctx.viewportMatrix
+    let camDir = vec3(m[0][2], m[1][2], m[2][2])
+    let lineDir = normalize(b - a)
+    var camNormal = camDir - dot(camDir, lineDir) * lineDir
+    if dot(camNormal, camNormal) < 1e-10:
+      let camUp = vec3(m[0][1], m[1][1], m[2][1])
+      camNormal = camUp - dot(camUp, lineDir) * lineDir
+    camNormal = normalize(camNormal)
+
     ctx.fillCapsule(
-      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
-      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
+      a = a, b = b,
       color = color,
       transform = transform,
       radius = thickness.get / 2,
+      normal = camNormal,
     )
   else:
     ctx.drawLine(
@@ -199,9 +211,14 @@ proc draw2dWorld*(
     )
     let outerToGl = combine(viewport, projection)
     let innerToGl = combine(innerViewport, projection)
-    let outerScaleX = sqrt(outerToGl[0][0]*outerToGl[0][0] + outerToGl[1][0]*outerToGl[1][0])
-    let innerScaleX = sqrt(innerToGl[0][0]*innerToGl[0][0] + innerToGl[1][0]*innerToGl[1][0])
-    let innerPixelsPerUnit = if outerScaleX > 0: pixelsPerUnit * innerScaleX / outerScaleX else: pixelsPerUnit
+    template screenScale(m: Mat4): float32 =
+      let sX = sqrt(m[0][0]*m[0][0] + m[0][1]*m[0][1])
+      let sY = sqrt(m[1][0]*m[1][0] + m[1][1]*m[1][1])
+      let sZ = sqrt(m[2][0]*m[2][0] + m[2][1]*m[2][1])
+      max(sX, max(sY, sZ))
+    let outerScale = screenScale(outerToGl)
+    let innerScale = screenScale(innerToGl)
+    let innerPixelsPerUnit = if outerScale > 0: pixelsPerUnit * innerScale / outerScale else: pixelsPerUnit
     GC_ref(sub)
     draw2dWorld(ctx, sub, innerViewport, projection, innerPixelsPerUnit, meshCache)
 
