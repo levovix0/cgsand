@@ -89,7 +89,7 @@ win.makeLayout:
       this.fillVertical(codeEditor)
       left = codeEditor.right - 2
       right = codeEditor.right + 2
-      visibility = binding: codeEditor.visibility
+      visibility = binding: codeEditor.visibility[]
 
       - UiRect.new:
         this.fill(parent)

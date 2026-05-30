@@ -1,4 +1,4 @@
-import std/[sequtils, tables, hashes, sets, algorithm, strutils]
+import std/[sequtils, tables, hashes, sets, algorithm, strutils, options]
 import sandbox, geom2d
 import pkg/bumpy
 
@@ -24,6 +24,9 @@ type
     name*: string
     height*: float  # if equals 0, the calculated automatically: 1 for SymN, min(2, n.inputs.len) for BoxN
     pack*: Pack
+    portOffset*: Option[Vec2]
+      ## for SymN, if some, use custom port instead of drawing a line;
+      ## x = offset from text center (r.x + r.w/2), y = offset from r.y
   
   ElementAlignment* = enum
     None     # place items using origin, element heights and gap
@@ -182,6 +185,13 @@ proc xnorN*(inputs: varargs[Port]): Node =
 proc symN*(name: string, inputs: varargs[Port]): Node =
   Node(kind: SymN, name: name, inputs: inputs.toSeq, outputs: @[true])
 
+proc withPortOffset*(n: Node, v: Vec2): Node =
+  ## for SymN, use a custom port position instead of drawing a line.
+  ## v.y: offset from r.y (default SymN port/line position).
+  ## v.x: offset from text center X (r.x + r.w/2); default 0.
+  n.portOffset = some(v)
+  n
+
 
 proc pack*(inputs: openArray[Node], outputs: openArray[Node]): Pack =
   Pack(inputs: @inputs, outputs: @outputs)
@@ -246,15 +256,27 @@ proc nodeSize*(n: Node): Vec2 =
 
 proc inputPortY*(n: Node, r: Rect, portIdx: int): float32 =
   case n.kind
-  of SymN: r.y
+  of SymN:
+    if n.portOffset.isSome: r.y + n.portOffset.get.y.float32
+    else: r.y
   of BoxN: r.y + r.h * ((portIdx + 1) / (n.inputs.len + 1))
   of PackN: (let inpH = r.h / n.pack.inputs.len.float; r.y + inpH * portIdx.float + inpH/2)
 
 proc outputPortY*(n: Node, r: Rect, portIdx: int): float32 =
   case n.kind
-  of SymN: r.y
+  of SymN:
+    if n.portOffset.isSome: r.y + n.portOffset.get.y.float32
+    else: r.y
   of BoxN: r.y + r.h * ((portIdx + 1) / (n.outputs.len + 1))
   of PackN: (let outH = r.h / n.pack.outputs.len.float; r.y + outH * portIdx.float + outH/2)
+
+proc inputPortX*(n: Node, r: Rect): float32 =
+  if n.kind == SymN and n.portOffset.isSome: r.x + r.w/2 + n.portOffset.get.x.float32
+  else: r.x
+
+proc outputPortX*(n: Node, r: Rect): float32 =
+  if n.kind == SymN and n.portOffset.isSome: r.x + r.w/2 + n.portOffset.get.x.float32
+  else: r.x + r.w
 
 
 
@@ -300,6 +322,7 @@ proc segmentIntersectsRectBorder(a, b: Point2, r: Rect): bool =
 proc segmentPassesThroughRect(a, b: Point2, r: Rect): bool =
   # Returns true if the open segment interior crosses the shrunk rect interior.
   # The margin excludes endpoint-on-border touches (port connections).
+  # todo: sometimes wrongly-true
   const margin = 0.01f32
   let xMin = r.x + margin
   let xMax = r.x + r.w - margin
@@ -469,14 +492,14 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
             let inRect = nodeRects[inp.n]
             if node.height != 0 and inp.n.outputs.len == 1:
               let fromY = outputPortY(inp.n, inRect, inp.port)
-              let pts = Connection(@[point2(inRect.x + inRect.w, fromY), point2(r.x, fromY)])
+              let pts = Connection(@[point2(outputPortX(inp.n, inRect), fromY), point2(inputPortX(node, r), fromY)])
               let eid = doc.spawn(pts)
               allConns.add (pts, schemeTheme.foreground, true, eid, (cast[pointer](inp.n), inp.port))
             else:
               let fromY = outputPortY(inp.n, inRect, inp.port)
               let toY = inputPortY(node, r, portIdx)
-              let p1 = point2(inRect.x + inRect.w, fromY)
-              let p2 = point2(r.x, toY)
+              let p1 = point2(outputPortX(inp.n, inRect), fromY)
+              let p2 = point2(inputPortX(node, r), toY)
               if abs(fromY - toY) < Eps:
                 let pts = Connection(@[p1, p2])
                 let eid = doc.spawn(pts)
@@ -499,12 +522,12 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
           if elem.path.len >= 1:
             let bx = elem.path[^1].x.float32
             let py = elem.path[^1].y.float32
-            var pts: seq[Point2] = @[point2(inRect.x + inRect.w, startY)]
+            var pts: seq[Point2] = @[point2(outputPortX(inNode, inRect), startY)]
             pts.add elem.path
             (bx, py, pts)
           else:
             let bx = elem.origin.x.float32
-            (bx, startY, @[point2(inRect.x + inRect.w, startY), point2(bx, startY)])
+            (bx, startY, @[point2(outputPortX(inNode, inRect), startY), point2(bx, startY)])
 
         var busConns: seq[tuple[n: Node, port: int]]
         for outNode in elem.outputs:
@@ -533,7 +556,7 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
           for bc in busConns:
             let outRect = nodeRects[bc.n]
             let portY = inputPortY(bc.n, outRect, bc.port)
-            let stub = Connection(@[point2(busX, portY), point2(outRect.x, portY)])
+            let stub = Connection(@[point2(busX, portY), point2(inputPortX(bc.n, outRect), portY)])
             let stubEid = doc.spawn(stub, elem.color)
             allConns.add (stub, elem.color, false, stubEid, busSource)
 
@@ -575,12 +598,12 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
            min(outRect.x, inRect.x) - 1.float32 + elem.hOffset.left.float32)
 
       let pts = Connection(@[
-        point2(outRect.x + outRect.w, outY),
+        point2(outputPortX(outNode, outRect), outY),
         point2(rightX, outY),
         point2(rightX, midY),
         point2(leftX,  midY),
         point2(leftX,  inY),
-        point2(inRect.x, inY),
+        point2(inputPortX(inNode, inRect), inY),
       ])
 
       let connected = elem.input.port < inNode.inputs.len and
@@ -735,11 +758,12 @@ proc drawComponents* =
       let negate = name.startsWith("!")
       name.removePrefix("!")
 
-      doc.add lineSection(point2(r.x, r.y), point2(r.x + r.w, r.y))
+      if n.portOffset.isNone:
+        doc.add lineSection(point2(r.x, r.y), point2(r.x + r.w, r.y))
       doc.add Text name:
         Position2 point2(r.x + r.w/2, r.y - 0.2)
         PositionAtBottom
-      
+
       if negate:
         doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness schemeTheme.negationLineThickness
 
