@@ -1,5 +1,6 @@
 import std/[unicode, streams]
 import pkg/[chroma]
+import ./[config]
 
 # todo: use tree-splitter
 
@@ -33,6 +34,39 @@ type
     last: CodeKind
     inQuote, inComment: bool
     inMultiline: bool
+
+
+
+proc color*(sk: CodeKind): Color =
+  case sk
+  of sKeyword:
+    colorTheme.sKeyword
+  of sOperatorWord:
+    colorTheme.sOperatorWord
+  of sBuiltinType:
+    colorTheme.sBuiltinType
+  of sControlFlow:
+    colorTheme.sControlFlow
+  of sType:
+    colorTheme.sType
+  of sStringLit, sCharLit:
+    colorTheme.sStringLit
+  of sStringLitEscape, sCharLitEscape:
+    colorTheme.sStringLitEscape
+  of sNumberLit:
+    colorTheme.sNumberLit
+  of sFunction:
+    colorTheme.sFunction
+  of sComment:
+    colorTheme.sComment
+  of sTodoComment:
+    colorTheme.sTodoComment
+  of sLineNumber:
+    colorTheme.sLineNumber
+  of sError:
+    colorTheme.sError
+  else:
+    colorTheme.sText
 
 
 

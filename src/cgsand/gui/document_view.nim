@@ -19,6 +19,7 @@ type
     scriptOptLevel: Property[ScriptOptLevel]
     mode3d*: Property[bool]
     grid3MeshCache: Grid3MeshCache
+    outputChannel*: Property[ptr Channel[string]]
 
 registerComponent DocumentView
 
@@ -201,7 +202,7 @@ proc recompileScript*(this: DocumentView) =
     else:
       nil
   this.script{} = nil  # unload current script
-  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache, this.scriptOptLevel[])
+  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache, this.scriptOptLevel[], this.outputChannel[])
 
 
 

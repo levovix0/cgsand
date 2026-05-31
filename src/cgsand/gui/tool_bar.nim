@@ -27,8 +27,12 @@ type
     icon: Property[Image]
     activated: Event[void]
 
+    mouseArea: MouseArea
+
+
 registerComponent ToolBar
 registerComponent TitleButton
+
 
 proc updateFileBrowser(this: ToolBar, dir: string): seq[string] =
   result = @[]
@@ -71,15 +75,15 @@ method init(this: TitleButton) =
   procCall this.super.init()
 
   this.makeLayout:
-    - MouseArea.new as mouse:
+    - MouseArea.new as root.mouseArea:
       this.fill(parent)
 
       - UiRect.new:
         this.fill(parent)
 
         color = binding:
-          if mouse.pressed[]: root.pressedColor[]
-          elif mouse.hovered[]: root.hoveredColor[]
+          if root.mouseArea.pressed[]: root.pressedColor[]
+          elif root.mouseArea.hovered[]: root.hoveredColor[]
           else: "#00000000".color
       
         - this.color.transition(0.1's):

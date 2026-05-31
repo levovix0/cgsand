@@ -1,7 +1,7 @@
 import std/[json, os]
 import pkg/[localize, chroma, jsony]
 import pkg/sigui/[events, properties]
-import ./syntax_highlighting
+import pkg/toscel/fonts
 export localize
 
 requireLocalesToBeTranslated ("ru", "")
@@ -10,7 +10,11 @@ requireLocalesToBeTranslated ("ru", "")
 type
   Config* = object
     lastOpenedScript*: string = "examples/tutorial_use.nim"
-    codeEditorPortion*: float = 0.5
+
+    # todo: make proper attachable and floating panels in toscel
+    codeEditorPortion*: float = 1
+    previewPortion*: float = 1
+    terminalPortion*: float = 0.5
 
   ColorTheme* = object
     cActive*: Color
@@ -137,33 +141,5 @@ proc parseColorTheme(json: string): ColorTheme =
 let colorTheme* = parseColorTheme(vscodeThemeJson)
 
 
-proc color*(sk: CodeKind): Color =
-  case sk
-  of sKeyword:
-    colorTheme.sKeyword
-  of sOperatorWord:
-    colorTheme.sOperatorWord
-  of sBuiltinType:
-    colorTheme.sBuiltinType
-  of sControlFlow:
-    colorTheme.sControlFlow
-  of sType:
-    colorTheme.sType
-  of sStringLit, sCharLit:
-    colorTheme.sStringLit
-  of sStringLitEscape, sCharLitEscape:
-    colorTheme.sStringLitEscape
-  of sNumberLit:
-    colorTheme.sNumberLit
-  of sFunction:
-    colorTheme.sFunction
-  of sComment:
-    colorTheme.sComment
-  of sTodoComment:
-    colorTheme.sTodoComment
-  of sLineNumber:
-    colorTheme.sLineNumber
-  of sError:
-    colorTheme.sError
-  else:
-    colorTheme.sText
+let font_monospace* = findSystemFont(@["firacode", "monospace"] & @["roboto", "ubuntu", "notosans", "arial", "adwaitasans"])
+

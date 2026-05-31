@@ -1,9 +1,8 @@
-import std/[os]
+import std/[os, math]
 import pkg/[ecs]
 import pkg/siwin
-import pkg/sigui/[uibase, window, mouseArea, animations]
-import pkg/toscel/[transitions]
-import ./cgsand/gui/[code_editor, document_view, tool_bar]
+import pkg/sigui/[uibase, window, mouseArea]
+import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
 import ./cgsand/logic/[config, scripts]
 
 globalLocale[0] = systemLocale()
@@ -14,8 +13,12 @@ else:
   let win = newUiWindow(title = "cgsand", frameless = true, transparent = true)
 
 
-var codeEditorPortion = 0.5.property
+var codeEditorPortion: Property[float]
+var previewPortion: Property[float]
+var terminalPortion: Property[float]
 autosaveProperty codeEditorPortion
+autosaveProperty previewPortion
+autosaveProperty terminalPortion
 
 
 win.makeLayout:
@@ -38,6 +41,16 @@ win.makeLayout:
   defer: onWindowResize()
   on this.w.changed: onWindowResize()
   on this.h.changed: onWindowResize()
+
+  proc normalizePortions =
+    let scale = codeEditorPortion[] + previewPortion[] + terminalPortion[]
+    if not scale.almostEqual(1):
+      codeEditorPortion{} /= scale
+      previewPortion{} /= scale
+      terminalPortion{} /= scale
+      codeEditorPortion.changed.emit()
+      previewPortion.changed.emit()
+      terminalPortion.changed.emit()
 
   - RectShadow.new:
     this.fill(parent)
@@ -63,8 +76,9 @@ win.makeLayout:
       this.fill(parent)
       color = "#202020".color
 
+
     - CodeEditor.new as codeEditor:
-      w = binding: round(parent.w[] * codeEditorPortion[])
+      w = binding: round(parent.w[] * codeEditorPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
       this.fillVertical(parent)
       top = toolBar.bottom
       bottom = parent.bottom
@@ -73,9 +87,24 @@ win.makeLayout:
       this.left = binding:
         if codeEditor.visibility[] == collapsed: parent.left
         else: codeEditor.right
+      this.right = binding:
+        if terminal.visibility[] == collapsed: parent.right
+        else: terminal.left
+      top = toolBar.bottom
+      bottom = parent.bottom
+
+    - Terminal.new as terminal:
+      w = binding: round(parent.w[] * terminalPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
       right = parent.right
       top = toolBar.bottom
       bottom = parent.bottom
+
+
+    documentView.outputChannel[] = terminal.outputChannel.addr
+
+    on documentView.scriptStage.changed:
+      if documentView.scriptStage[] == Compiling:
+        terminal.text[] = ""
 
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
@@ -85,26 +114,22 @@ win.makeLayout:
           documentView.script[].world
         else: nil
     
-    - MouseArea.new:  # splitter (codeEditor / document view)
-      this.fillVertical(codeEditor)
-      left = codeEditor.right - 2
-      right = codeEditor.right + 2
-      visibility = binding: codeEditor.visibility[]
 
-      - UiRect.new:
-        this.fill(parent)
+    - Splitter.new:  # (codeEditor / document view)
+      this.achor = codeEditor.right
+      anchorGlobalX = binding: codeEditor.globalX[]
 
-        color = binding:
-          if parent.hovered[] or parent.grabbed[]: "#0E77D2".color
-          else: "#0E77D200".color
-        addTransition this.color
+      on this.resized:
+        codeEditorPortion[] = max(e, 0) / contentArea.w[]
+        normalizePortions()
+    
+    - Splitter.new:  # (document view / terminal)
+      this.achor = terminal.left
+      anchorGlobalX = binding: terminal.globalX[] + terminal.w[]
 
-      globalTransform = true
-
-      on this.moved:
-        if this.grabbed[]:
-          let w = (this.mouseX[] + this.globalX[]) - codeEditor.globalX[]
-          codeEditorPortion[] = w / contentArea.w[]
+      on this.resized:
+        terminalPortion[] = max(-e, 0) / contentArea.w[]
+        normalizePortions()
 
 run win
 
