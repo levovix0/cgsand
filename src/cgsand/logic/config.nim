@@ -11,6 +11,10 @@ type
   Config* = object
     lastOpenedScript*: string = "examples/tutorial_use.nim"
 
+    windowW*: int = 1280
+    windowH*: int = 720
+    codeEditorVisible*: bool = true
+
     # todo: make proper attachable and floating panels in toscel
     codeEditorPortion*: float = 1
     previewPortion*: float = 1

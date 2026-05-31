@@ -8,9 +8,9 @@ import ./cgsand/logic/[config, scripts]
 globalLocale[0] = systemLocale()
 
 when defined(useX11):
-  let win = newSiwinGlobals(x11).newOpenglWindow(title = "cgsand", frameless = true, transparent = true).newUiWindow
+  let win = newSiwinGlobals(x11).newOpenglWindow(size = ivec2(currentConfig.windowW.int32, currentConfig.windowH.int32), title = "cgsand", frameless = true, transparent = true).newUiWindow
 else:
-  let win = newUiWindow(title = "cgsand", frameless = true, transparent = true)
+  let win = newUiWindow(size = ivec2(currentConfig.windowW.int32, currentConfig.windowH.int32), title = "cgsand", frameless = true, transparent = true)
 
 
 var codeEditorPortion: Property[float]
@@ -39,8 +39,16 @@ win.makeLayout:
     win.siwinWindow.setBorderWidth(10, 0, 40)
 
   defer: onWindowResize()
-  on this.w.changed: onWindowResize()
-  on this.h.changed: onWindowResize()
+  on this.w.changed:
+    onWindowResize()
+    if not win.siwinWindow.minimized:
+      currentConfig.windowW = this.w[].int
+      save(currentConfig)
+  on this.h.changed:
+    onWindowResize()
+    if not win.siwinWindow.minimized:
+      currentConfig.windowH = this.h[].int
+      save(currentConfig)
 
   proc normalizePortions =
     let scale = codeEditorPortion[] + previewPortion[] + terminalPortion[]
@@ -82,6 +90,10 @@ win.makeLayout:
       this.fillVertical(parent)
       top = toolBar.bottom
       bottom = parent.bottom
+      visibility = if currentConfig.codeEditorVisible: Visibility.visible else: Visibility.collapsed
+      on this.visibility.changed:
+        currentConfig.codeEditorVisible = this.visibility[] == visible
+        save(currentConfig)
 
     - DocumentView.new as documentView:
       this.left = binding:

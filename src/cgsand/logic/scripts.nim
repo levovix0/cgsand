@@ -1,4 +1,4 @@
-import std/[os, strformat, dynlib, locks, osproc, streams, strutils]
+import std/[os, strformat, dynlib, locks, osproc, streams]
 import pkg/[ecs, vmath]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
