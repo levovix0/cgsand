@@ -3,13 +3,16 @@
 import sandbox, geom2d
 import ./utils
 import annotations/dimensions except textMargin
-
+import strformat
 
 
 setupLevel()
+var p: seq[Text]
+for x in -3..2:
+  for y in  -1 .. 1:
+    p.add(fmt"{x.float32+0.5}, {y.float32-0.5}")
+echo(p)
 
-
-let p = [point2(1, 1), point2(-1, 1), point2(-1, -1), point2(1, -1)]
 
 
 # doc.add circle(p[0], 0.1):
@@ -36,11 +39,6 @@ doc.add lineSection(point2(-3.25, 0), point2(3.25, 0)), Thickness(0.05), color(1
 addArrow(point2(0,1.5), vec2(0,1),0.4, color(0.4,1,0.4))
 doc.add lineSection(point2(0, -2.25), point2(0, 1.25)), Thickness(0.05), color(0.4,1,0.4)
 
-doc.add Text "point2(1, 1)":
-  Position2 p[0] + vec2(1, 1)*textMargin
-  PositionAtTop
-  FontSize 0.25
-  fg_hint
 
 # doc.add Text "point2(-1, 1)":
 #   Position2 p[1] + vec2(-1, 1)*textMargin
@@ -64,7 +62,8 @@ for k in -3..0:
 for k in -3..3:
   doc.add lineSection(point2(float64(k), -2), point2(float64(k), 1))
 
-doc.add Text "0.5, -1.5":
+
+let id_del = doc.spawn Text "0.5, -1.5":
   Position2 point2(0.5, -1.5)
   FontSize 0.2
   PositionAtCenter
@@ -76,28 +75,30 @@ doc.add Text "import sandbox, geom2d, tutorial/l2_text":
   FontSize 0.25
   fg_hint
 
-doc.add Text "Заполни таблицу от 1 до 18 слева направо, сверху вниз ":
+doc.add Text tr"Fill the table with coordinates of the centers":
   Position2 point2(0, -2.5)
   PositionAtBottom
-  FontSize 0.25
-  fg_hint
-
-doc.add Text "doc.add lineSection(point2(0, 0), point2(1, 0))":
-  Position2 point2(0, 2)
-  PositionAtTop
-  FontSize 0.25
-  fg_hint
-
-
-doc.add Text tr"Create a square on points above":
-  Position2 point2(0, 2.5)
-  PositionAtTop
-  FontSize 0.3
+  FontSize 0.35
   fg_levelgoal
   LevelGoal()
 
-doc.add Text tr"Call `checkLevel()` to check for completion":
+doc.add Text """doc.add Text "x,y":
+  PositionAtCenter
+  Position2 point2(x, y)
+  FontSize 0.2""":
+  Position2 point2(0, 2.25)
+  PositionAtCenter
+  FontSize 0.25
+  fg_hint
+
+doc.add Text tr"Use cycles and check lib strformat":
   Position2 point2(0, 3)
+  PositionAtCenter
+  FontSize 0.25
+  fg_hint
+
+doc.add Text tr"Call `checkLevel()` to check for completion":
+  Position2 point2(0, 3.5)
   PositionAtTop
   FontSize 0.25
   fg_hint
@@ -110,17 +111,16 @@ let lastEntId = doc.entities.high
 
 
 proc isLevelSuccess: bool =
-  var sections: seq[LineSection]
+  var sections: seq[Text]
 
-  doc.forEach (id: EntityId, l: LineSection, t: Text):
+  doc.forEach (id: EntityId, t: Text):
     if id.int > lastEntId.int:
-      sections.add l
+      sections.add t
   
-  let reqSections = [lineSection(p[0], p[1]), lineSection(p[1], p[2]), lineSection(p[2], p[3]), lineSection(p[3], p[0])]
-  for y in reqSections:
+  for y in p:
     block checkExists:
       for x in sections:
-        if (x.a ~== y.a and x.b ~== y.b) or (x.b ~== y.a and x.a ~== y.b):
+        if (x == y):
           break checkExists
       # else
       return false
@@ -129,6 +129,7 @@ proc isLevelSuccess: bool =
 
 
 proc checkLevel* =
+  doc.despawn(id_del)
   if isLevelSuccess():
     doc.forEach (Levelgoal, fg: var Foreground):
       fg = fg_success

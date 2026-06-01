@@ -97,6 +97,7 @@ proc drawDocText*(
 ) =
   var f = newFont(font)
   f.size = fontSize
+  f.lineHeight = fontSize
   let ts = typeset(f, text)
   let origin = posAt.factor().vec2
   ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true, axisYUp=axisYUp)

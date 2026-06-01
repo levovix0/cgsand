@@ -77,7 +77,7 @@ doc.add Text tr"Call `checkLevel()` to check for completion":
   fg_hint
 
 
-finishLevel()
+
 
 
 let lastEntId = doc.entities.high
@@ -106,7 +106,12 @@ proc checkLevel* =
   if isLevelSuccess():
     doc.forEach (Levelgoal, fg: var Foreground):
       fg = fg_success
+    doc.add Text tr"To move to the next level, replace l1_basics with l2_text":
+        Position2 point2(0, -2.5)
+        PositionAtBottom
+        FontSize 0.25
   else:
     doc.forEach (Levelgoal, fg: var Foreground):
       fg = fg_failure
 
+finishLevel()
