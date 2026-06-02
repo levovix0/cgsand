@@ -1,0 +1,224 @@
+{
+  "items": {
+    "localize": {
+      "dir": "$deps/localize",
+      "url": "https://github.com/levovix0/localize",
+      "commit": "d1b5ae639f7fbeb9fe6fdf93b4fa177f73e50e30",
+      "version": ""
+    },
+    "jsony": {
+      "dir": "$deps/jsony",
+      "url": "https://github.com/treeform/jsony",
+      "commit": "bb647e1ca21af25ffdc423bcb96feeeeae963ca2",
+      "version": ""
+    },
+    "sigui": {
+      "dir": "$deps/sigui",
+      "url": "https://github.com/levovix0/sigui",
+      "commit": "231dc41cca3ccceae76692a96a6f579d91c9ffa8",
+      "version": ""
+    },
+    "shady": {
+      "dir": "$deps/shady",
+      "url": "https://github.com/treeform/shady",
+      "commit": "fa75f793cd4e5da288d4c133bb09b62c032fecc2",
+      "version": ""
+    },
+    "sigeo": {
+      "dir": "$deps/sigeo",
+      "url": "https://github.com/levovix0/sigeo",
+      "commit": "8af465ef9aa8000c0ddc7882f035d71a7e071de6",
+      "version": ""
+    },
+    "ecs": {
+      "dir": "$deps/ecs",
+      "url": "https://github.com/levovix0/ecs",
+      "commit": "dc12bbce7d96040a3e9815f60290310a638f1de7",
+      "version": ""
+    },
+    "toscel": {
+      "dir": "$deps/toscel",
+      "url": "https://github.com/levovix0/toscel",
+      "commit": "ec2800660138d79a2e55b9aca9bf1b0917a900c4",
+      "version": ""
+    },
+    "fusion": {
+      "dir": "$deps/fusion",
+      "url": "https://github.com/nim-lang/fusion",
+      "commit": "0b0a0273b8df860cd54e3fcca7bb4c617244ac77",
+      "version": ""
+    },
+    "siwin": {
+      "dir": "$deps/siwin",
+      "url": "https://github.com/levovix0/siwin",
+      "commit": "02aa1776989c1c58bde2c70c12bc69500664cfa1",
+      "version": ""
+    },
+    "bumpy": {
+      "dir": "$deps/bumpy",
+      "url": "https://github.com/treeform/bumpy",
+      "commit": "edc6e19ddbe6b9e46c3384e9a4131d7063a3f610",
+      "version": ""
+    },
+    "rice": {
+      "dir": "$deps/rice",
+      "url": "https://github.com/levovix0/rice",
+      "commit": "9239befa13e2a9609f0d8a55a6642d6fcfc80b5e",
+      "version": ""
+    },
+    "vmath": {
+      "dir": "$deps/vmath",
+      "url": "https://github.com/treeform/vmath",
+      "commit": "a57a0a7f823a3b6f341cc9d1ebbf976f64a33ecd",
+      "version": ""
+    },
+    "pixie": {
+      "dir": "$deps/pixie",
+      "url": "https://github.com/treeform/pixie",
+      "commit": "d557b4220f9af37cb165d67beee22f3084558909",
+      "version": ""
+    },
+    "print": {
+      "dir": "$deps/print",
+      "url": "https://github.com/treeform/print",
+      "commit": "fb09637d6ebd6416b322a2b9bb95dd513040dea7",
+      "version": ""
+    },
+    "nimgl": {
+      "dir": "",
+      "url": "https://github.com/nimgl/nimgl",
+      "commit": "c63821dca46c53438162ee03bd8c0f2e7b6c924a",
+      "version": ""
+    },
+    "sdl2": {
+      "dir": "",
+      "url": "https://github.com/nim-lang/sdl2",
+      "commit": "c63821dca46c53438162ee03bd8c0f2e7b6c924a",
+      "version": ""
+    },
+    "vulkan": {
+      "dir": "",
+      "url": "https://github.com/planetis-m/vulkan",
+      "commit": "c63821dca46c53438162ee03bd8c0f2e7b6c924a",
+      "version": ""
+    },
+    "chroma": {
+      "dir": "$deps/chroma",
+      "url": "https://github.com/treeform/chroma",
+      "commit": "8bf4a0933ff405f83dc3a176199f528601e5b796",
+      "version": ""
+    },
+    "x11": {
+      "dir": "$deps/x11",
+      "url": "https://github.com/nim-lang/x11",
+      "commit": "29aca5e519ebf5d833f63a6a2769e62ec7bfb83a",
+      "version": ""
+    },
+    "opengl": {
+      "dir": "$deps/opengl",
+      "url": "https://github.com/nim-lang/opengl",
+      "commit": "8e2e098f82dc5eefd874488c37b5830233cd18f4",
+      "version": ""
+    },
+    "zippy": {
+      "dir": "$deps/zippy",
+      "url": "https://github.com/guzba/zippy",
+      "commit": "bcb8c1e1be6abb0a0e35a3c6040cdd9391cc993f",
+      "version": ""
+    },
+    "flatty": {
+      "dir": "$deps/flatty",
+      "url": "https://github.com/treeform/flatty",
+      "commit": "c7091b096bcf275f47b666ef74bce73eda187ee3",
+      "version": ""
+    },
+    "nimsimd": {
+      "dir": "$deps/nimsimd",
+      "url": "https://github.com/guzba/nimsimd",
+      "commit": "3f6b2668ffb0867d0bf786a658b817763e611350",
+      "version": ""
+    },
+    "crunchy": {
+      "dir": "$deps/crunchy",
+      "url": "https://github.com/guzba/crunchy",
+      "commit": "98eb6526982bb8aae8eec6e8781f4539fa19e049",
+      "version": ""
+    }
+  },
+  "nimcfg": [
+    "############# begin Atlas config section ##########",
+    "--noNimblePath",
+    "--path:\"deps/bumpy/src\"",
+    "--path:\"deps/chroma/src\"",
+    "--path:\"deps/crunchy/src\"",
+    "--path:\"deps/ecs/src\"",
+    "--path:\"deps/flatty/src\"",
+    "--path:\"deps/fusion/src\"",
+    "--path:\"deps/jsony/src\"",
+    "--path:\"deps/localize/src\"",
+    "--path:\"deps/nimsimd/src\"",
+    "--path:\"deps/opengl/src\"",
+    "--path:\"deps/pixie/src\"",
+    "--path:\"deps/print/src\"",
+    "--path:\"deps/rice/src\"",
+    "--path:\"deps/shady/src\"",
+    "--path:\"deps/sigeo/src\"",
+    "--path:\"deps/sigui/src\"",
+    "--path:\"deps/siwin/src\"",
+    "--path:\"deps/toscel/src\"",
+    "--path:\"deps/vmath/src\"",
+    "--path:\"deps/x11\"",
+    "--path:\"deps/zippy/src\"",
+    "############# end Atlas config section   ##########",
+    ""
+  ],
+  "nimbleFile": {
+    "filename": "cgsand.nimble",
+    "content": [
+      "# Package",
+      "",
+      "version       = \"0.1.0\"",
+      "author        = \"levovix\"",
+      "description   = \"Code-geometric sandbox\"",
+      "license       = \"MIT\"",
+      "srcDir        = \"src\"",
+      "bin           = @[\"cgsand\"]",
+      "",
+      "",
+      "",
+      "requires \"nim >= 2.2.4\"",
+      "",
+      "",
+      "",
+      "# --- stable dependencies ---",
+      "",
+      "requires \"localize >= 0.3.5\" #d1b5ae63",
+      "  ## for translations",
+      "",
+      "requires \"jsony\"",
+      "",
+      "# --- unstable dependencies ---",
+      "",
+      "requires \"sigui >= 0.2.6\"",
+      "  ## for GUI",
+      "",
+      "requires \"shady == 0.1.4\"",
+      "",
+      "requires \"https://github.com/levovix0/sigeo#head\"",
+      "  ## for defing continuous geometry in scripts",
+      "",
+      "requires \"https://github.com/levovix0/ecs#head\"",
+      "  ## for communicating with scripts",
+      "",
+      "requires \"https://github.com/levovix0/toscel#head\"",
+      "  ## for basic GUI widgets",
+      "",
+      ""
+    ]
+  },
+  "hostOS": "linux",
+  "hostCPU": "amd64",
+  "nimVersion": "2.2.10 bfeb3146d1638b39f69007a4ae5a23e23ae4e5ef",
+  "gccVersion": "",
+  "clangVersion": "22.1.5"
+}
