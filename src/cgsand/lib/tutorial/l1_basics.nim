@@ -70,7 +70,6 @@ doc.add Text tr"Create a square on points above":
   fg_levelgoal
   LevelGoal()
 
-
 doc.add Text tr"Call `checkLevel()` to check for completion":
   Position2 point2(0, 3)
   PositionAtTop
@@ -78,7 +77,7 @@ doc.add Text tr"Call `checkLevel()` to check for completion":
   fg_hint
 
 
-finishLevel()
+
 
 
 let lastEntId = doc.entities.high
@@ -87,7 +86,7 @@ let lastEntId = doc.entities.high
 proc isLevelSuccess: bool =
   var sections: seq[LineSection]
 
-  doc.forEach (id: EntityId, l: LineSection):
+  doc.forEach (id: EntityId, l: LineSection, t: Text):
     if id.int > lastEntId.int:
       sections.add l
   
@@ -107,7 +106,12 @@ proc checkLevel* =
   if isLevelSuccess():
     doc.forEach (Levelgoal, fg: var Foreground):
       fg = fg_success
+    doc.add Text tr"To move to the next level, replace l1_basics with l2_text":
+        Position2 point2(0, -2.5)
+        PositionAtBottom
+        FontSize 0.25
   else:
     doc.forEach (Levelgoal, fg: var Foreground):
       fg = fg_failure
 
+finishLevel()

@@ -1,7 +1,7 @@
 import std/[json, os]
 import pkg/[localize, chroma, jsony]
-import pkg/sigui/[properties]
-import ./syntax_highlighting
+import pkg/sigui/[events, properties]
+import pkg/toscel/fonts
 export localize
 
 requireLocalesToBeTranslated ("ru", "")
@@ -9,40 +9,17 @@ requireLocalesToBeTranslated ("ru", "")
 
 type
   Config* = object
-    lastOpenedScript*: string
+    lastOpenedScript*: string = "examples/tutorial_use.nim"
 
+    windowW*: int = 1280
+    windowH*: int = 720
+    codeEditorVisible*: bool = true
 
-var currentScript*: Property[string] = "examples/tutorial_use.nim".property
+    # todo: make proper attachable and floating panels in toscel
+    codeEditorPortion*: float = 1
+    previewPortion*: float = 1
+    terminalPortion*: float = 0.5
 
-
-proc getConfigFilePath*(): string =
-  # Checking local path next to the binary
-  let localPath = getAppDir() / "config.json"
-  if fileExists(localPath):
-    return localPath
-    
-  # If there is no local path, we return the system path.
-  return getConfigDir() / "cgsand" / "config.json"
-
-let configFilePath* = getConfigFilePath()
-
-proc loadConfig*() =
-  if fileExists(configFilePath):
-    try:
-      let cfg = fromJson(readFile(configFilePath), Config)
-      if cfg.lastOpenedScript != "":
-        currentScript[] = cfg.lastOpenedScript
-    except: discard
-
-proc saveConfig*() =
-  try:
-    createDir(configFilePath.parentDir)
-    let cfg = Config(lastOpenedScript: currentScript[])
-    writeFile(configFilePath, pretty(%*cfg))
-  except: discard
-
-
-type
   ColorTheme* = object
     cActive*: Color
     cInActive*: Color
@@ -76,6 +53,60 @@ type
     sLineNumber*: Color
 
     sText*: Color
+
+proc getConfigFilePath*(): string =
+  # Checking local path next to the binary
+  let localPath = getAppDir() / "config.json"
+  if fileExists(localPath):
+    return localPath
+    
+  # If there is no local path, we return the system path.
+  return getConfigDir() / "cgsand" / "config.json"
+
+let configFilePath* = getConfigFilePath()
+
+proc loadConfig*: Config =
+  if fileExists(configFilePath):
+    try:
+      fromJson(readFile(configFilePath), Config)
+    except: Config()
+  else: Config()
+
+proc save*(cfg: Config) =
+  try:
+    createDir(configFilePath.parentDir)
+    writeFile(configFilePath, pretty(%*cfg))
+  except: discard
+
+
+var currentConfig* = loadConfig()
+
+var bindings_configAutosave: EventHandler
+
+
+template autosaveProperty*[T](p: var Property[T], fieldOfConfig) =
+  bind bindings_configAutosave
+  bind save
+
+  proc `saveConfigOn p change` =
+    currentConfig.fieldOfConfig = p[]
+    save(currentConfig)
+  p[] = currentConfig.fieldOfConfig
+  connect(p.changed, bindings_configAutosave, `saveConfigOn p change`)
+
+template autosaveProperty*[T](p: var Property[T]) =
+  bind bindings_configAutosave
+  bind save
+
+  proc `saveConfigOn p change` =
+    currentConfig.p = p[]
+    save(currentConfig)
+  p[] = currentConfig.p
+  connect(p.changed, bindings_configAutosave, `saveConfigOn p change`)
+
+
+var currentScript*: Property[string]
+autosaveProperty currentScript, lastOpenedScript
 
 
 const vscodeThemeJson* = staticRead("../../../themes/vscode.json")
@@ -122,33 +153,5 @@ proc parseColorTheme(json: string): ColorTheme =
 let colorTheme* = parseColorTheme(vscodeThemeJson)
 
 
-proc color*(sk: CodeKind): Color =
-  case sk
-  of sKeyword:
-    colorTheme.sKeyword
-  of sOperatorWord:
-    colorTheme.sOperatorWord
-  of sBuiltinType:
-    colorTheme.sBuiltinType
-  of sControlFlow:
-    colorTheme.sControlFlow
-  of sType:
-    colorTheme.sType
-  of sStringLit, sCharLit:
-    colorTheme.sStringLit
-  of sStringLitEscape, sCharLitEscape:
-    colorTheme.sStringLitEscape
-  of sNumberLit:
-    colorTheme.sNumberLit
-  of sFunction:
-    colorTheme.sFunction
-  of sComment:
-    colorTheme.sComment
-  of sTodoComment:
-    colorTheme.sTodoComment
-  of sLineNumber:
-    colorTheme.sLineNumber
-  of sError:
-    colorTheme.sError
-  else:
-    colorTheme.sText
+let font_monospace* = findSystemFont(@["firacode", "monospace"] & @["roboto", "ubuntu", "notosans", "arial", "adwaitasans"])
+

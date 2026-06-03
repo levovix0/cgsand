@@ -6,7 +6,7 @@ import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl]
 import pkg/sigeo/grids/[extrusions, smoothshading]
 import ./[bounds, doclayout, scripts, document_globals]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4, Bounds2, bounds2
+import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d]
 
 
@@ -62,12 +62,24 @@ proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirecti
 
 proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
   if thickness.isSome:
+    # todo: find simpler way to make lines same thickness, independent of their direction
+    let a = sandbox.Vec2(obj.startPoint).vec2.vec3(0)
+    let b = sandbox.Vec2(obj.endPoint).vec2.vec3(0)
+    let m = ctx.viewportMatrix
+    let camDir = vec3(m[0][2], m[1][2], m[2][2])
+    let lineDir = normalize(b - a)
+    var camNormal = camDir - dot(camDir, lineDir) * lineDir
+    if dot(camNormal, camNormal) < 1e-10:
+      let camUp = vec3(m[0][1], m[1][1], m[2][1])
+      camNormal = camUp - dot(camUp, lineDir) * lineDir
+    camNormal = normalize(camNormal)
+
     ctx.fillCapsule(
-      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
-      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
+      a = a, b = b,
       color = color,
       transform = transform,
       radius = thickness.get / 2,
+      normal = camNormal,
     )
   else:
     ctx.drawLine(
@@ -85,6 +97,7 @@ proc drawDocText*(
 ) =
   var f = newFont(font)
   f.size = fontSize
+  f.lineHeight = fontSize
   let ts = typeset(f, text)
   let origin = posAt.factor().vec2
   ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true, axisYUp=axisYUp)
@@ -199,9 +212,14 @@ proc draw2dWorld*(
     )
     let outerToGl = combine(viewport, projection)
     let innerToGl = combine(innerViewport, projection)
-    let outerScaleX = sqrt(outerToGl[0][0]*outerToGl[0][0] + outerToGl[1][0]*outerToGl[1][0])
-    let innerScaleX = sqrt(innerToGl[0][0]*innerToGl[0][0] + innerToGl[1][0]*innerToGl[1][0])
-    let innerPixelsPerUnit = if outerScaleX > 0: pixelsPerUnit * innerScaleX / outerScaleX else: pixelsPerUnit
+    template screenScale(m: Mat4): float32 =
+      let sX = sqrt(m[0][0]*m[0][0] + m[0][1]*m[0][1])
+      let sY = sqrt(m[1][0]*m[1][0] + m[1][1]*m[1][1])
+      let sZ = sqrt(m[2][0]*m[2][0] + m[2][1]*m[2][1])
+      max(sX, max(sY, sZ))
+    let outerScale = screenScale(outerToGl)
+    let innerScale = screenScale(innerToGl)
+    let innerPixelsPerUnit = if outerScale > 0: pixelsPerUnit * innerScale / outerScale else: pixelsPerUnit
     GC_ref(sub)
     draw2dWorld(ctx, sub, innerViewport, projection, innerPixelsPerUnit, meshCache)
 
@@ -242,18 +260,16 @@ proc draw3dWorld*(
 
 
 
-proc entityBoundsCallback(world: World, eid: EntityId): RawBounds2 {.cdecl.} =
+proc entityBoundsCallback(world: World, eid: EntityId): Bounds2 {.cdecl.} =
   let globals = world.documentGlobals
-  let (minX, maxX) = world.worldBoundsAlongAxis(vec3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  let (minY, maxY) = world.worldBoundsAlongAxis(vec3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  RawBounds2(empty: false, minX: minX, minY: minY, maxX: maxX, maxY: maxY)
+  let (minX, maxX) = world.worldBoundsAlongAxis(sandbox.vec3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  let (minY, maxY) = world.worldBoundsAlongAxis(sandbox.vec3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  bounds2(sandbox.vec2(minX, minY), sandbox.vec2(maxX, maxY))
 
-proc worldBoundsCallback(world: World): RawBounds2 {.cdecl.} =
+proc worldBoundsCallback(world: World): Bounds2 {.cdecl.} =
   let g = world.documentGlobals
   let layout = world.documentLayout(g)
-  if layout.contentBounds.empty: return RawBounds2(empty: true)
-  let b = layout.contentBounds
-  RawBounds2(empty: false, minX: b.min.x, minY: b.min.y, maxX: b.max.x, maxY: b.max.y)
+  layout.contentBounds
 
 proc textSizeCallback(text: string, fontSize: float64): Vec2 {.cdecl.} =
   var f = newFont(toscelFonts.font_default)

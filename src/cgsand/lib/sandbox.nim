@@ -86,10 +86,36 @@ type
   PolygonalSurface3* = ref Grid3
     ## ref-wrapped Grid3 for ECS component storage; use polygonalSurface3() to construct
 
-  RawBounds2* = object
-    ## ABI-stable bounds type used for app -> script callbacks (float32 storage)
+
+  Bounds2* = object
+    ## bounding box in document coordinates
     empty*: bool = true
-    minX*, minY*, maxX*, maxY*: float32
+    min*, max*: Vec2
+
+
+proc bounds2*(min, max: Vec2): Bounds2 =
+  Bounds2(empty: false, min: min, max: max)
+
+proc size*(b: Bounds2): Vec2 = b.max - b.min
+proc center*(b: Bounds2): Vec2 = (b.min + b.max) / 2
+
+proc addPoint*(b: var Bounds2, p: Vec2) =
+  if b.empty:
+    b = bounds2(p, p)
+    return
+  b.min.x = min(b.min.x, p.x)
+  b.min.y = min(b.min.y, p.y)
+  b.max.x = max(b.max.x, p.x)
+  b.max.y = max(b.max.y, p.y)
+
+proc add*(b: var Bounds2, other: Bounds2) =
+  if other.empty: return
+  b.addPoint(other.min)
+  b.addPoint(other.max)
+
+proc expanded*(b: Bounds2, margin: Vec2): Bounds2 =
+  if b.empty: return b
+  bounds2(b.min - margin, b.max + margin)
 
 
 converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
@@ -98,43 +124,9 @@ converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
 
 
 when defined(script) or defined(nimcheck):
-  type
-    Bounds2* = object
-      ## bounding box in document coordinates
-      empty*: bool = true
-      min*, max*: Vec2
-
-  proc bounds2*(min, max: Vec2): Bounds2 =
-    Bounds2(empty: false, min: min, max: max)
-
-  proc size*(b: Bounds2): Vec2 = b.max - b.min
-  proc center*(b: Bounds2): Vec2 = (b.min + b.max) / 2
-
-  proc addPoint*(b: var Bounds2, p: Vec2) =
-    if b.empty:
-      b = bounds2(p, p)
-      return
-    b.min.x = min(b.min.x, p.x)
-    b.min.y = min(b.min.y, p.y)
-    b.max.x = max(b.max.x, p.x)
-    b.max.y = max(b.max.y, p.y)
-
-  proc add*(b: var Bounds2, other: Bounds2) =
-    if other.empty: return
-    b.addPoint(other.min)
-    b.addPoint(other.max)
-
-  proc expanded*(b: Bounds2, margin: Vec2): Bounds2 =
-    if b.empty: return b
-    bounds2(b.min - margin, b.max + margin)
-
-  proc toBounds2*(raw: RawBounds2): Bounds2 =
-    if raw.empty: return Bounds2(empty: true)
-    bounds2(vec2(raw.minX.float64, raw.minY.float64), vec2(raw.maxX.float64, raw.maxY.float64))
-
   var textSizeImpl* {.exportc: "sandbox_textSizeImpl", dynlib.}: proc(text: string, fontSize: FontSize): FVec2 {.cdecl.}
-  var entityBoundsImpl* {.exportc: "sandbox_entityBoundsImpl", dynlib.}: proc(world: World, eid: EntityId): RawBounds2 {.cdecl.}
-  var worldBoundsImpl* {.exportc: "sandbox_worldBoundsImpl", dynlib.}: proc(world: World): RawBounds2 {.cdecl.}
+  var entityBoundsImpl* {.exportc: "sandbox_entityBoundsImpl", dynlib.}: proc(world: World, eid: EntityId): Bounds2 {.cdecl.}
+  var worldBoundsImpl* {.exportc: "sandbox_worldBoundsImpl", dynlib.}: proc(world: World): Bounds2 {.cdecl.}
 
   proc textSize*(text: string, fontSize: FontSize): Vec2 =
     if textSizeImpl != nil:
@@ -142,10 +134,10 @@ when defined(script) or defined(nimcheck):
       return vec2(r.x.float64, r.y.float64)
 
   proc entityBounds*(world: World, eid: EntityId): Bounds2 =
-    if entityBoundsImpl != nil: return entityBoundsImpl(world, eid).toBounds2
+    if entityBoundsImpl != nil: return entityBoundsImpl(world, eid)
 
   proc worldBounds*(world: World): Bounds2 =
-    if worldBoundsImpl != nil: return worldBoundsImpl(world).toBounds2
+    if worldBoundsImpl != nil: return worldBoundsImpl(world)
   
   
   var doc* {.exportc: "world_instance", dynlib.} = World()
@@ -167,12 +159,8 @@ when defined(script) or defined(nimcheck):
 
   proc syncCacheFromDoc {.exportc, dynlib.} =
     if cache == nil: return
-    var toDelete: seq[EntityId]
     cache[].forEach (eid: EntityId, CacheVariable, float):
-      toDelete.add eid
-    for eid in toDelete:
       cache[].despawn(eid)
-    cache[].cleanupDeleted()
     doc.forEach (cv: CacheVariable, v: float):
       discard cache[].spawn(cv, v)
   

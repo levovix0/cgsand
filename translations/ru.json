@@ -3,8 +3,22 @@
     "Call `checkLevel()` to check for completion": {
       "": "Вызовите `checkLevel()` для завершения уровня"
     },
+    "To move to the next level, replace l1_basics with l2_text": {
+      "": "Для перехода на следующий уровень замени l1_basics на l2_text"
+    },
     "Create a square on points above": {
       "": "Создайте квадрат по точкам выше"
+    }
+  },
+  "src/cgsand/lib/tutorial/l2_text.nim": {
+    "Use cycles and check lib strformat": {
+      "": "Используйте циклы и посмотрите библиотеку strformat"
+    },
+    "Call `checkLevel()` to check for completion": {
+      "": "Вызовите `checkLevel()` для завершения уровня"
+    },
+    "Fill the table with coordinates of the centers": {
+      "": "Заполни таблицу координатами центров"
     }
   },
   "src/cgsand/gui/document_view.nim": {
@@ -36,8 +50,14 @@
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {
+    "Do not import `tutorial` and `tutorial/lXXX_levelname` at the same time!": {
+      "": "Не импортируйте одновременно и `tutorial` и `tutorial/lXXX_levelname`!"
+    },
     "Basics": {
       "": "Основы"
+    },
+    "Text": {
+      "": "Текст"
     }
   }
 }

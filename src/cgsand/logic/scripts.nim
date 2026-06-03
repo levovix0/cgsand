@@ -1,4 +1,4 @@
-import std/[os, strformat, dynlib, locks]
+import std/[os, strformat, dynlib, locks, osproc, streams]
 import pkg/[ecs, vmath]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
@@ -21,8 +21,8 @@ type
     optLevel: ScriptOptLevel = optNone
 
   TextSizeCb* = proc(text: string, fontSize: float64): Vec2 {.cdecl.}
-  EntityBoundsCb* = proc(world: World, eid: EntityId): RawBounds2 {.cdecl.}
-  WorldBoundsCb* = proc(world: World): RawBounds2 {.cdecl.}
+  EntityBoundsCb* = proc(world: World, eid: EntityId): Bounds2 {.cdecl.}
+  WorldBoundsCb* = proc(world: World): Bounds2 {.cdecl.}
 
   Script* = ref ScriptObj
   ScriptObj* = object
@@ -34,6 +34,8 @@ type
     optLevel*: ScriptOptLevel
     stage* {.guard: lock.}: ScriptStage
     lock*: Lock
+
+    outputChannel*: ptr Channel[string]
 
     thread: Thread[WorkerArgs]
 
@@ -86,15 +88,28 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
       of optNone:   "--opt:none"
       of optSpeed: "--opt:speed -d:danger"
     
+    var compilePath = info.filename
     when defined(cgsand.script_wrapper):
       let wrapperPath = "build/script_wrapper.nim"
       try:
         writeFile wrapperPath, wrapScript(readFile(info.filename))
       except:
         echo getCurrentExceptionMsg() & "\n" & getCurrentException().getStackTrace()
-      if (execShellCmd &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(wrapperPath)}") != 0: fail()
-    else:
-      if (execShellCmd &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(info.filename)}") != 0: fail()
+      compilePath = wrapperPath
+
+    let cmdStr = &"nim c --app:lib --noMain {optFlags} -o:{quoteShell(outfile)} -d:script {quoteShell(compilePath)}"
+    let process = startProcess(cmdStr, options = {poUsePath, poStdErrToStdOut, poEvalCommand})
+    let compileExitCode =
+      try:
+        let stream = process.outputStream
+        while not stream.atEnd:
+          let c = stream.readChar()
+          if s.outputChannel != nil:
+            s.outputChannel[].send($c)
+        process.waitForExit
+      finally:
+        process.close()
+    if compileExitCode != 0: fail()
 
     if s.lib != nil: unloadLib(s.lib)
     s.lib = loadLib(outfile)
@@ -144,7 +159,11 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
 
 
 
-proc compileAndRunScript*(filename: string, outfile: string = "script", existingCache: World = nil, optLevel: ScriptOptLevel = optNone): Script =
+proc compileAndRunScript*(
+  filename: string, outfile: string = "script",
+  existingCache: World = nil, optLevel: ScriptOptLevel = optNone,
+  outputChannel: ptr Channel[string] = nil
+): Script =
   new result
   initLock result.lock
   withLock result.lock: result.stage = Compiling
@@ -152,6 +171,7 @@ proc compileAndRunScript*(filename: string, outfile: string = "script", existing
   result.outfile = outfile
   result.optLevel = optLevel
   result.cache = if existingCache != nil: existingCache else: new World
+  result.outputChannel = outputChannel
 
   result.thread.createThread(scriptWorker, WorkerArgs(
     script: result[].addr, filename: filename, outfile: outfile, optLevel: optLevel,

@@ -22,15 +22,17 @@ requires "jsony"
 
 # --- unstable dependencies ---
 
-requires "sigui >= 0.2.5.2"
+requires "sigui >= 0.2.6"
   ## for GUI
 
-requires "https://github.com/levovix0/sigeo"
+requires "shady == 0.1.4"
+
+requires "https://github.com/levovix0/sigeo#head"
   ## for defing continuous geometry in scripts
 
-requires "https://github.com/levovix0/ecs"
+requires "https://github.com/levovix0/ecs#head"
   ## for communicating with scripts
 
-requires "https://github.com/levovix0/toscel"
+requires "https://github.com/levovix0/toscel#head"
   ## for basic GUI widgets
 

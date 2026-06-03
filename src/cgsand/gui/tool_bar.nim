@@ -29,8 +29,12 @@ type
     icon: Property[Image]
     activated: Event[void]
 
+    mouseArea: MouseArea
+
+
 registerComponent ToolBar
 registerComponent TitleButton
+
 
 proc updateFileBrowser(this: ToolBar, dir: string): seq[string] =
   result = @[]
@@ -73,15 +77,15 @@ method init(this: TitleButton) =
   procCall this.super.init()
 
   this.makeLayout:
-    - MouseArea.new as mouse:
+    - MouseArea.new as root.mouseArea:
       this.fill(parent)
 
       - UiRect.new:
         this.fill(parent)
 
         color = binding:
-          if mouse.pressed[]: root.pressedColor[]
-          elif mouse.hovered[]: root.hoveredColor[]
+          if root.mouseArea.pressed[]: root.pressedColor[]
+          elif root.mouseArea.hovered[]: root.hoveredColor[]
           else: "#00000000".color
       
         - this.color.transition(0.1's):
@@ -162,6 +166,7 @@ method init*(this: ToolBar) =
             
             # Display new relative path in ComboBox text field.
             this.text[] = root.getCurrentRelativePath()
+            
           else:
             # If file is selected - we write its path to the config
             config.currentScript[] = startDirName / relativePath(foundItem.path, root.rootPath)
@@ -293,6 +298,12 @@ method init*(this: ToolBar) =
                 on this.activated:
                   root.saveFileDialogOpened[] = false
               
+          if root.doc[] == nil: return
+          let r = PdfRenerer(doc: root.doc[][])
+          # let filters = ["*.pdf".cstring, "*".cstring]
+          let filename = "out.pdf"
+          if filename != "":
+            writePdf filename, r
 
     # --- Window header buttons ---
 
@@ -308,7 +319,7 @@ method init*(this: ToolBar) =
       on this.activated:
         close this.parentWindow
 
-    - TitleButton.new: # Minimize 
+    - TitleButton.new: # Minimize
       this.fillVertical(parent)
       right = parent.right - 120
       w = 60
@@ -320,7 +331,7 @@ method init*(this: ToolBar) =
       on this.activated:
         this.parentWindow.minimized = true
 
-    - TitleButton.new: # Maximize 
+    - TitleButton.new: # Maximize
       this.fillVertical(parent)
       right = parent.right - 60
       w = 60

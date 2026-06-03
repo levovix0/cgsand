@@ -66,7 +66,7 @@ proc drawDimensions*(doc: World) =
       doc.add Text text:
         PositionAtBottom
         Position2 lineSection(dimline_a, dimline_b).center
-        Transform3 (rotateZ((dimline_b - dimline_a).toPolar.theta.abs) * translate(vec3(0, -textMargin, 0)))
+        Transform3 (rotateZ(-(dimline_b - dimline_a).toPolar.theta.abs) * translate(vec3(0, -textMargin, 0)))
         fontSize
 
     addArrow(dimline_a, dimline_a - dimline_b, arrowSize)

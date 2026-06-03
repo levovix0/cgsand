@@ -3,7 +3,7 @@ import pkg/[ecs, shady]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
-import pkg/rice/[primitives, antialiasing, transform, contextutils]
+import pkg/rice/[primitives, antialiasing, transform]
 import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 
@@ -19,6 +19,7 @@ type
     scriptOptLevel: Property[ScriptOptLevel]
     mode3d*: Property[bool]
     grid3MeshCache: Grid3MeshCache
+    outputChannel*: Property[ptr Channel[string]]
 
 registerComponent DocumentView
 
@@ -89,9 +90,9 @@ proc hasWorldToDraw(script: Script): bool =
 proc worldCenter3D*(w: World): Vec3 =
   ## Returns the center of the 3D bounding box of the world.
   let globals = w.documentGlobals
-  let (x0, x1) = w.worldBoundsAlongAxis(vec3(1, 0, 0), globals)
-  let (y0, y1) = w.worldBoundsAlongAxis(vec3(0, 1, 0), globals)
-  let (z0, z1) = w.worldBoundsAlongAxis(vec3(0, 0, 1), globals)
+  let (x0, x1) = w.worldBoundsAlongAxis(sandbox.vec3(1, 0, 0), globals)
+  let (y0, y1) = w.worldBoundsAlongAxis(sandbox.vec3(0, 1, 0), globals)
+  let (z0, z1) = w.worldBoundsAlongAxis(sandbox.vec3(0, 0, 1), globals)
   vec3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 
 
@@ -110,7 +111,11 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
       let layout = w.documentLayout(globals)
       let proj = projectionMatrix(layout.pageBounds, this.w[], this.h[], globals.axisYDirection)
       let toGl = combine(this.viewport[], proj)
-      let pixelsPerUnit = sqrt(toGl[0][0]*toGl[0][0] + toGl[1][0]*toGl[1][0]) * this.w[] / 2
+      let pixelsPerUnit = block:
+        let sX = sqrt(toGl[0][0]*toGl[0][0] + toGl[0][1]*toGl[0][1])
+        let sY = sqrt(toGl[1][0]*toGl[1][0] + toGl[1][1]*toGl[1][1])
+        let sZ = sqrt(toGl[2][0]*toGl[2][0] + toGl[2][1]*toGl[2][1])
+        max(sX, max(sY, sZ)) * this.w[] / 2
 
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
@@ -142,7 +147,7 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
           transform = scale vec3(1, this.w[] / this.h[], 1)
         )
         ctx.fillRect(
-          rect(layout.pageBounds.min, layout.pageBounds.size),
+          rect(layout.pageBounds.min.vec2, layout.pageBounds.size.vec2),
           color = globals.background,
         )
 
@@ -197,7 +202,7 @@ proc recompileScript*(this: DocumentView) =
     else:
       nil
   this.script{} = nil  # unload current script
-  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache, this.scriptOptLevel[])
+  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache, this.scriptOptLevel[], this.outputChannel[])
 
 
 
@@ -284,14 +289,16 @@ method init*(this: DocumentView) =
             (prevDragPos.y / h - 0.5),
             (prevDragPos.x / w - 0.5) * (w / h)
           )
+          let axY = (if root.script[].world[].documentGlobals.axisYDirection == AxisYUp: -1'f32 else: 1'f32)
+
           let worldCenter = root.script[].world[].worldCenter3D()
           root.viewport[] = combine(
             root.viewport[],
             translate(-worldCenter),
-            rotateY(dn.x * float32(Pi), vec3(0, 0, 0)),
-            rotateX(-dn.y * float32(Pi), vec3(0, 0, 0)),
-            rotateZ(dn.x / h * 1000 * float32(Pi) * zv.x, vec3(0, 0, 0)),
-            rotateZ(-dn.y / h * 1000 * float32(Pi) * zv.y, vec3(0, 0, 0)),
+            rotateY(-dn.x * float32(Pi), vec3(0, 0, 0)),
+            rotateX(axY * dn.y * float32(Pi), vec3(0, 0, 0)),
+            rotateZ(-dn.x / h * 1000 * float32(Pi) * zv.x, vec3(0, 0, 0)),
+            rotateZ(axY * dn.y / h * 1000 * float32(Pi) * zv.y, vec3(0, 0, 0)),
             translate(worldCenter),
           )
           prevDragPos = currentMousePos

@@ -325,7 +325,7 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
     Position2 beam.origin + vec2(totalLength * beam.meterSize + 2 + textMargin, settings.qOffset + settings.mGap + 1)
     PositionAtCenter
     dimensionFontSize
-    qColor
+    mColor
 
   block:
     let b = doc.entityBounds(text_Qy)

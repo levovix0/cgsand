@@ -2,7 +2,7 @@ import std/unicode
 import pkg/[ecs, vmath]
 import pkg/pixie/fonts as pixieFonts
 import pkg/toscel/[colors]
-import ../logic/[doclayout, bounds, document_globals]
+import ../logic/[doclayout, document_globals]
 import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
 import ../lib/[geom2d, text]
 import ./pdf/writer

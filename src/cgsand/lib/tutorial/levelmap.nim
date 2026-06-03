@@ -15,7 +15,14 @@ let subtitleColor = fg_hint
 setupLevel()
 
 
+doc.add Text tr"Do not import `tutorial` and `tutorial/lXXX_levelname` at the same time!":
+  PositionAtBottom
+  Position2 point2(0, -2)
+  subtitleColor
+  FontSize 0.25
+
 doc.add Level(subtitle: "import tutorial/l1_basics", name: tr"Basics", origin: point2(0, 0))
+doc.add Level(subtitle: "import tutorial/l2_text", name: tr"Text", origin: point2(0, 4))
 
 
 doc.forEach (l: Level):

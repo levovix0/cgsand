@@ -17,12 +17,13 @@ type
 
 
 proc setCarnotMapGlobals*(globals: EntityId) =
-  doc.update globals: add OwnerModule "carnot_map"
-  doc.update globals: add CanvasSettings(autoSize: true, margin: vec2(1))
-  doc.update globals: add Background color(1, 1, 1)
-  doc.update globals: add Foreground color(0, 0, 0)
-  doc.update globals: add FontSize 1
-  doc.update globals: add AxisYDown
+  doc.update globals:
+    add OwnerModule "carnot_map"
+    add CanvasSettings(autoSize: true, margin: vec2(1))
+    add Background color(1, 1, 1)
+    add Foreground color(0, 0, 0)
+    add FontSize 1
+    add AxisYDown
 
 if not doc.hasComponent(globals, OwnerModule):
   setCarnotMapGlobals(globals)
