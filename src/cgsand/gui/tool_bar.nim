@@ -1,7 +1,7 @@
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
-import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, fonts]
+import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, fonts, listWidget]
 import ../logic/[config, pdf_renderer]
 import std/[os]
 import icons
@@ -230,23 +230,13 @@ method init*(this: ToolBar) =
                 color = "#8c8c8c".color
                 fontSize = 14
               
-              - UiRect.new as file_list:
-                left = parent.border.left + 1
-                right = parent.border.right - 1
-                top = parent.top + 24
-                bottom = parent.bottom - 100
-                color = "#282828"
+              - ListWidget.new as file_list:
+                  left = parent.border.left + 1
+                  right = parent.border.right - 1
+                  top = parent.top + 24
+                  bottom = parent.bottom - 100
 
-              # File selector
-              --- Layout.new:
-
-                this.col()
-
-                # for file in root.updateFileBrowser(root.currentPath):
-                #   - UiText.new:
-                #     font = font_default.withSize(14)
-                #     text = file
-                #     color = color_fg
+                  items = binding: root.updateFileBrowser(root.currentPath)
 
               - Label.new as title_label:
                 left = parent.left
@@ -262,15 +252,16 @@ method init*(this: ToolBar) =
                 fitOptionsWidth = false
                 options = @["Portable Document Format, *.pdf", "All Files"]
 
-              - LineEdit.new:
+              - LineEdit.new as filename:
                 right = file_type.left - 10
                 left = title_label.right + 10
                 centerY = file_list.bottom + 32
 
-              - Label.new:
+              - Label.new as fullpath:
                 left = parent.left
                 centerY = file_type.bottom + 32
-                text = "~/Documents/Exports/trigger_d.pdf"
+                text = binding: 
+                  root.getCurrentRelativePath() & "/" & filename.text[] & ".pdf"
                 color = "#8c8c8c".color
                 fontSize = 14
               
@@ -284,7 +275,7 @@ method init*(this: ToolBar) =
                   if root.doc[] == nil: return
                   let r = PdfRenerer(doc: root.doc[][])
                   # let filters = ["*.pdf".cstring, "*".cstring]
-                  let filename = "out.pdf"
+                  let filename = fullpath.text[]
                   if filename != "":
                     writePdf filename, r
                   root.saveFileDialogOpened[] = false
@@ -297,14 +288,7 @@ method init*(this: ToolBar) =
 
                 on this.activated:
                   root.saveFileDialogOpened[] = false
-              
-          if root.doc[] == nil: return
-          let r = PdfRenerer(doc: root.doc[][])
-          # let filters = ["*.pdf".cstring, "*".cstring]
-          let filename = "out.pdf"
-          if filename != "":
-            writePdf filename, r
-
+    
     # --- Window header buttons ---
 
     - TitleButton.new: # Close
