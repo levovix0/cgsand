@@ -1,7 +1,7 @@
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
-import pkg/toscel/[comboBox, lineEdit, button]
+import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, fonts, listWidget]
 import ../logic/[config, pdf_renderer]
 import std/[os]
 import icons
@@ -20,6 +20,8 @@ type
     browserItems: seq[BrowserItem] # Component state for hidden logic
     rootPath: string               # Hardcoded root reference path
     currentPath: string            # Current directory path that changes on click
+
+    saveFileDialogOpened: Property[bool]
 
   TitleButton = ref object of Uiobj
     pressedColor: Property[Color]
@@ -134,13 +136,16 @@ method init*(this: ToolBar) =
         text = binding: config.currentScript[]
         this.options[] = root.updateFileBrowser(root.currentPath)
         w = 300
+        fitOptionsWidth = false
+
+        # Disconnecting valid binding and making it always true
+        disconnect this.binding_valid
+        this.valid[] = true
 
         on this.textEdited:
           config.currentScript[] = this.text[]
         
-        on this.optionSelected:
-          let selectedOptionText = this.options[][this.selectedOption[]]
-          
+        proc fileChangeConfirmHandler(selectedOptionText: string) =
           var foundItem: BrowserItem
           for item in root.browserItems:
             if item.display == selectedOptionText:
@@ -153,9 +158,11 @@ method init*(this: ToolBar) =
             
             # Updating file list for new folder
             this.options[] = root.updateFileBrowser(root.currentPath)
-            this.w[] = 300
             this.selectedOption[] = -1
             this.dropdownOpened[] = true
+
+            # Changing accent color to default (folder)
+            this.lineEdit.border.color[] = color_border_lineEdit
             
             # Display new relative path in ComboBox text field.
             this.text[] = root.getCurrentRelativePath()
@@ -164,22 +171,124 @@ method init*(this: ToolBar) =
             # If file is selected - we write its path to the config
             config.currentScript[] = startDirName / relativePath(foundItem.path, root.rootPath)
             
+            # Changing border color to accent (valid file)
+            this.lineEdit.border.color[] = color_border_accent_lineEdit
+
             # Optional: You can leave the file name in the text field,
             # so the user can see which file is currently selected
             this.text[] = startDirName / relativePath(foundItem.path, root.rootPath)
 
+        this.onSignal.connectTo this, signal:
+          if signal of WindowEvent and signal.WindowEvent.event of KeyEvent:
+            let e = (ref KeyEvent)(signal.WindowEvent.event)
+            if e.pressed:
+              if this.lineEdit.textArea.active[] and not signal.WindowEvent.handled:
+                if e.key == Key.enter:
+                  fileChangeConfirmHandler(this.text[])
+        this.optionSelected.connectTo this, e:
+          let selectedOptionText = this.options[][this.selectedOption[]]
+          if e == ClickSelection:
+            fileChangeConfirmHandler(selectedOptionText)
+          else:
+            this.lineEdit.border.color[] = color_border_lineEdit
+
       - Button.new:
         text = tr"Export PDF"
-        enabled = binding: root.doc[] != nil
+        # enabled = binding: root.doc[] != nil
 
         on this.activated:
-          if root.doc[] == nil: return
-          let r = PdfRenerer(doc: root.doc[][])
-          # let filters = ["*.pdf".cstring, "*".cstring]
-          let filename = "out.pdf"
-          if filename != "":
-            writePdf filename, r
+          
+          root.saveFileDialogOpened[] = not root.saveFileDialogOpened[]
+          
 
+        --- UiObj.new:
+          <--- UiObj.new: root.saveFileDialogOpened[]
+          
+          if root.saveFileDialogOpened[]:
+            - Panel.new:
+              x = 0
+              y = 60
+              w = 500
+              h = 400
+
+              - MouseArea.new:
+                this.fill parent.border
+
+              + this.background:
+                color = "#303030".color
+
+              - Label.new:
+                left = parent.left
+                centerY = parent.top + 2
+                text = "Сохранить как PDF"
+                fontSize = 18
+              
+              - Label.new:
+                right = parent.right
+                centerY = parent.top + 2
+                text = "Выберите расположение"
+                color = "#8c8c8c".color
+                fontSize = 14
+              
+              - ListWidget.new as file_list:
+                  left = parent.border.left + 1
+                  right = parent.border.right - 1
+                  top = parent.top + 24
+                  bottom = parent.bottom - 100
+
+                  items = binding: root.updateFileBrowser(root.currentPath)
+
+              - Label.new as title_label:
+                left = parent.left
+                centerY = file_list.bottom + 32
+                text = "Имя:"
+                fontSize = 14
+              
+              - ComboBox.new as file_type:
+                right = parent.right
+                centerY = file_list.bottom + 32
+                w = 100
+                otherTextCanBeEntered = false
+                fitOptionsWidth = false
+                options = @["Portable Document Format, *.pdf", "All Files"]
+
+              - LineEdit.new as filename:
+                right = file_type.left - 10
+                left = title_label.right + 10
+                centerY = file_list.bottom + 32
+
+              - Label.new as fullpath:
+                left = parent.left
+                centerY = file_type.bottom + 32
+                text = binding: 
+                  root.getCurrentRelativePath() & "/" & filename.text[] & ".pdf"
+                color = "#8c8c8c".color
+                fontSize = 14
+              
+              - Button.new as save_button:
+                right = parent.right 
+                centerY = file_type.bottom + 32
+                text = "Сохранить"
+                accent = true
+
+                on this.activated:
+                  if root.doc[] == nil: return
+                  let r = PdfRenerer(doc: root.doc[][])
+                  # let filters = ["*.pdf".cstring, "*".cstring]
+                  let filename = fullpath.text[]
+                  if filename != "":
+                    writePdf filename, r
+                  root.saveFileDialogOpened[] = false
+
+              
+              - Button.new as cancel_button:
+                right = save_button.left - 10 
+                centerY = file_type.bottom + 32
+                text = "Отмена"
+
+                on this.activated:
+                  root.saveFileDialogOpened[] = false
+    
     # --- Window header buttons ---
 
     - TitleButton.new: # Close
