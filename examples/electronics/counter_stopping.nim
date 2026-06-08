@@ -213,4 +213,4 @@ mainModule:
     let tr = placement[i]
     doc.add SubWorld carnotWorld:
       Position2 point2(tr.x - b.min.x, tr.y + tr.h - b.min.y)
-      Transform3 scale(vec3(0.5, 0.5, 0.5))
+      Transform3 scale(v3(0.5, 0.5, 0.5))

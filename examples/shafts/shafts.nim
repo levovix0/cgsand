@@ -65,6 +65,7 @@ type
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
 let mainLine* = PixelThickness 3
+let hiddenLine* = PixelThickness 1
 let dimFontSize* = FontSize 0.5
 
 
@@ -73,7 +74,7 @@ proc setShaftsGlobals*(globals: EntityId) =
     add OwnerModule "shafts"
     add CanvasSettings(
       autoSize: true,
-      margin: vec2(2, 2),
+      margin: v2(2, 2),
     )
     add AxisYDown
     add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
@@ -143,50 +144,50 @@ proc `==`*(a, b: Section): bool =
 
 
 
-proc drawConjunction(sketch: World, origin: Position2, dir: Vec2, conjunction: ShaftConjunction, h: float, scale: float) =
+proc drawConjunction(sketch: World, origin: Position2, dir: V2, conjunction: ShaftConjunction, h: float, scale: float) =
   let angle = dir.planarAngle
-  proc pt(v: Vec2): Point2 = origin + v.rotate(angle) * scale
+  proc pt(v: V2): Point2 = origin + v.rotate(angle) * scale
 
   case conjunction.kind
   of None:
     sketch.add lineSection(
-      vec2(0, -h/2).pt,
-      vec2(0, h/2).pt
+      v2(0, -h/2).pt,
+      v2(0, h/2).pt
     ), mainLine
 
   of Bevel:
     sketch.add lineSection(
-      vec2(0, -h/2 + conjunction.radius).pt,
-      vec2(0, h/2 - conjunction.radius).pt
+      v2(0, -h/2 + conjunction.radius).pt,
+      v2(0, h/2 - conjunction.radius).pt
     ), mainLine
     sketch.add lineSection(
-      vec2(0, -h/2 + conjunction.radius).pt,
-      vec2(conjunction.radius, -h/2).pt
+      v2(0, -h/2 + conjunction.radius).pt,
+      v2(conjunction.radius, -h/2).pt
     ), mainLine
     sketch.add lineSection(
-      vec2(0, h/2 - conjunction.radius).pt,
-      vec2(conjunction.radius, h/2).pt
+      v2(0, h/2 - conjunction.radius).pt,
+      v2(conjunction.radius, h/2).pt
     ), mainLine
 
   of Fillet:
     sketch.add lineSection(
-      vec2(0, -h/2 + conjunction.radius).pt,
-      vec2(0, h/2 - conjunction.radius).pt
+      v2(0, -h/2 + conjunction.radius).pt,
+      v2(0, h/2 - conjunction.radius).pt
     ), mainLine
     sketch.add circleArc(
-      center = vec2(conjunction.radius, -h/2 - conjunction.radius).pt,
+      center = v2(conjunction.radius, -h/2 - conjunction.radius).pt,
       radius = conjunction.radius * scale,
       startAngle = 0, endAngle = -Pi/2,
     ), mainLine
     sketch.add circleArc(
-      center = vec2(conjunction.radius, h/2 + conjunction.radius).pt,
+      center = v2(conjunction.radius, h/2 + conjunction.radius).pt,
       radius = conjunction.radius * scale,
-      startAngle = 0, endAngle = Pi/2,
+      startAngle = Pi/2, endAngle = 0,
     ), mainLine
 
 
 proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimensions = doc, sketch = doc) =
-  proc pt(v: Vec2): Point2 = origin + v * scale
+  proc pt(v: V2): Point2 = origin + v * scale
 
   proc height(segment: ShaftSegment): float =
     case segment.section.shape
@@ -210,50 +211,50 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
       of None: 0
 
     if sketch != nil:
-      sketch.drawConjunction(vec2(x, 0).pt, vec2(1, 0), segment.left, h, scale=scale)
-      sketch.drawConjunction(vec2(x + segment.length, 0).pt, vec2(-1, 0), segment.right, h, scale=scale)
+      sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), segment.left, h, scale=scale)
+      sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), segment.right, h, scale=scale)
 
       sketch.add lineSection(
-        vec2(x + leftOffset, -h/2).pt,
-        vec2(x + segment.length - rightOffset, -h/2).pt
+        v2(x + leftOffset, -h/2).pt,
+        v2(x + segment.length - rightOffset, -h/2).pt
       ), mainLine
       sketch.add lineSection(
-        vec2(x + leftOffset, h/2).pt,
-        vec2(x + segment.length - rightOffset, h/2).pt
+        v2(x + leftOffset, h/2).pt,
+        v2(x + segment.length - rightOffset, h/2).pt
       ), mainLine
 
       for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segment.length, segment.right, -1.0)]:
         sketch.add lineSection(
-          vec2(xc + conjunction.radius * dir, -h/2).pt,
-          vec2(xc + conjunction.radius * dir, h/2).pt
+          v2(xc + conjunction.radius * dir, -h/2).pt,
+          v2(xc + conjunction.radius * dir, h/2).pt
         ), mainLine
 
       if segment.section.shape == Gear:
         let g = segment.section.gear
         for yc in [-h/2 + (g.adhendiumDiameter - g.rootDiameter)/2, h/2 - (g.adhendiumDiameter - g.rootDiameter)/2]:
           sketch.add lineSection(
-            vec2(x, yc).pt,
-            vec2(x + segment.length, yc).pt
+            v2(x, yc).pt,
+            v2(x + segment.length, yc).pt
           ), mainLine
         for yc in [-h/2 + (g.adhendiumDiameter - g.pitchDiameter)/2, h/2 - (g.adhendiumDiameter - g.pitchDiameter)/2]:
           sketch.add lineSection(
-            vec2(x, yc).pt,
-            vec2(x + segment.length, yc).pt
+            v2(x, yc).pt,
+            v2(x + segment.length, yc).pt
           )
 
     if dimensions != nil:
       dimensions.add LinearDimension2(
-        a: vec2(x, h/2 - leftOffset).pt,
-        b: vec2(x + segment.length, h/2 - rightOffset).pt,
-        dir: vec2(1, 0),
-        dimline: vec2(x, dimlineY).pt,
+        a: v2(x, h/2 - leftOffset).pt,
+        b: v2(x + segment.length, h/2 - rightOffset).pt,
+        dir: v2(1, 0),
+        dimline: v2(x, dimlineY).pt,
       ), dimensionText segment.length * 1000, dimFontSize
 
       dimensions.add LinearDimension2(
-        a: vec2(x + segment.length - rightOffset - 0.5/scale, h/2).pt,
-        b: vec2(x + segment.length - rightOffset - 0.5/scale, -h/2).pt,
-        dir: vec2(0, 1),
-        dimline: vec2(x + segment.length - rightOffset - 0.5/scale, 0).pt,
+        a: v2(x + segment.length - rightOffset - 0.5/scale, h/2).pt,
+        b: v2(x + segment.length - rightOffset - 0.5/scale, -h/2).pt,
+        dir: v2(0, 1),
+        dimline: v2(x + segment.length - rightOffset - 0.5/scale, 0).pt,
       ), dimensionText h * 1000, dimFontSize
 
     x += segment.length

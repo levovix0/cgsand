@@ -95,13 +95,13 @@ proc draw*(beam: Beam) =
     
     if allowedPositions.len == 0:
       doc.add Text text:
-        Position2 beam.origin + vec2(x * beam.meterSize, -2 - textMargin)
+        Position2 beam.origin + v2(x * beam.meterSize, -2 - textMargin)
         PositionAtBottom
         dimensionFontSize
     else:
       let p = allowedPositions[0]
       doc.add Text text:
-        Position2 beam.origin + vec2(
+        Position2 beam.origin + v2(
           (
             if p == PositionAtBottomLeft: x * beam.meterSize + textMargin
             elif p == PositionAtBottomRight: x * beam.meterSize - textMargin
@@ -115,7 +115,7 @@ proc draw*(beam: Beam) =
 
   var x = 0.0
   for i, segment in beam.segments:
-    let line = lineSection(beam.origin + vec2(x * beam.meterSize, 0), beam.origin + vec2(x * beam.meterSize + segment.length * beam.meterSize, 0))
+    let line = lineSection(beam.origin + v2(x * beam.meterSize, 0), beam.origin + v2(x * beam.meterSize + segment.length * beam.meterSize, 0))
 
     doc.add line, wide
     
@@ -124,8 +124,8 @@ proc draw*(beam: Beam) =
     doc.add LinearDimension2(
       a: line.startPoint,
       b: line.endPoint,
-      dir: vec2(1, 0),
-      dimline: line.startPoint + vec2(0, beam.meterSize * 1.2)
+      dir: v2(1, 0),
+      dimline: line.startPoint + v2(0, beam.meterSize * 1.2)
     ), DimensionText (segment.length).`$`.addName("l"), dimensionFontSize
     
     x += segment.length
@@ -134,20 +134,20 @@ proc draw*(beam: Beam) =
 
   for fp in beam.fixedPositions:
     let line = lineSection(
-      beam.origin + vec2(fp * beam.meterSize, -beam.meterSize / 4),
-      beam.origin + vec2(fp * beam.meterSize, beam.meterSize / 4)
+      beam.origin + v2(fp * beam.meterSize, -beam.meterSize / 4),
+      beam.origin + v2(fp * beam.meterSize, beam.meterSize / 4)
     )
     doc.add line, wide
     # todo: hatching
     for y in countup(0, int(beam.meterSize) - 1, 1):
       let y = y / int(beam.meterSize)
-      doc.add lineSection(line.pointAtParam(y), line.pointAtParam(y) + vec2(-0.5, 0.5))
+      doc.add lineSection(line.pointAtParam(y), line.pointAtParam(y) + v2(-0.5, 0.5))
   
   
   for load in beam.loads:
-    let a = beam.origin + vec2(load.x.a * beam.meterSize, 0)
-    let b = beam.origin + vec2(load.x.b * beam.meterSize, 0)
-    let dir = (if load.load > 0: vec2(0, -1) else: vec2(0, 1)) * 1
+    let a = beam.origin + v2(load.x.a * beam.meterSize, 0)
+    let b = beam.origin + v2(load.x.b * beam.meterSize, 0)
+    let dir = (if load.load > 0: v2(0, -1) else: v2(0, 1)) * 1
     doc.add lineSection(a, a + dir), loadColor
     doc.add lineSection(a + dir, b + dir), loadColor
     doc.add lineSection(b, b + dir), loadColor
@@ -158,7 +158,7 @@ proc draw*(beam: Beam) =
       addArrow(p, -dir, dir.length / 2, loadColor)
       
     for x in countup(0, int(load.x.b - load.x.a) - 1):
-      let p = lineSection(a + vec2((l*beam.meterSize)/2, 0), b - vec2((l*beam.meterSize)/2, 0)).pointAtParam(x / (int(load.x.b - load.x.a) - 1))
+      let p = lineSection(a + v2((l*beam.meterSize)/2, 0), b - v2((l*beam.meterSize)/2, 0)).pointAtParam(x / (int(load.x.b - load.x.a) - 1))
       doc.add Text abs(load.load / (q * l.pow(2))).`$`.addName("q"):
         Position2 (p + dir + dir.normalize * textMargin)
         (if load.load > 0: PositionAtBottom else: PositionAtTop)
@@ -168,14 +168,14 @@ proc draw*(beam: Beam) =
   let forceHeight = 2.0
 
   for force in beam.forces:
-    let pos = beam.origin + vec2(force.x * beam.meterSize, 0)
-    let dir = (if force.force > 0: vec2(0, -1) else: vec2(0, 1)) * forceHeight
+    let pos = beam.origin + v2(force.x * beam.meterSize, 0)
+    let dir = (if force.force > 0: v2(0, -1) else: v2(0, 1)) * forceHeight
 
     doc.add lineSection(pos + dir/4, pos + dir), forceColor, wide
     addArrow(pos, -dir, 1, forceColor)
 
     doc.add Text abs(force.force / (q * l)).`$`.addName("ql"):
-      Position2 pos + dir + vec2(textMargin, 0)
+      Position2 pos + dir + v2(textMargin, 0)
       (if force.force > 0: PositionAtTopLeft else: PositionAtBottomLeft)
       forceColor
       dimensionFontSize
@@ -184,9 +184,9 @@ proc draw*(beam: Beam) =
   let momentWidth = 1.0
 
   for moment in beam.moments:
-    let pos = beam.origin + vec2(moment.x * beam.meterSize, 0)
-    let dirx = (if moment.moment > 0: vec2(-1, 0) else: vec2(1, 0)) * momentWidth
-    let dir = vec2(0, -1) * momentHeight
+    let pos = beam.origin + v2(moment.x * beam.meterSize, 0)
+    let dirx = (if moment.moment > 0: v2(-1, 0) else: v2(1, 0)) * momentWidth
+    let dir = v2(0, -1) * momentHeight
 
     doc.add lineSection(pos - dir, pos + dir), momentColor
     doc.add lineSection(pos - dir, pos - dir - dirx), momentColor
@@ -292,37 +292,37 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
   # Draw zero-lines (baselines)
   doc.add lineSection(
-    beam.origin + vec2(0.0, settings.qOffset),
-    beam.origin + vec2(totalLength * beam.meterSize, settings.qOffset)
+    beam.origin + v2(0.0, settings.qOffset),
+    beam.origin + v2(totalLength * beam.meterSize, settings.qOffset)
   ), qColor
   doc.add lineSection(
-    beam.origin + vec2(0.0, settings.qOffset + settings.mGap),
-    beam.origin + vec2(totalLength * beam.meterSize, settings.qOffset + settings.mGap)
+    beam.origin + v2(0.0, settings.qOffset + settings.mGap),
+    beam.origin + v2(totalLength * beam.meterSize, settings.qOffset + settings.mGap)
   ), mColor
 
   # Draw diagram labels "Qy" and "Mx" on the left
   let text_Qy = doc.spawn(
     Text "Qy",
-    Position2 beam.origin + vec2(totalLength * beam.meterSize + 1.66 + textMargin, settings.qOffset),
+    Position2 beam.origin + v2(totalLength * beam.meterSize + 1.66 + textMargin, settings.qOffset),
     PositionAtLeft,
     dimensionFontSize,
     qColor,
   )
   doc.add Text "[кН]":
-    Position2 beam.origin + vec2(totalLength * beam.meterSize + 2 + textMargin, settings.qOffset + 1)
+    Position2 beam.origin + v2(totalLength * beam.meterSize + 2 + textMargin, settings.qOffset + 1)
     PositionAtCenter
     dimensionFontSize
     qColor
   
   let text_Mx = doc.spawn(
     Text "Mx",
-    Position2 beam.origin + vec2(totalLength * beam.meterSize + 1.66 + textMargin, settings.qOffset + settings.mGap),
+    Position2 beam.origin + v2(totalLength * beam.meterSize + 1.66 + textMargin, settings.qOffset + settings.mGap),
     PositionAtLeft,
     dimensionFontSize,
     mColor,
   )
   doc.add Text "[кН·м]":
-    Position2 beam.origin + vec2(totalLength * beam.meterSize + 2 + textMargin, settings.qOffset + settings.mGap + 1)
+    Position2 beam.origin + v2(totalLength * beam.meterSize + 2 + textMargin, settings.qOffset + settings.mGap + 1)
     PositionAtCenter
     dimensionFontSize
     mColor
@@ -340,8 +340,8 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
   for xi in keyXs:
     doc.add lineSection(
-      Point2 vec2(bx(xi), fullSpanTop),
-      Point2 vec2(bx(xi), fullSpanBot)
+      point2(bx(xi), fullSpanTop),
+      point2(bx(xi), fullSpanBot)
     )
 
   # For each pair of consecutive breakpoints, draw Q and M segments
@@ -365,8 +365,8 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
       let xi = xa + (xb - xa) * t
       let qv = qAt(xi, false)
       let mv = mAt(xi, false)
-      qPts.add Point2 vec2(bx(xi), qWorld(qv))
-      mPts.add Point2 vec2(bx(xi), mWorld(mv))
+      qPts.add point2(bx(xi), qWorld(qv))
+      mPts.add point2(bx(xi), mWorld(mv))
 
     # Draw outline
     for s in 0..<qPts.len - 1:
@@ -381,8 +381,8 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
       let y1 = qWorld(qv)
       if abs(y1 - y0) > 1e-6:
         doc.add lineSection(
-          Point2 vec2(bx(hx), y0),
-          Point2 vec2(bx(hx), y1)
+          point2(bx(hx), y0),
+          point2(bx(hx), y1)
         ), qColor
       hx += settings.hatchSpacing
 
@@ -394,8 +394,8 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
       let y1 = mWorld(mv)
       if abs(y1 - y0) > 1e-6:
         doc.add lineSection(
-          Point2 vec2(bx(hx), y0),
-          Point2 vec2(bx(hx), y1)
+          point2(bx(hx), y0),
+          point2(bx(hx), y1)
         ), mColor
       hx += settings.hatchSpacing
 
@@ -405,20 +405,20 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
   let maLeft = mAt(keyXs[0], false)
   let maRight = mAt(keyXs[^1], true)
   doc.add lineSection(
-    Point2 vec2(bx(keyXs[0]), qBaseY),
-    Point2 vec2(bx(keyXs[0]), qWorld(qaLeft))
+    point2(bx(keyXs[0]), qBaseY),
+    point2(bx(keyXs[0]), qWorld(qaLeft))
   ), qColor
   doc.add lineSection(
-    Point2 vec2(bx(keyXs[^1]), qBaseY),
-    Point2 vec2(bx(keyXs[^1]), qWorld(qaRight))
+    point2(bx(keyXs[^1]), qBaseY),
+    point2(bx(keyXs[^1]), qWorld(qaRight))
   ), qColor
   doc.add lineSection(
-    Point2 vec2(bx(keyXs[0]), mBaseY),
-    Point2 vec2(bx(keyXs[0]), mWorld(maLeft))
+    point2(bx(keyXs[0]), mBaseY),
+    point2(bx(keyXs[0]), mWorld(maLeft))
   ), mColor
   doc.add lineSection(
-    Point2 vec2(bx(keyXs[^1]), mBaseY),
-    Point2 vec2(bx(keyXs[^1]), mWorld(maRight))
+    point2(bx(keyXs[^1]), mBaseY),
+    point2(bx(keyXs[^1]), mWorld(maRight))
   ), mColor
 
   # Vertical jump lines and labels at each breakpoint
@@ -431,13 +431,13 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
     # Draw jump line if values differ
     if abs(qL - qR) > 1e-9:
       doc.add lineSection(
-        Point2 vec2(bx(xi), qWorld(qL)),
-        Point2 vec2(bx(xi), qWorld(qR))
+        point2(bx(xi), qWorld(qL)),
+        point2(bx(xi), qWorld(qR))
       ), qColor
     if abs(mL - mR) > 1e-9:
       doc.add lineSection(
-        Point2 vec2(bx(xi), mWorld(mL)),
-        Point2 vec2(bx(xi), mWorld(mR))
+        point2(bx(xi), mWorld(mL)),
+        point2(bx(xi), mWorld(mR))
       ), mColor
 
     # Labels: show left value to the left, right value to the right
@@ -448,24 +448,24 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
     # Label on left side (value just before xi)
     doc.add Text labelVal(qL, qRef, 1000, qName):
-      Position2 Point2 vec2(bx(xi) - textMargin, qLy + (if qL > 0: -textMargin else: textMargin))
+      Position2 point2(bx(xi) - textMargin, qLy + (if qL > 0: -textMargin else: textMargin))
       (if qL > 0: PositionAtBottomRight else: PositionAtTopRight)
       dimensionFontSize
       qColor
     # Label on right side (value just after xi)
     doc.add Text labelVal(qR, qRef, 1000, qName):
-      Position2 Point2 vec2(bx(xi) + textMargin, qRy + (if qR > 0: -textMargin else: textMargin))
+      Position2 point2(bx(xi) + textMargin, qRy + (if qR > 0: -textMargin else: textMargin))
       (if qR > 0: PositionAtBottomLeft else: PositionAtTopLeft)
       dimensionFontSize
       qColor
 
     doc.add Text labelVal(mL, mRef, 1000, mName):
-      Position2 Point2 vec2(bx(xi) - textMargin, mLy + (if mL > 0: -textMargin else: textMargin))
+      Position2 point2(bx(xi) - textMargin, mLy + (if mL > 0: -textMargin else: textMargin))
       (if mL > 0: PositionAtBottomRight else: PositionAtTopRight)
       dimensionFontSize
       mColor
     doc.add Text labelVal(mR, mRef, 1000, mName):
-      Position2 Point2 vec2(bx(xi) + textMargin, mRy + (if mR > 0: -textMargin else: textMargin))
+      Position2 point2(bx(xi) + textMargin, mRy + (if mR > 0: -textMargin else: textMargin))
       (if mR > 0: PositionAtBottomLeft else: PositionAtTopLeft)
       dimensionFontSize
       mColor

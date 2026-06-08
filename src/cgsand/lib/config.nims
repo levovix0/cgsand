@@ -4,5 +4,6 @@ import os
 --define:sigeo_return_zero_when_angle_between_zeroLen_vectors
 --define:sigeo_return_axisX_when_zeroLen_normal_vector
 --define:sigeo_return_small_curve_when_costructed_curve_has_zero_length
+--define:sigeo_axisY_down
 
 switch("define", "iconsPath:" & currentSourcePath().parentDir.parentDir.parentDir.parentDir/"resources"/"icons")

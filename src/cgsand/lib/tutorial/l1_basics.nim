@@ -25,25 +25,25 @@ doc.add circle(p[3], 0.1):
 
 
 doc.add Text "point2(1, 1)":
-  Position2 p[0] + vec2(1, 1)*textMargin
+  Position2 p[0] + v2(1, 1)*textMargin
   PositionAtTopLeft
   FontSize 0.25
   fg_hint
 
 doc.add Text "point2(-1, 1)":
-  Position2 p[1] + vec2(-1, 1)*textMargin
+  Position2 p[1] + v2(-1, 1)*textMargin
   PositionAtTopRight
   FontSize 0.25
   fg_hint
 
 doc.add Text "point2(-1, -1)":
-  Position2 p[2] + vec2(-1, -1)*textMargin
+  Position2 p[2] + v2(-1, -1)*textMargin
   PositionAtBottomRight
   FontSize 0.25
   fg_hint
 
 doc.add Text "point2(1, -1)":
-  Position2 p[3] + vec2(1, -1)*textMargin
+  Position2 p[3] + v2(1, -1)*textMargin
   PositionAtBottomLeft
   FontSize 0.25
   fg_hint

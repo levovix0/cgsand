@@ -29,7 +29,7 @@ let textMargin* = 0.1
 
 proc setupLevel* =
   doc.update globals:
-    add CanvasSettings(autoSize: true, margin: vec2(2, 2))
+    add CanvasSettings(autoSize: true, margin: v2(2, 2))
     add AxisYDown
     add FontSize 1
     add fg

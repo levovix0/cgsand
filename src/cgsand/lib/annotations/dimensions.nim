@@ -6,7 +6,7 @@ import pkg/pixie/paths
 type
   LinearDimension2* = object
     a*, b*: Point2
-    dir*: Vec2
+    dir*: V2
     dimline*: Point2
 
   DimensionText* = string
@@ -14,7 +14,7 @@ type
 
   FigureBracket* = object
     a*, b*: Point2
-    h*: Vec2
+    h*: V2
     power*: float = 1
 
   AlreadyDrawn* = object
@@ -27,9 +27,9 @@ proc addArrow*(to: Point2, dir: NormalVec2, size: float, color = doc.foreground)
   # todo: add something like paths to sigeo
   # todo: proc arrow(to: Point2, dir: NormalVec2, size: float, color = doc.foreground): (Path, Background)
   let p = newPath()
-  p.moveTo vmath.vec2 to.Vec2
-  p.lineTo vmath.vec2 (to - (dir * size).rotate(Pi / 16)).Vec2
-  p.lineTo vmath.vec2 (to - (dir * size).rotate(-Pi / 16)).Vec2
+  p.moveTo vmath.vec2 to.V2
+  p.lineTo vmath.vec2 (to - (dir * size).rotate(Pi / 16)).V2
+  p.lineTo vmath.vec2 (to - (dir * size).rotate(-Pi / 16)).V2
   p.closePath()
   doc.add p, Background color
 
@@ -66,7 +66,7 @@ proc drawDimensions*(doc: World) =
       doc.add Text text:
         PositionAtBottom
         Position2 lineSection(dimline_a, dimline_b).center
-        Transform3 (rotateZ(-(dimline_b - dimline_a).toPolar.theta.abs) * translate(vec3(0, -textMargin, 0)))
+        Transform3 (rotateZ(-(dimline_b - dimline_a).toPolar.theta.abs) * translate(v3(0, -textMargin, 0)))
         fontSize
 
     addArrow(dimline_a, dimline_a - dimline_b, arrowSize)

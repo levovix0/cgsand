@@ -15,48 +15,13 @@ echo(p)
 
 
 
-# doc.add circle(p[0], 0.1):
-#   Background fg_hint
-
-# doc.add circle(p[1], 0.1):
-#   Background fg_hint
-
-# doc.add circle(p[2], 0.1):
-#   Background fg_hint
-
-# doc.add circle(p[3], 0.1):
-#   Background fg_hint
-# doc.add LinearDimension2(
-#         a: point2(0,1),
-#         b: point2(0,5),
-#         dir: vec2(0, 1),
-#         dimline: point2(0,0),
-#       ),"rere",10
-# doc.drawDimensions()
-addArrow(point2(3.5,0), vec2(1,0),0.4, color(1,0.4,0.4))
+addArrow(point2(3.5,0), v2(1,0),0.4, color(1,0.4,0.4))
 doc.add lineSection(point2(-3.25, 0), point2(3.25, 0)), Thickness(0.05), color(1,0.4,0.4)
 
-addArrow(point2(0,1.5), vec2(0,1),0.4, color(0.4,1,0.4))
+addArrow(point2(0,1.5), v2(0,1),0.4, color(0.4,1,0.4))
 doc.add lineSection(point2(0, -2.25), point2(0, 1.25)), Thickness(0.05), color(0.4,1,0.4)
 
 
-# doc.add Text "point2(-1, 1)":
-#   Position2 p[1] + vec2(-1, 1)*textMargin
-#   PositionAtTopRight
-#   FontSize 0.25
-#   fg_hint
-
-# doc.add Text "point2(-1, -1)":
-#   Position2 p[2] + vec2(-1, -1)*textMargin
-#   PositionAtBottomRight
-#   FontSize 0.25
-#   fg_hint
-
-# doc.add Text "point2(1, -1)":
-#   Position2 p[3] + vec2(1, -1)*textMargin
-#   PositionAtBottomLeft
-#   FontSize 0.25
-#   fg_hint
 for k in -3..0:
   doc.add lineSection(point2(-3, float64(k+1)), point2(3, float64(k+1)))
 for k in -3..3:

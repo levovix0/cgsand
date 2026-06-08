@@ -6,8 +6,7 @@ import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl]
 import pkg/sigeo/grids/[extrusions, smoothshading]
 import ./[bounds, doclayout, scripts, document_globals]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
-import ../lib/[geom2d]
+import ../lib/[sandbox, geom2d]
 
 
 type
@@ -63,8 +62,8 @@ proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirecti
 proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
   if thickness.isSome:
     # todo: find simpler way to make lines same thickness, independent of their direction
-    let a = sandbox.Vec2(obj.startPoint).vec2.vec3(0)
-    let b = sandbox.Vec2(obj.endPoint).vec2.vec3(0)
+    let a = obj.startPoint.V2.vec2.vec3(0)
+    let b = obj.endPoint.V2.vec2.vec3(0)
     let m = ctx.viewportMatrix
     let camDir = vec3(m[0][2], m[1][2], m[2][2])
     let lineDir = normalize(b - a)
@@ -83,8 +82,8 @@ proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thicknes
     )
   else:
     ctx.drawLine(
-      a = sandbox.Vec2(obj.startPoint).vec2.vec3(0),
-      b = sandbox.Vec2(obj.endPoint).vec2.vec3(0),
+      a = obj.startPoint.V2.vec2.vec3(0),
+      b = obj.endPoint.V2.vec2.vec3(0),
       color = color,
       transform = transform,
     )
@@ -262,9 +261,9 @@ proc draw3dWorld*(
 
 proc entityBoundsCallback(world: World, eid: EntityId): Bounds2 {.cdecl.} =
   let globals = world.documentGlobals
-  let (minX, maxX) = world.worldBoundsAlongAxis(sandbox.vec3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  let (minY, maxY) = world.worldBoundsAlongAxis(sandbox.vec3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  bounds2(sandbox.vec2(minX, minY), sandbox.vec2(maxX, maxY))
+  let (minX, maxX) = world.worldBoundsAlongAxis(v3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  let (minY, maxY) = world.worldBoundsAlongAxis(v3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
+  bounds2(v2(minX, minY), v2(maxX, maxY))
 
 proc worldBoundsCallback(world: World): Bounds2 {.cdecl.} =
   let g = world.documentGlobals

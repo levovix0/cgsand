@@ -24,7 +24,7 @@ type
 
   Rect = object
     pos: Point2
-    wh: Vec2
+    wh: V2
   
   Final = object
     cost: int
@@ -45,7 +45,7 @@ doc.add Scheme norN(nandN(norN(nandN("!x", "z")), "y"))
 
 
 doc.update globals:
-  add CanvasSettings(autoSize: true, margin: vec2(2))
+  add CanvasSettings(autoSize: true, margin: v2(2))
   add Background color(1, 1, 1)
   add Foreground color(0, 0, 0)
   # add Foreground color(0.75, 0.75, 0.8)
@@ -58,10 +58,10 @@ proc cost(n: Node): int =
   of AndN, OrN: n.childs.mapIt(it.cost + 1).foldl(a + b)
 
 
-proc drawNode(n: Node, pos: Point2, schemeN: SchemeN): tuple[id: EntityId, size: Vec2] =
+proc drawNode(n: Node, pos: Point2, schemeN: SchemeN): tuple[id: EntityId, size: V2] =
   case n.kind
   of SymN:
-    result.size = vec2(1, 1.5)
+    result.size = v2(1, 1.5)
     result.id = doc.spawn(Sym n.name, Position2 pos, schemeN)
 
   of AndN, OrN:
@@ -71,17 +71,17 @@ proc drawNode(n: Node, pos: Point2, schemeN: SchemeN): tuple[id: EntityId, size:
 
     for i, child in n.childs:
       if i != 0 and child.kind != SymN: y += 1
-      let (id, size) = drawNode(child, pos + vec2(0, -y), schemeN)
+      let (id, size) = drawNode(child, pos + v2(0, -y), schemeN)
       inp.add id
       y += size.y
       w = max(w, size.x)
     
-    result.size = vec2(w + 4, y)
+    result.size = v2(w + 4, y)
     let boxSize = inp.len.float*1.5
     if n.kind == AndN:
-      result.id = doc.spawn(AndGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
+      result.id = doc.spawn(AndGate(), Position2 pos + v2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
     else:
-      result.id = doc.spawn(OrGate(), Position2 pos + vec2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
+      result.id = doc.spawn(OrGate(), Position2 pos + v2(w + 2, -((y - boxSize) / 2)), Input inp, schemeN)
     if n.inverseOut:
       doc.update result.id: add InverseOut()
 
@@ -99,29 +99,29 @@ doc.forEach (scheme: Scheme):
   schemeH.add size.y
 
 doc.forEach (p: var Position2, n: SchemeN):
-  p = p + vec2(0, -(h - schemeH[n]) / 2)
+  p = p + v2(0, -(h - schemeH[n]) / 2)
 
 
 
 doc.forEach (text: Sym, p: Position2):
   var text = text
   if text.startsWith("!"):
-    doc.add lineSection(p + vec2(0, -0.05), p + vec2(1, -0.05))
+    doc.add lineSection(p + v2(0, -0.05), p + v2(1, -0.05))
 
   text.removePrefix "!"
   
   doc.add Text text:
-    Position2 p + vec2(0.5, -1)
+    Position2 p + v2(0.5, -1)
     PositionAtBottom
 
-  doc.add lineSection(p + vec2(0, -1.25), p + vec2(3, -1.25))
+  doc.add lineSection(p + v2(0, -1.25), p + v2(3, -1.25))
 
 
 var rects: seq[(EntityId, Rect)]
 doc.forEach (id: EntityId, AndGate|OrGate, p: Position2, i: Input):
-  rects.add (id, Rect(pos: p, wh: vec2(2, i.len.float*1.5)))
+  rects.add (id, Rect(pos: p, wh: v2(2, i.len.float*1.5)))
   doc.add Text (if has AndGate: "&" else: "1"):
-    Position2 p + vec2(1, -0.25)
+    Position2 p + v2(1, -0.25)
     PositionAtTop
 
 for (id, rect) in rects:
@@ -129,13 +129,13 @@ for (id, rect) in rects:
 
 
 doc.forEach (r2: Rect, AndGate|OrGate, Final):
-  let p = r2.pos + vec2(r2.wh.x, -r2.wh.y / 2)
-  doc.add lineSection(p, p + vec2(3, 0))
+  let p = r2.pos + v2(r2.wh.x, -r2.wh.y / 2)
+  doc.add lineSection(p, p + v2(3, 0))
   doc.add Text "f":
-    Position2 p + vec2(1.5, 0.15)
+    Position2 p + v2(1.5, 0.15)
     PositionAtBottom
   # doc.add Text "C = " & $the(Final).cost:
-  #   Position2 p + vec2(1.5, -3)
+  #   Position2 p + v2(1.5, -3)
   #   PositionAtTop
 
 
@@ -156,7 +156,7 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
   doc.forEach (r1: Rect, AndGate|OrGate, opt InverseOut, id: EntityId):
     let n = i.find(id)
     if n != -1:
-      let p1 = r1.pos + vec2(r1.wh.x, -r1.wh.y / 2)
+      let p1 = r1.pos + v2(r1.wh.x, -r1.wh.y / 2)
       let y2 = r2.pos.y - 0.75 - n.float*1.5
       let p = [
         p1,
@@ -181,7 +181,7 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
   doc.forEach (p1: Position2, Sym, id: EntityId):
     let n = i.find(id)
     if n != -1 and p1.x + 3.1 < r2.pos.x:
-      let p1 = p1 + vec2(3, -1.25)
+      let p1 = p1 + v2(3, -1.25)
       let y2 = r2.pos.y - 0.75 - n.float*1.5
       let p = [
         p1,
@@ -195,10 +195,10 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
 
 
 doc.forEach (r: Rect):
-  doc.add lineSection(r.pos, r.pos + vec2(r.wh.x, 0))
-  doc.add lineSection(r.pos + vec2(r.wh.x, 0), r.pos + vec2(r.wh.x, -r.wh.y))
-  doc.add lineSection(r.pos + vec2(r.wh.x, -r.wh.y), r.pos + vec2(0, -r.wh.y))
-  doc.add lineSection(r.pos + vec2(0, -r.wh.y), r.pos)
+  doc.add lineSection(r.pos, r.pos + v2(r.wh.x, 0))
+  doc.add lineSection(r.pos + v2(r.wh.x, 0), r.pos + v2(r.wh.x, -r.wh.y))
+  doc.add lineSection(r.pos + v2(r.wh.x, -r.wh.y), r.pos + v2(0, -r.wh.y))
+  doc.add lineSection(r.pos + v2(0, -r.wh.y), r.pos)
 
 
 # todo: text

@@ -10,7 +10,7 @@ proc setPlmGlobals*(globals: EntityId) =
     add OwnerModule "plm"
     add CanvasSettings(
       autoSize: true,
-      margin: vec2(2, 2),
+      margin: v2(2, 2),
     )
     add AxisYDown
     add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
@@ -73,11 +73,11 @@ for i, v in ["x", "y", "z", "t"]:
   doc.add lineSection(point2(-5, y + SZ), point2(0, y + SZ))
   doc.add lineSection(point2(-6.5, y + SZ/4*3), point2(-5.9, y + SZ/4*3))
   
-  let r = (xy: point2(-4, y + SZ/4), wh: vec2(SZ/2, SZ/2))
-  doc.add lineSection(r.xy, r.xy + vec2(r.wh.x, 0))
-  doc.add lineSection(r.xy + vec2(r.wh.x, 0), r.xy + vec2(r.wh.x, r.wh.y))
-  doc.add lineSection(r.xy + vec2(r.wh.x, r.wh.y), r.xy + vec2(0, r.wh.y))
-  doc.add lineSection(r.xy + vec2(0, r.wh.y), r.xy)
+  let r = (xy: point2(-4, y + SZ/4), wh: v2(SZ/2, SZ/2))
+  doc.add lineSection(r.xy, r.xy + v2(r.wh.x, 0))
+  doc.add lineSection(r.xy + v2(r.wh.x, 0), r.xy + v2(r.wh.x, r.wh.y))
+  doc.add lineSection(r.xy + v2(r.wh.x, r.wh.y), r.xy + v2(0, r.wh.y))
+  doc.add lineSection(r.xy + v2(0, r.wh.y), r.xy)
   doc.add Text "¬":
     Position2 r.xy + r.wh/2
     PositionAtCenter

@@ -24,7 +24,7 @@ type
     name*: string
     height*: float  # if equals 0, the calculated automatically: 1 for SymN, min(2, n.inputs.len) for BoxN
     pack*: Pack
-    portOffset*: Option[Vec2]
+    portOffset*: Option[V2]
       ## for SymN, if some, use custom port instead of drawing a line;
       ## x = offset from text center (r.x + r.w/2), y = offset from r.y
   
@@ -137,7 +137,7 @@ const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈
 proc setElectronicsSchemesGlobals*(globals: EntityId) =
   doc.update globals:
     add OwnerModule "electronics/schemes"
-    add CanvasSettings(autoSize: true, margin: vec2(schemeTheme.canvasMargin), mmScale: 2.5)
+    add CanvasSettings(autoSize: true, margin: v2(schemeTheme.canvasMargin), mmScale: 2.5)
     add AxisYDown
     add FontSize schemeTheme.baseFontSize
     add Background schemeTheme.background
@@ -185,7 +185,7 @@ proc xnorN*(inputs: varargs[Port]): Node =
 proc symN*(name: string, inputs: varargs[Port]): Node =
   Node(kind: SymN, name: name, inputs: inputs.toSeq, outputs: @[true])
 
-proc withPortOffset*(n: Node, v: Vec2): Node =
+proc withPortOffset*(n: Node, v: V2): Node =
   ## for SymN, use a custom port position instead of drawing a line.
   ## v.y: offset from r.y (default SymN port/line position).
   ## v.x: offset from text center X (r.x + r.w/2); default 0.
@@ -226,7 +226,7 @@ proc buses*(originX, originY, stepX: float, inputs: openArray[Node], outputs: op
 
 proc placementRules*(rules: varargs[PlacementRule]): seq[PlacementRule] = @rules
 
-proc move*(rules: var seq[PlacementRule], v: Vec2) =
+proc move*(rules: var seq[PlacementRule], v: V2) =
   for x in rules.mitems:
     case x.kind
     of LineR:
@@ -245,14 +245,14 @@ proc hash*(p: Point2): Hash = !$(0.Hash !& hash(p.x) !& hash(p.y))
 
 
 
-proc nodeSize*(n: Node): Vec2 =
+proc nodeSize*(n: Node): V2 =
   case n.kind
-  of SymN: vec2(1, (if n.height == 0: 1.0 else: n.height))
-  of BoxN: vec2(2, (if n.height == 0: max(2.0, n.inputs.len.float) else: n.height))
+  of SymN: v2(1, (if n.height == 0: 1.0 else: n.height))
+  of BoxN: v2(2, (if n.height == 0: max(2.0, n.inputs.len.float) else: n.height))
   of PackN:
     assert(n.pack != nil)
     let nports = max(n.pack.inputs.len, n.pack.outputs.len)
-    vec2(6, (if n.height == 0: max(2.0, nports.float * 2) else: n.height))
+    v2(6, (if n.height == 0: max(2.0, nports.float * 2) else: n.height))
 
 proc inputPortY*(n: Node, r: Rect, portIdx: int): float32 =
   case n.kind
@@ -639,7 +639,7 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
 
   # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch
-  var starters: seq[tuple[p: Point2, dir: Vec2, count: int, color: Color]]
+  var starters: seq[tuple[p: Point2, dir: V2, count: int, color: Color]]
   for i, conn in allConns:
     if conn.pts.len < 2: continue
     block hasStarter:
@@ -725,14 +725,14 @@ proc drawRect(r: Rect) =
 
 
 proc drawComponents* =
-  doc.forEach (c: Connection, color: (Color|Foreground)||schemeTheme.foreground, thickness: opt Thickness):
+  doc.forEach (c: Connection, color: (Foreground|Color)||schemeTheme.foreground, thickness: opt Thickness):
     for i in 0..<(c.len-1):
       if has Thickness:
         doc.add lineSection(c[i], c[i + 1]), Thickness thickness, color
       else:
         doc.add lineSection(c[i], c[i + 1]), color
 
-  doc.forEach (b: Branch, color: (Color|Foreground)||schemeTheme.foreground):
+  doc.forEach (b: Branch, color: (Foreground|Color)||schemeTheme.foreground):
     doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius):
       Foreground color
       Background color
@@ -794,7 +794,7 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
+          doc.add lineSection(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
 
       for i, outN in n.pack.outputs:
         let y = r.y + i.float * outH
@@ -808,7 +808,7 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + vec2(-0.5, -0.5), textPos + vec2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
+          doc.add lineSection(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
           doc.add circle(point2(r.x + 6, y + outH/2), radius = schemeTheme.negationCircleRadius):
             Foreground schemeTheme.foreground
             Background schemeTheme.background

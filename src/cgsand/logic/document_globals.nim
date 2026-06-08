@@ -1,6 +1,5 @@
 import pkg/pixie/[fonts]
-import ../lib/sandbox except Mat4, mat4, Vec4, Vec3, Vec2, vec2, vec3, vec4
-import ../lib/[text]
+import ../lib/[sandbox, text]
 
 
 type

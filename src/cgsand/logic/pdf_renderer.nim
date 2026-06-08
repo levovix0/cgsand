@@ -59,8 +59,8 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
   proc renderWorld(o: var PdfWriter, w: World, wGlobals: DocumentGlobals, extraT: DMat4) =
     w.forEach (line: LineSection, color: (Foreground|Color)||wGlobals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
       let ct = extraT * t
-      let a = ct * sandbox.Vec2(line.startPoint).vec2
-      let b = ct * sandbox.Vec2(line.endPoint).vec2
+      let a = ct * line.startPoint.V2.vec2
+      let b = ct * line.endPoint.V2.vec2
       o.pages[pi].drawLine(
         toPagePos(a),
         toPagePos(b),

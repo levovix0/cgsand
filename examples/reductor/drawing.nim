@@ -1,6 +1,7 @@
 import sandbox, geom2d
 import pkg/[bumpy]
 import ../shafts/[shafts]
+import ./bearings
 
 
 type
@@ -9,6 +10,9 @@ type
     sketch*: World
     gear*: ShaftSegment
     pos*: Point2
+    entity*: EntityId
+    bearing*: BearingParams
+    bearingEnt*: array[2, EntityId]
 
 
 var mmScale = 1e-3
@@ -34,6 +38,18 @@ proc sketch*(shaft: Shaft, dimensions: World = nil): World =
     setShaftsGlobals(globals)
     draw(shaft, dimensions = dimensions, scale = 1)
 
+
+proc segmentX*(shaft: Shaft, segmentI: int, p = PositionAtLeft): float =
+  result = 0
+  for i, seg in shaft.segments:
+    if i == segmentI:
+      case p
+      of PositionAtLeft: return result
+      of PositionAtCenter: return result + seg.length/2
+      of PositionAtRight: return result + seg.length
+      else: return result
+    result += seg.length
+
 proc segmentX*(shaft: Shaft, segment: ShaftSegment): float =
   result = 0
   for seg in shaft.segments:
@@ -46,19 +62,37 @@ proc gearPitchDiameter*(x: ShaftEx): float =
   x.gear.section.gear.pitchDiameter
 
 
+proc ceil(x: float, step: float): float =
+  ceil(x / step) * step
+
+
 
 mainModule:
   var fastShaft = ShaftEx()
   var slowShaft = ShaftEx()
 
-  doc[globals, CanvasSettings].margin = vec2(10.mm, 10.mm)
+  doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
 
   fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm)
   slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm)
 
-  let bead = 22.5.mm  # длинна буртика
-  let bearingLength = 25.mm  # B подшипника
+  fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm).autoComputeParams
+  slowShaft.bearing = BearingDesc(d: 55.mm, D: 120.mm, B: 29.mm, r: 3.mm).autoComputeParams
+
+
+  let axial_distance = fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
+  let wall_thickness: float =
+    if axial_distance <= 80: 6.mm
+    elif axial_distance <= 180: 8.mm
+    elif axial_distance <= 280: 10.mm
+    elif axial_distance <= 355: 12.mm
+    elif axial_distance <= 450: 14.mm
+    else: 16.mm
+  
+  let padding = (wall_thickness * 1.5).ceil(5.mm)
+  let bead = padding
   let slowShaftBead = (fastShaft.gear.length - slowShaft.gear.length)/2 + bead
+
 
   let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)
   let fillet = ShaftConjunction(kind: Fillet, radius: 2.mm)
@@ -66,10 +100,10 @@ mainModule:
     segments: @[
       cylindricSegment(d = 40.mm, l = 82.mm, left = bevel, right = fillet),
       cylindricSegment(d = 45.mm, l = 87.mm),
-      cylindricSegment(d = 50.mm, l = bead),
+      cylindricSegment(d = 53.mm, l = bead),  # ! was extended so bearings has a detent
       fastShaft.gear,
-      cylindricSegment(d = 50.mm, l = bead),
-      cylindricSegment(d = 45.mm, l = bearingLength + 5.mm, right = bevel),
+      cylindricSegment(d = 53.mm, l = bead),  # ! was extended so bearings has a detent
+      cylindricSegment(d = 45.mm, l = fastShaft.bearing.B + 5.mm, right = bevel),
     ]
   )
 
@@ -79,7 +113,7 @@ mainModule:
       cylindricSegment(d = 55.mm, l = 79.mm),
       cylindricSegment(d = 70.mm, l = slowShaftBead),
       slowShaft.gear,
-      cylindricSegment(d = 55.mm, l = slowShaftBead + bearingLength + 5.mm, right = bevel),
+      cylindricSegment(d = 55.mm, l = slowShaftBead + slowShaft.bearing.B + 5.mm, right = bevel),
     ]
   )
 
@@ -87,17 +121,46 @@ mainModule:
   slowShaft.sketch = sketch slowShaft.shaft
 
   fastShaft.pos = point2(0, 0)
-  slowShaft.pos = point2(-(fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2), 0)
+  slowShaft.pos = point2(-axial_distance, 0)
 
-  # doc.add rect()
 
-  doc.add SubWorld fastShaft.sketch:
+  fastShaft.entity = doc.spawn SubWorld fastShaft.sketch:
     Position2 fastShaft.pos
-    Transform3 (rotateZ(Pi/2) * translate(vec3(-fastShaft.shaft.segmentX(fastShaft.gear) - fastShaft.gear.length/2, 0, 0)))
+    Transform3 (rotateZ(Pi/2) * translate(v3(-fastShaft.shaft.segmentX(fastShaft.gear) - fastShaft.gear.length/2, 0, 0)))
 
-  doc.add SubWorld slowShaft.sketch:
+  slowShaft.entity = doc.spawn SubWorld slowShaft.sketch:
     Position2 slowShaft.pos
-    Transform3 (rotateZ(-Pi/2) * translate(vec3(-slowShaft.shaft.segmentX(slowShaft.gear) - slowShaft.gear.length/2, 0, 0)))
+    Transform3 (rotateZ(-Pi/2) * translate(v3(-slowShaft.shaft.segmentX(slowShaft.gear) - slowShaft.gear.length/2, 0, 0)))
+
+  
+  fastShaft.bearingEnt[0] = doc.spawn SubWorld fastShaft.bearing.sketch(hideBackLines = true):
+    Position2 fastShaft.pos + v2(0, fastShaft.shaft.segmentX(1, PositionAtRight) - fastShaft.bearing.B/2 - fastShaft.shaft.segmentX(3, PositionAtCenter))
+    Transform3 rotateZ(-Pi/2)
+
+  fastShaft.bearingEnt[1] = doc.spawn SubWorld fastShaft.bearing.sketch(hideBackLines = true):
+    Position2 fastShaft.pos + v2(0, fastShaft.shaft.segmentX(5, PositionAtLeft) + fastShaft.bearing.B/2 - fastShaft.shaft.segmentX(3, PositionAtCenter))
+    Transform3 rotateZ(-Pi/2)
+
+  
+  slowShaft.bearingEnt[0] = doc.spawn SubWorld slowShaft.bearing.sketch(hideBackLines = true):
+    Position2 slowShaft.pos + v2(0, fastShaft.shaft.segmentX(1, PositionAtRight) - slowShaft.bearing.B/2 - fastShaft.shaft.segmentX(3, PositionAtCenter))
+    Transform3 rotateZ(-Pi/2)
+
+  slowShaft.bearingEnt[1] = doc.spawn SubWorld slowShaft.bearing.sketch(hideBackLines = true):
+    Position2 slowShaft.pos + v2(0, fastShaft.shaft.segmentX(5, PositionAtLeft) + slowShaft.bearing.B/2 - fastShaft.shaft.segmentX(3, PositionAtCenter))
+    Transform3 rotateZ(-Pi/2)
+  
+  let shaftsBounds = doc.entityBounds(fastShaft.bearingEnt[0]) + doc.entityBounds(slowShaft.entity)
+
+
+  let innerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2), 1.mm)
+  draw innerBox
+
+  # todo: clip
+  let outerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2 + wall_thickness*2, fastShaft.gear.length + padding*2 + wall_thickness*2), 1.mm + wall_thickness)
+  draw outerBox, thickness = hiddenLine
+    
+
 
   doc.drawRects()
 
