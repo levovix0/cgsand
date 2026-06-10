@@ -1,17 +1,26 @@
 import std/[options, math, tables]
-import pkg/[ecs, vmath]
+import pkg/[ecs, vmath, bumpy]
 import pkg/pixie/paths
 import pkg/pixie/[fonts]
 import pkg/toscel/fonts as toscelFonts
-import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl]
+import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl, hatching]
 import pkg/sigeo/grids/[extrusions, smoothshading]
 import ./[bounds, doclayout, scripts, document_globals]
 import ../lib/[sandbox, geom2d]
 
 
 type
-  Grid3MeshCache* = ref object
-    entries: Table[pointer, Mesh]
+  MeshCache* = ref object
+    polygonalSurface3*: Table[(pointer, EntityId), Mesh]
+    pathStroke*: Table[(pointer, EntityId), Mesh]
+    pathFill*: Table[(pointer, EntityId), Mesh]
+
+
+template cache*(tabl: var Table[(pointer, EntityId), Mesh], world: World, ent: EntityId, orCreate: Mesh): var Mesh =
+  let mesh = tabl.mgetOrPut((cast[pointer](world), ent), Mesh()).addr
+  if mesh[].vao == nil:
+    mesh[] = orCreate
+  mesh[]
 
 
 proc grid3ToMesh(grid: Grid3): Mesh =
@@ -32,6 +41,24 @@ proc grid3ToMesh(grid: Grid3): Mesh =
   for i, idx in tri.indices:
     glIdx[i] = GlUint(idx)
   newMesh(verts, glIdx)
+
+
+
+proc drawHatchedPath(
+  ctx: DrawContext,
+  mesh: Mesh, hatching: Hatching,
+  fg: Color, bg: Color,
+  thickness: Thickness,
+  transform: Mat4
+) =
+  ctx.fillHatching(
+    mesh = mesh,
+    color1 = fg, color2 = bg,
+    dir = transform.mat3 * vec2(1, 0).rotate(hatching.angle).vec3(0),
+    l1 = thickness, l2 = max(0, hatching.period - thickness),
+    transform = transform,
+  )
+
 
 
 proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirection: AxisYDirection): Mat4 =
@@ -59,7 +86,7 @@ proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirecti
   )
 
 
-proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none float32, transform = mat4()) =
+proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none Thickness, transform = mat4()) =
   if thickness.isSome:
     # todo: find simpler way to make lines same thickness, independent of their direction
     let a = obj.startPoint.V2.vec2.vec3(0)
@@ -107,7 +134,7 @@ proc draw2dWorld*(
   w: World,
   viewport, projection: Mat4,
   pixelsPerUnit: float32,
-  meshCache: Grid3MeshCache,
+  meshCache: MeshCache,
 ) =
   ## draws the 2d objects of a world using the given viewport and projection
   ## does not touch GL state or background — caller is responsible for that
@@ -122,15 +149,22 @@ proc draw2dWorld*(
 
   let globals = w.documentGlobals
 
-  w.forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
-    let thk =
-      if has PixelThickness: some(pixThick / pixelsPerUnit)
-      elif has Thickness: some thickness
-      else: none float32
-    drawLineSection(ctx, line, color, thk, transform = mat4(transform3))
+
+  template selectThickness: Option[Thickness] {.dirty.} =
+    if has PixelThickness: some(the(PixelThickness) / pixelsPerUnit)
+    elif has Thickness: some the Thickness
+    else: none Thickness
+  
+  template cache(mesh: Mesh, to: untyped): Mesh =
+    meshCache.to.cache(w, the EntityId, mesh)
 
 
-  w.forEach (curve: CircleArc, opt PointCount, opt Color, opt Background, opt Foreground, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+  w.forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+    let thk = selectThickness()
+    drawLineSection(ctx, line, color, thk, transform = mat4(transform))
+
+
+  w.forEach (curve: CircleArc, opt PointCount, opt Color|Background|Foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
     let screenRadius = float32(curve.radius) * pixelsPerUnit
     let count =
       if has PointCount: the PointCount
@@ -140,11 +174,8 @@ proc draw2dWorld*(
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    let thk =
-      if has PixelThickness: some(pixThick / pixelsPerUnit)
-      elif has Thickness: some thickness
-      else: none float32
-    let t3 = mat4(transform3)
+    let thk = selectThickness()
+    let t3 = mat4(transform)
 
     if curve.closed:
       if has Background:
@@ -158,32 +189,48 @@ proc draw2dWorld*(
           drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
 
 
-  w.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, opt PointCount, thickness: opt Thickness, pixThick: opt PixelThickness, transform3: Transform3||dmat4()):
+  w.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, opt PointCount, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
     let screenRadius = float32(max(arc.size.x, arc.size.y) / 2) * pixelsPerUnit
     let count =
       if has PointCount: the PointCount
       else: clamp(int(screenRadius * abs(float32(arc.angularLength)) / 4.0), 12, 256)
     let points = arc.points(count)
-    let thk =
-      if has PixelThickness: some(pixThick / pixelsPerUnit)
-      elif has Thickness: some thickness
-      else: none float32
-    let t3 = mat4(transform3)
+    let thk = selectThickness()
+    let t3 = mat4(transform)
+
+    # todo: Background support (fill ellipse)
+
     for i in 0 ..< points.len - 1:
       drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
 
 
-  w.forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, transform3: Transform3||dmat4()):
-    let t3 = mat4(transform3)
-    let strokeWidth = if has PixelThickness: pixThick / pixelsPerUnit else: thickness
-    if has Background:
-      ctx.fillPath(path, color = the Background, transform = t3)
-    if has Foreground:
-      ctx.strokePath(path, color = the Foreground, strokeWidth=strokeWidth, transform = t3)
-    elif has Color:
-      ctx.strokePath(path, color = the Color, strokeWidth=strokeWidth, transform = t3)
-    elif not(has Background):
-      ctx.fillPath(path, color = globals.foreground, transform = t3)
+  w.forEach (path: Path, opt Foreground|Color|Background|Hatching, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+    let t3 = mat4(transform)
+    let thk = selectThickness()
+
+    if has Hatching:
+      var hatching = the Hatching
+      if hatching.period == 0:
+        hatching.period = path.computeBounds().wh.length / 20
+      let hthk = thk.get(otherwise = hatching.period/4)
+      
+      ctx.drawHatchedPath(
+        path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill),
+        hatching = hatching,
+        fg = (if has Color: the Color else: globals.foreground),
+        bg = (if has Background: the Background else: color(0, 0, 0, 0)),
+        thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
+        transform = t3,
+      )
+    elif has Background:
+      ctx.fill2dMeshFlat(path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill), color = the Background, transform = t3)
+    
+    if (has Foreground):
+      ctx.fill2dMeshFlat(path.toStrokeMesh(strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit).cache(pathStroke), color = the Foreground, transform = t3)
+    elif (has Color) and not(has Hatching):
+      ctx.fill2dMeshFlat(path.toStrokeMesh(strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit).cache(pathStroke), color = the Color, transform = t3)
+    elif not(has Background) and not(has Hatching):
+      ctx.fill2dMeshFlat(path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill), color = globals.foreground, transform = t3)
 
 
   w.forEach (
@@ -193,19 +240,19 @@ proc draw2dWorld*(
     posAt: PositionAt||PositionAtTopLeft,
     font: Typeface||globals.font,
     size: FontSize||globals.fontSize,
-    transform3: Transform3||dmat4(),
+    transform: Transform3||dmat4(),
   ):
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
       else: globals.foreground
-    drawDocText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform3))
+    drawDocText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform))
 
 
-  w.forEach (sub: SubWorld, pos: Position2, transform3: Transform3||dmat4()):
+  w.forEach (sub: SubWorld, pos: Position2, transform: Transform3||dmat4()):
     if sub == nil: continue
     let innerViewport = combine(
-      mat4(transform3),
+      mat4(transform),
       translate(vec3(pos.x, pos.y, 0)),
       viewport,
     )
@@ -229,7 +276,7 @@ proc draw3dWorld*(
   w: World,
   viewport, projection: Mat4,
   pixelsPerUnit: float32,
-  meshCache: Grid3MeshCache,
+  meshCache: MeshCache,
 ) =
   ## draws the 3d objects of a world using the given viewport and projection
   ## does not touch GL state — caller is responsible for that
@@ -243,17 +290,17 @@ proc draw3dWorld*(
   ctx.projection = projection
 
   let globals = w.documentGlobals
+  
+  template cache(mesh: Mesh, to: untyped): Mesh =
+    meshCache.to.cache(w, the EntityId, mesh)
 
 
-  w.forEach (surface: PolygonalSurface3, color: (Foreground|Color)||globals.foreground, transform3: Transform3||dmat4()):
+  w.forEach (EntityId, surface: PolygonalSurface3, color: (Foreground|Color)||globals.foreground, transform: Transform3||dmat4()):
     if surface == nil: continue
-    let key = cast[pointer](surface)
-    if key notin meshCache.entries:
-      meshCache.entries[key] = grid3ToMesh(surface[])
     ctx.fill3dMeshShadedByNormalsSingleSide(
-      meshCache.entries[key],
+      grid3ToMesh(surface[]).cache(polygonalSurface3),
       color = color,
-      transform = mat4(transform3),
+      transform = mat4(transform),
       lightDir = vec3(-0.8, -1, -1.2).normalize,
     )
 

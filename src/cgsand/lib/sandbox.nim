@@ -49,7 +49,7 @@ type
   Text* = string
     ## draws text
 
-  FontSize* = float64
+  FontSize* = float
     ## defines height of a line of text
 
 
@@ -61,11 +61,17 @@ type
     ## color of background of shape or document (can be added onto entity with CanvasSettings)
 
 
-  Thickness* = float32
+  Thickness* = float
     ## defines thickness of lines (attachable to 2d curves)
   
-  PixelThickness* = float32
+  PixelThickness* = float
     ## thickness of lines in pixels. Stays the same no matter how viewport transforms
+  
+
+  Hatching* = object
+    ## periodic hatching. Can be added to a Path
+    angle*: float = Pi/4
+    period*: float
 
 
   DarkTheme* = bool

@@ -20,7 +20,7 @@ proc `*`*(transform: M4, bounds: Bounds2): Bounds2 =
     result.addPoint((transform * v4(p.x, p.y, 0, 1)).xy)
 
 
-proc lineBounds*(line: LineSection, thickness: Option[float32]): Bounds2 =
+proc lineBounds*(line: LineSection, thickness: Option[Thickness]): Bounds2 =
   let a = line.startPoint.V2.vec2
   let b = line.endPoint.V2.vec2
   let halfThickness = if thickness.isSome: thickness.get / 2 else: 0'f32

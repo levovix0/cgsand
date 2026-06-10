@@ -1,4 +1,5 @@
 import sandbox, geom2d
+import pkg/pixie/paths
 import ./[drawingGlobals]
 
 
@@ -128,6 +129,11 @@ proc draw*(g: BearingParams, origin: Position2 = point2(), scale: float = 1, axi
       let pts = intersectionPointsParams(line, circles[i])
       sketch.add lineSection(line.startPoint, line.pointAtParam(pts[0].curveA)), mainLine
       sketch.add lineSection(line.pointAtParam(pts[1].curveA), line.endPoint), mainLine
+  
+  block:
+    var p = Path()
+    p.circle(0, 0, B/2)
+    sketch.add p, Hatching(), mainLine
 
 
 

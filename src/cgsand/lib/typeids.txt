@@ -19,5 +19,6 @@ SubWorld
 Color
 PixelThickness
 Path
+Hatching
 DarkTheme
 bool

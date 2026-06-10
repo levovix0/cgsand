@@ -1,9 +1,9 @@
 import std/[locks, math]
-import pkg/[ecs, shady]
+import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
-import pkg/rice/[primitives, antialiasing, transform]
+import pkg/rice/[primitives, antialiasing, transform, hatching]
 import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
 import ../lib/[sandbox]
 
@@ -18,7 +18,7 @@ type
     darkTheme: Property[bool]
     scriptOptLevel: Property[ScriptOptLevel]
     mode3d*: Property[bool]
-    grid3MeshCache: Grid3MeshCache
+    meshCache: MeshCache
     outputChannel*: Property[ptr Channel[string]]
 
 registerComponent DocumentView
@@ -32,29 +32,18 @@ proc fillHatchingRect(
   l1, l2: float32,
   transform: Mat4 = mat4()
 ) =
-  # todo: move to rice
-  let transform = (
-    transform *
-    translate(pos.vec3(0)) *
-    scale(size.vec3(1))
+  ctx.fillHatching(
+    mesh = ctx.rect,
+    color1 = color1, color2 = color2,
+    dir = dir.vec3(0),
+    l1 = l1, l2 = l2,
+    transform = combine(
+      scale(size.vec3(1)),
+      translate(pos.vec3(0)),
+      transform,
+      ctx.glToViewportMatrix,
+    ),
   )
-
-  let shader = ctx.makeShader:
-    proc vert =
-      var pos {.inp.}: Vec2
-      var uv {.out.}: Vec2
-      gl_Position = @(transform) * vec4(pos.x, pos.y, 0, 1)
-      uv = pos
-
-    proc frag =
-      var glCol {.outGl.}: Vec4
-      if (uv * @(size) + @(pos)).dot(@(dir.normalize.vec2)) mod (@(l1) + @(l2)) > @(l1):
-        glCol = @(color1.vec4)
-      else:
-        glCol = @(color2.vec4)
-
-  useAndPassUniforms shader
-  draw ctx.rect
 
 
 proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
@@ -151,17 +140,17 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
           color = globals.background,
         )
 
-      if this.grid3MeshCache == nil:
-        this.grid3MeshCache = Grid3MeshCache()
+      if this.meshCache == nil:
+        this.meshCache = MeshCache()
 
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
       
       glEnable(GL_DEPTH_TEST)
-      draw3dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.grid3MeshCache)
+      draw3dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.meshCache)
       glDisable(GL_DEPTH_TEST)
 
-      draw2dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.grid3MeshCache)
+      draw2dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.meshCache)
 
       glDisable(GlBlend)
     finally:
@@ -195,7 +184,7 @@ proc recompileScript*(this: DocumentView) =
     withLock this.script[].lock:
       if this.script[].stage != Idle:
         return  # ignore recompile request while still compiling
-  this.grid3MeshCache = nil
+  this.meshCache = nil
   let oldCache =
     if this.script[] != nil and this.script[].filename == currentScript[]:
       this.script[].cache

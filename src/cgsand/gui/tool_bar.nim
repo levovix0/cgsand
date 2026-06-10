@@ -1,7 +1,7 @@
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
-import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, fonts, listWidget]
+import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, listWidget]
 import ../logic/[config, pdf_renderer]
 import std/[os]
 import icons
