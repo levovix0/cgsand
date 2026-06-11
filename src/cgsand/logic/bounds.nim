@@ -17,7 +17,7 @@ proc `*`*(transform: M4, bounds: Bounds2): Bounds2 =
     v2(bounds.max.x, bounds.min.y),
     v2(bounds.max.x, bounds.max.y),
   ]:
-    result.addPoint((transform * v4(p.x, p.y, 0, 1)).xy)
+    result.add((transform * v4(p.x, p.y, 0, 1)).xy.Point2)
 
 
 proc lineBounds*(line: LineSection, thickness: Option[Thickness]): Bounds2 =
@@ -26,14 +26,14 @@ proc lineBounds*(line: LineSection, thickness: Option[Thickness]): Bounds2 =
   let halfThickness = if thickness.isSome: thickness.get / 2 else: 0'f32
 
   bounds2(
-    v2(min(a.x, b.x) - halfThickness, min(a.y, b.y) - halfThickness),
-    v2(max(a.x, b.x) + halfThickness, max(a.y, b.y) + halfThickness),
+    p2(min(a.x, b.x) - halfThickness, min(a.y, b.y) - halfThickness),
+    p2(max(a.x, b.x) + halfThickness, max(a.y, b.y) + halfThickness),
   )
 
 
 proc pointsBounds*(points: openArray[Point2]): Bounds2 =
   for p in points:
-    result.addPoint(p.V2)
+    result.add(p)
 
 
 proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface, fontSize: float64, axisYDirection: AxisYDirection = AxisYUp): Bounds2 =
@@ -46,8 +46,8 @@ proc textBounds*(text: string, pos: Position2, posAt: PositionAt, font: Typeface
   let minY = pos.y.float32 - box.h * yFactor
 
   bounds2(
-    v2(minX, minY),
-    v2(minX + box.w, minY + box.h),
+    p2(minX, minY),
+    p2(minX + box.w, minY + box.h),
   )
 
 
@@ -70,7 +70,7 @@ proc worldBoundsAlongAxis*(
 
   proc addBounds2(b: Bounds2) =
     if b.empty: return
-    for c in [b.min, v2(b.max.x, b.min.y), v2(b.min.x, b.max.y), b.max]:
+    for c in [b.min, p2(b.max.x, b.min.y), p2(b.min.x, b.max.y), b.max]:
       update(c.x * axis.x + c.y * axis.y)
 
   w.forEach (EntityId, line: LineSection, thickness: opt Thickness):

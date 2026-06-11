@@ -24,7 +24,7 @@ proc documentLayout*(w: World, globals: DocumentGlobals): DocumentLayout =
   let (yMin, yMax) = w.worldBoundsAlongAxis(v3(0, 1, 0), globals)
 
   if xMin <= xMax and yMin <= yMax:
-    result.contentBounds = bounds2(v2(xMin, yMin), v2(xMax, yMax))
+    result.contentBounds = bounds2(p2(xMin, yMin), p2(xMax, yMax))
 
   if globals.settings.autoSize and not result.contentBounds.empty:
     let margin = globals.settings.margin.v2
@@ -32,4 +32,4 @@ proc documentLayout*(w: World, globals: DocumentGlobals): DocumentLayout =
 
   else:
     let size = globals.settings.size.v2
-    result.pageBounds = bounds2(-size / 2, size / 2)
+    result.pageBounds = bounds2((-size / 2).Point2, (size / 2).Point2)

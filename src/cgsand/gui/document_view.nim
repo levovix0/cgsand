@@ -136,7 +136,7 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
           transform = scale vec3(1, this.w[] / this.h[], 1)
         )
         ctx.fillRect(
-          rect(layout.pageBounds.min.vec2, layout.pageBounds.size.vec2),
+          rect(layout.pageBounds.min.V2.vec2, layout.pageBounds.size.vec2),
           color = globals.background,
         )
 

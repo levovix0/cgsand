@@ -1,4 +1,5 @@
 import sandbox, geom2d
+import pkg/[vmath]
 import pkg/pixie/paths
 import ./[drawingGlobals]
 
@@ -30,7 +31,7 @@ type
       ## if zero, calculated automatically
   
   BearingParams* = object
-    ## images/bearing_geom.png
+    ## images/bearing_geom.jpg
     d*: float
     D*: float
     B*: float
@@ -84,6 +85,20 @@ converter autoComputeParams*(desc: BearingDesc): BearingParams =
 
 
 
+# todo: move to lib
+
+proc add*(p: var Path, c: LineSection) =
+  p.lineTo(c.startPoint.V2.vec2)
+  p.lineTo(c.endPoint.V2.vec2)
+
+proc add*(p: var Path, c: CircleArc) =
+  p.arc(c.center.x.float32, c.center.y.float32, c.radius, c.startAngle, c.endAngle, ccw = c.direction == counterclockwise)
+
+proc add*(p: var Path, c: EllipseArc) =
+  ## todo
+
+
+
 proc draw*(g: BearingParams, origin: Position2 = point2(), scale: float = 1, axis: V2 = v2(1, 0), sketch = doc, hideBackLines = false) =
   let x = axis.normalize
   let y = x.rotate(Pi/2)
@@ -120,21 +135,39 @@ proc draw*(g: BearingParams, origin: Position2 = point2(), scale: float = 1, axi
   for circle in circles: sketch.add circle, mainLine
 
   for i, cy in [-d_cp/2, d_cp/2]:
-    for y in [
+    let rr = [r_t, r_b][i]
+
+    for j, y in [
       cy - d_w/2 + s,
       cy + d_w/2 - s,
     ]:
       # todo: cutContour
       let line = lineSection(v2(-B/2, y).pt, v2(B/2, y).pt)
       let pts = intersectionPointsParams(line, circles[i])
-      sketch.add lineSection(line.startPoint, line.pointAtParam(pts[0].curveA)), mainLine
-      sketch.add lineSection(line.pointAtParam(pts[1].curveA), line.endPoint), mainLine
-  
-  block:
-    var p = Path()
-    p.circle(0, 0, B/2)
-    sketch.add p, Hatching(), mainLine
+      let l = lineSection(line.startPoint, line.pointAtParam(pts[0].curveA))
+      let r = lineSection(line.pointAtParam(pts[1].curveA), line.endPoint)
+      doc.add l, mainLine
+      doc.add r, mainLine
 
+      when true:
+        var arc = circles[i].cut(pts[0].curveB, pts[1].curveB)
+
+        var p = newPath()
+        if j == 0:
+          p.moveTo(l.pointAtParam(0).V2.vec2)
+          p.add l; p.add arc; p.add r
+          p.add rr.arcs[topRight]
+          p.add rr.lines[top].reverse
+          p.add rr.arcs[topLeft]
+          p.closePath()
+        else:
+          p.moveTo(l.pointAtParam(0).V2.vec2)
+          p.add l; p.add arc; p.add r
+          p.add rr.arcs[bottomRight].reverse
+          p.add rr.lines[bottom].reverse
+          p.add rr.arcs[bottomLeft].reverse
+          p.closePath()
+        doc.add p, Hatching(), hatchingLine
 
 
 proc sketch*(g: BearingParams, hideBackLines = false): World =

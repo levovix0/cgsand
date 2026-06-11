@@ -74,7 +74,7 @@ proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirecti
       1
 
   combine(
-    translate(-pageBounds.center.vec3(0)),
+    translate(-pageBounds.center.V2.vec3(0)),
     scale(y = (if axisYDirection == AxisYDown: -1 else: 1)),
     scale vec3(2/cmax, 2/cmax, 1),
     (
@@ -207,6 +207,8 @@ proc draw2dWorld*(
   w.forEach (path: Path, opt Foreground|Color|Background|Hatching, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
     let t3 = mat4(transform)
     let thk = selectThickness()
+    # todo: wrong pixelScale
+    # todo: line thickness is wrongly cached into mesh
 
     if has Hatching:
       var hatching = the Hatching
@@ -226,9 +228,13 @@ proc draw2dWorld*(
       ctx.fill2dMeshFlat(path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill), color = the Background, transform = t3)
     
     if (has Foreground):
-      ctx.fill2dMeshFlat(path.toStrokeMesh(strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit).cache(pathStroke), color = the Foreground, transform = t3)
+      ctx.fill2dMeshFlat(path.toStrokeMesh(
+        strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
+      ).cache(pathStroke), color = the Foreground, transform = t3)
     elif (has Color) and not(has Hatching):
-      ctx.fill2dMeshFlat(path.toStrokeMesh(strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit).cache(pathStroke), color = the Color, transform = t3)
+      ctx.fill2dMeshFlat(path.toStrokeMesh(
+        strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
+      ).cache(pathStroke), color = the Color, transform = t3)
     elif not(has Background) and not(has Hatching):
       ctx.fill2dMeshFlat(path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill), color = globals.foreground, transform = t3)
 
@@ -310,7 +316,7 @@ proc entityBoundsCallback(world: World, eid: EntityId): Bounds2 {.cdecl.} =
   let globals = world.documentGlobals
   let (minX, maxX) = world.worldBoundsAlongAxis(v3(1, 0, 0), globals, filter = proc(x: EntityId): bool = x == eid)
   let (minY, maxY) = world.worldBoundsAlongAxis(v3(0, 1, 0), globals, filter = proc(x: EntityId): bool = x == eid)
-  bounds2(v2(minX, minY), v2(maxX, maxY))
+  bounds2(p2(minX, minY), p2(maxX, maxY))
 
 proc worldBoundsCallback(world: World): Bounds2 {.cdecl.} =
   let g = world.documentGlobals

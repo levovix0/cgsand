@@ -93,40 +93,6 @@ type
     ## ref-wrapped Grid3 for ECS component storage; use polygonalSurface3() to construct
 
 
-  Bounds2* = object
-    ## bounding box in document coordinates
-    empty*: bool = true
-    min*, max*: V2
-
-
-proc bounds2*(min, max: V2): Bounds2 =
-  Bounds2(empty: false, min: min, max: max)
-
-proc size*(b: Bounds2): V2 = b.max - b.min
-proc center*(b: Bounds2): V2 = (b.min + b.max) / 2
-
-proc addPoint*(b: var Bounds2, p: V2) =
-  if b.empty:
-    b = bounds2(p, p)
-    return
-  b.min.x = min(b.min.x, p.x)
-  b.min.y = min(b.min.y, p.y)
-  b.max.x = max(b.max.x, p.x)
-  b.max.y = max(b.max.y, p.y)
-
-proc add*(b: var Bounds2, other: Bounds2) =
-  if other.empty: return
-  b.addPoint(other.min)
-  b.addPoint(other.max)
-
-proc `+`*(a, b: Bounds2): Bounds2 =
-  result = a
-  result.add b
-
-proc expanded*(b: Bounds2, margin: V2): Bounds2 =
-  if b.empty: return b
-  bounds2(b.min - margin, b.max + margin)
-
 
 converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
   new result
