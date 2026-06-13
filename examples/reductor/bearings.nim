@@ -1,4 +1,4 @@
-import sandbox, geom2d
+import sandbox, geom2d, paths
 import pkg/[vmath]
 import pkg/pixie/paths
 import ./[drawingGlobals]
@@ -82,20 +82,6 @@ converter autoComputeParams*(desc: BearingDesc): BearingParams =
   O.s = 0.15 * O.d_w
 
   O.r = if desc.r != 0: desc.r else: (desc.D - desc.d - O.d_w) / 16
-
-
-
-# todo: move to lib
-
-proc add*(p: var Path, c: LineSection) =
-  p.lineTo(c.startPoint.V2.vec2)
-  p.lineTo(c.endPoint.V2.vec2)
-
-proc add*(p: var Path, c: CircleArc) =
-  p.arc(c.center.x.float32, c.center.y.float32, c.radius, c.startAngle, c.endAngle, ccw = c.direction == counterclockwise)
-
-proc add*(p: var Path, c: EllipseArc) =
-  ## todo
 
 
 

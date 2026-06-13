@@ -1,25 +1,40 @@
-import sandbox, geom2d, tabledef
+import sandbox, geom2d, tabledef, paths
+import std/[sequtils]
 import pkg/[vmath]
 import ./[drawingGlobals]
 
 
 type
   CapDesc* = object
-    shaft_d*: float
-      ## diameter of a shaft segment and the inner diameter of a cuff, m
-    
     D*: float
-      ## outer diameter of a cuff, m
+      ## base cap diameter, m
     
     h*: float
       ## width of a cuff, m
     
+
+    hole*: bool
+      ## should a cup have a hole for the shaft
+
+    shaft_d*: float
+      ## diameter of a shaft segment and the inner diameter of a cuff, m
+    
+    cuff_D*: float
+      ## outer diameter of a cuff, m
+    
+    cuff_h*: float
+      ## width of a cuff, m
+    
+
   CapGeomParams* = object
     ## all dimensions are in meters
     ## images/cap_geom.jpg
-    shaft_d*: float
     D*: float
     h*: float
+    hole*: bool
+    shaft_d*: float
+    cuff_D*: float
+    cuff_h*: float
     
     D1*: float
     D2*: float
@@ -27,10 +42,13 @@ type
     d*: float
     d1*: float
     M*: float
-    n*: float
+    n*: int
     H*: float
     s*: float
 
+
+
+proc mm(v: float): float = v / 1e3
 
 
 columnTable cap_dimensions, `const`:
@@ -46,20 +64,23 @@ columnTable cap_dimensions, `const`:
 
 converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
   template O: var CapGeomParams = result
-  O.shaft_d = desc.shaft_d
   O.D = desc.D
   O.h = desc.h
+  O.hole = desc.hole
+  O.shaft_d = desc.shaft_d
+  O.cuff_D = desc.cuff_D
+  O.cuff_h = desc.cuff_h
   for i, maxD in cap_dimensions_D:
-    if maxD.float > desc.D:
-      O.D1 = desc.D + cap_dimensions_D1[i].float
-      O.D2 = desc.D + cap_dimensions_D2[i].float
-      O.D3 = desc.D + cap_dimensions_D3[i].float
-      O.d = cap_dimensions_ld[i].float
-      O.d1 = cap_dimensions_ld1[i].float
-      O.M = cap_dimensions_M[i].float
-      O.n = cap_dimensions_n[i].float
-      O.H = cap_dimensions_H[i].float
-      O.s = cap_dimensions_s[i].float
+    if maxD.float.mm > desc.D:
+      O.D1 = desc.D + cap_dimensions_D1[i].float.mm
+      O.D2 = desc.D + cap_dimensions_D2[i].float.mm
+      O.D3 = desc.D + cap_dimensions_D3[i].float.mm
+      O.d = cap_dimensions_ld[i].float.mm
+      O.d1 = cap_dimensions_ld1[i].float.mm
+      O.M = cap_dimensions_M[i].float.mm
+      O.n = cap_dimensions_n[i]
+      O.H = cap_dimensions_H[i].float.mm
+      O.s = cap_dimensions_s[i].float.mm
 
 
 
@@ -69,10 +90,81 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
   proc sc(v: float): float = v * scale
   proc vt(v: V2): V2 = v.x.sc * x + v.y.sc * y
   proc pt(v: V2): Point2 = origin + v.vt
+  proc negY(v: V2): V2 = v2(v.x, -v.y)
   if sketch == nil: return
+  echo g
 
-  # let contour = [
-    
-  # ]
+  let s = (if g.hole: 4.mm else: g.s)
 
+  var contour = @[
+    v2(0, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
+    v2(0, g.D1/2 - g.d1/2),  # 1
+    v2(2.mm, g.D1/2 - g.d1/2),
+    v2(2.mm, g.D1/2 - g.d/2),  # 3
+    v2(2.mm, g.D1/2 + g.d/2),  # 4
+    v2(2.mm, g.D1/2 + g.d1/2),
+    v2(0, g.D1/2 + g.d1/2),  # 6
+    v2(0, g.D2/2),
+    v2(g.H, g.D2/2),
+    v2(g.H, g.D1/2 + g.d/2),
+    v2(g.H, g.D1/2 - g.d/2),
+    v2(g.H, g.D/2),
+    v2(g.H + g.h, g.D/2),
+    v2(g.H + g.h, g.D3/2),
+    v2(s, g.D3/2),  # 14
+    v2(s, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
+  ]
+
+  if g.hole:
+    contour[14..14] = @[
+      v2(s + g.h, g.D3/2),
+      v2(s + g.h, g.cuff_D/2),
+      v2(s, g.cuff_D/2),
+    ]
+
+  proc addLineSection(a, b: int) =
+    sketch.add lineSection(contour[a].pt, contour[b].pt), mainLine
+    sketch.add lineSection(contour[a].negY.pt, contour[b].negY.pt), mainLine
+
+  proc addRevolutionLine(a: int) =
+    let zero = (if hideBackLines: g.shaft_d/2 else: 0)
+    sketch.add lineSection(contour[a].pt, v2(contour[a].x, zero).pt), mainLine
+    sketch.add lineSection(contour[a].negY.pt, v2(contour[a].x, zero).negY.pt), mainLine
+
+  proc addHatching(i: openArray[int]) =
+    for up in [false, true]:
+      var p = newPath()
+      p.moveTo (if up: contour[i[0]].negY else: contour[i[0]]).pt.V2.vec2
+      for i2 in countup(0, i.high-1):
+        p.add lineSection(
+          (if up: contour[i[i2]].negY   else: contour[i[i2]]).pt,
+          (if up: contour[i[i2+1]].negY else: contour[i[i2+1]]).pt
+        )
+      p.closePath()
+      sketch.add p, Hatching(period: g.D / 40 * scale), hatchingLine
+
+  for i in 0 ..< (if g.hole: contour.len else: contour.len - 1):
+    addLineSection i, (i+1) mod contour.len
+  
+  addLineSection 1, 6
+  addLineSection 3, 10
+  addLineSection 4, 9
+  addRevolutionLine 0
+  addRevolutionLine contour.high - 2
+  
+  if g.hole:
+    addRevolutionLine contour.high
+    addRevolutionLine contour.high - 4
+  
+  addHatching toSeq(0..3) & toSeq(10..contour.high)
+  addHatching toSeq(4..9)
+
+  # todo: fillets
+
+
+
+mainModule:
+  draw CapDesc(D: 100.mm, h: 20.mm), scale = 100
+  draw CapDesc(D: 100.mm, h: 20.mm, hole: true, shaft_d: 40.mm, cuff_D: 60.mm, cuff_h: 10.mm),
+    origin = p2(60.mm * 100, 0), scale = 100#, hideBackLines=true
 
