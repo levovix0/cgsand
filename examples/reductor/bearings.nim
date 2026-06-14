@@ -12,8 +12,8 @@ type
     topLeft, bottomLeft, bottomRight, topRight
 
   RoundRect2Geom* = object
-    lines*: array[RoundRect2Geom_LineIndex, LineSection]
-    arcs*: array[RoundRect2Geom_ArcIndex, CircleArc]
+    lines*: array[RoundRect2Geom_LineIndex, LineSection2]
+    arcs*: array[RoundRect2Geom_ArcIndex, CircleArc2]
 
   BearingDesc* = object
     d*: float
@@ -82,6 +82,7 @@ converter autoComputeParams*(desc: BearingDesc): BearingParams =
   O.s = 0.15 * O.d_w
 
   O.r = if desc.r != 0: desc.r else: (desc.D - desc.d - O.d_w) / 16
+  #! note: this autocompute is visual-only, check bearing tables for the correct fillet radius values
 
 
 

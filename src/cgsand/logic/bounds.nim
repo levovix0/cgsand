@@ -20,7 +20,7 @@ proc `*`*(transform: M4, bounds: Bounds2): Bounds2 =
     result.add((transform * v4(p.x, p.y, 0, 1)).xy.Point2)
 
 
-proc lineBounds*(line: LineSection, thickness: Option[Thickness]): Bounds2 =
+proc lineBounds*(line: LineSection2, thickness: Option[Thickness]): Bounds2 =
   let a = line.startPoint.V2.vec2
   let b = line.endPoint.V2.vec2
   let halfThickness = if thickness.isSome: thickness.get / 2 else: 0'f32
@@ -73,17 +73,17 @@ proc worldBoundsAlongAxis*(
     for c in [b.min, p2(b.max.x, b.min.y), p2(b.min.x, b.max.y), b.max]:
       update(c.x * axis.x + c.y * axis.y)
 
-  w.forEach (EntityId, line: LineSection, thickness: opt Thickness):
+  w.forEach (EntityId, line: LineSection2, thickness: opt Thickness):
     if not filter(the EntityId): continue
     addBounds2(lineBounds(line, if has Thickness: some thickness else: none Thickness))
 
-  w.forEach (EntityId, curve: CircleArc, count: PointCount||20):
+  w.forEach (EntityId, curve: CircleArc2, count: PointCount||20):
     if not filter(the EntityId): continue
     for pt in curve.points(count):
       let v = pt.V2.vec2
       update(v.x * axis.x + v.y * axis.y)
 
-  w.forEach (EntityId, curve: EllipseArc, count: PointCount||32):
+  w.forEach (EntityId, curve: EllipseArc2, count: PointCount||32):
     if not filter(the EntityId): continue
     for pt in curve.points(count):
       let v = pt.V2.vec2

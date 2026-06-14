@@ -26,6 +26,9 @@ type
       ## width of a cuff, m
     
 
+    cutoff*: tuple[top, bottom: float]
+    
+
   CapGeomParams* = object
     ## all dimensions are in meters
     ## images/cap_geom.jpg
@@ -35,6 +38,7 @@ type
     shaft_d*: float
     cuff_D*: float
     cuff_h*: float
+    cutoff*: tuple[top, bottom: float]
     
     D1*: float
     D2*: float
@@ -64,12 +68,17 @@ columnTable cap_dimensions, `const`:
 
 converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
   template O: var CapGeomParams = result
+  
   O.D = desc.D
   O.h = desc.h
+
   O.hole = desc.hole
   O.shaft_d = desc.shaft_d
   O.cuff_D = desc.cuff_D
   O.cuff_h = desc.cuff_h
+
+  O.cutoff = desc.cutoff
+  
   for i, maxD in cap_dimensions_D:
     if maxD.float.mm > desc.D:
       O.D1 = desc.D + cap_dimensions_D1[i].float.mm
@@ -84,7 +93,15 @@ converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
 
 
 
+proc bounds*(g: CapGeomParams): Bounds2 =
+  bounds2(p2(0, -g.D2/2), p2(g.H + g.h, g.D2/2))
+
+
+
 proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axis: V2 = v2(1, 0), sketch = doc, hideBackLines = false) =
+  type DrawIf = enum
+    Always, Cutoff, NotCutoff
+
   let x = axis.normalize
   let y = x.rotate(Pi/2)
   proc sc(v: float): float = v * scale
@@ -92,7 +109,6 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
   proc pt(v: V2): Point2 = origin + v.vt
   proc negY(v: V2): V2 = v2(v.x, -v.y)
   if sketch == nil: return
-  echo g
 
   let s = (if g.hole: 4.mm else: g.s)
 
@@ -121,50 +137,82 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
       v2(s + g.h, g.cuff_D/2),
       v2(s, g.cuff_D/2),
     ]
+  let last = contour.high
 
-  proc addLineSection(a, b: int) =
-    sketch.add lineSection(contour[a].pt, contour[b].pt), mainLine
-    sketch.add lineSection(contour[a].negY.pt, contour[b].negY.pt), mainLine
+  contour.add @[
+    v2(0, g.D2/2 - g.cutoff.bottom),
+    v2(g.H, g.D2/2 - g.cutoff.bottom),
+    v2(0, g.D2/2 - g.cutoff.top),
+    v2(g.H, g.D2/2 - g.cutoff.top),
+  ]
+
+  proc addLineSection(a, b: int, drawIf = Always, parts: openArray[bool] = [false, true]) =
+    if ((drawIf == Always) or ((g.cutoff.bottom != 0) == (drawIf == Cutoff))) and (false in parts):
+      sketch.add lineSection(contour[a].pt, contour[b].pt), mainLine
+    if ((drawIf == Always) or ((g.cutoff.top != 0) == (drawIf == Cutoff))) and (true in parts):
+      sketch.add lineSection(contour[a].negY.pt, contour[b].negY.pt), mainLine
 
   proc addRevolutionLine(a: int) =
     let zero = (if hideBackLines: g.shaft_d/2 else: 0)
     sketch.add lineSection(contour[a].pt, v2(contour[a].x, zero).pt), mainLine
     sketch.add lineSection(contour[a].negY.pt, v2(contour[a].x, zero).negY.pt), mainLine
 
-  proc addHatching(i: openArray[int]) =
-    for up in [false, true]:
-      var p = newPath()
-      p.moveTo (if up: contour[i[0]].negY else: contour[i[0]]).pt.V2.vec2
-      for i2 in countup(0, i.high-1):
-        p.add lineSection(
-          (if up: contour[i[i2]].negY   else: contour[i[i2]]).pt,
-          (if up: contour[i[i2+1]].negY else: contour[i[i2+1]]).pt
-        )
-      p.closePath()
-      sketch.add p, Hatching(period: g.D / 40 * scale), hatchingLine
+  proc addHatching(i: openArray[int], drawIf = Always, parts: openArray[bool] = [false, true]) =
+    for up in parts:
+      if (drawIf == Always) or (([g.cutoff.bottom, g.cutoff.top][up.int] != 0) == (drawIf == Cutoff)):
+        var p = newPath()
+        p.moveTo (if up: contour[i[0]].negY else: contour[i[0]]).pt.V2.vec2
+        for i2 in countup(0, i.high-1):
+          p.add lineSection(
+            (if up: contour[i[i2]].negY   else: contour[i[i2]]).pt,
+            (if up: contour[i[i2+1]].negY else: contour[i[i2+1]]).pt
+          )
+        p.closePath()
+        sketch.add p, Hatching(period: g.D / 40 * scale), hatchingLine
 
-  for i in 0 ..< (if g.hole: contour.len else: contour.len - 1):
-    addLineSection i, (i+1) mod contour.len
+  for i in 0 ..< (if g.hole: (last + 1) else: last):
+    addLineSection i, (i+1) mod (last + 1), drawIf = (if i in 1..10: NotCutoff else: Always)
   
-  addLineSection 1, 6
-  addLineSection 3, 10
-  addLineSection 4, 9
+  addLineSection 1, 6, drawIf = NotCutoff
+  addLineSection 3, 10, drawIf = NotCutoff
+  addLineSection 4, 9, drawIf = NotCutoff
   addRevolutionLine 0
-  addRevolutionLine contour.high - 2
+  addRevolutionLine last - 2
+
+  addLineSection 1, contour.high-3, drawIf = Cutoff, parts = [false]
+  addLineSection 1, contour.high-1, drawIf = Cutoff, parts = [true]
+  addLineSection contour.high-3, contour.high-2, drawIf = Cutoff, parts = [false]
+  addLineSection contour.high-1, contour.high, drawIf = Cutoff, parts = [true]
+  addLineSection contour.high-2, 11, drawIf = Cutoff, parts = [false]
+  addLineSection contour.high, 11, drawIf = Cutoff, parts = [true]
   
   if g.hole:
-    addRevolutionLine contour.high
-    addRevolutionLine contour.high - 4
+    addRevolutionLine last
+    addRevolutionLine last - 4
   
-  addHatching toSeq(0..3) & toSeq(10..contour.high)
-  addHatching toSeq(4..9)
+  addHatching toSeq(0..3) & toSeq(10..last), drawIf = NotCutoff
+  addHatching toSeq(4..9), drawIf = NotCutoff
+
+  addHatching @[0, contour.high-3, contour.high-2] & toSeq(11..last), drawIf = Cutoff, parts = [false]
+  addHatching @[0, contour.high-1, contour.high] & toSeq(11..last), drawIf = Cutoff, parts = [true]
 
   # todo: fillets
 
 
+proc sketch*(g: CapGeomParams, hideBackLines = false): World =
+  result = World()
+  withDocument result:
+    let globals = doc.spawn()
+    setDrawingGlobals(globals)
+    draw(g, sketch = result, hideBackLines = hideBackLines)
+
+
+
 
 mainModule:
-  draw CapDesc(D: 100.mm, h: 20.mm), scale = 100
-  draw CapDesc(D: 100.mm, h: 20.mm, hole: true, shaft_d: 40.mm, cuff_D: 60.mm, cuff_h: 10.mm),
-    origin = p2(60.mm * 100, 0), scale = 100#, hideBackLines=true
+  for i, cutoff in [(0.mm, 0.mm), (15.mm, 0.mm), (0.mm, 25.mm)]:
+    draw CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff),
+      origin = p2((0.mm + i.float * 120.mm) * 100, 0), scale = 100
+    draw CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, shaft_d: 40.mm, cuff_D: 60.mm, cuff_h: 10.mm),
+      origin = p2((60.mm + i.float * 120.mm) * 100, 0), scale = 100#, hideBackLines=true
 

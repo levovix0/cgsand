@@ -6,13 +6,13 @@ export paths
 # todo: add support for Path2 from sigeo instead
 
 
-proc add*(p: var Path, c: LineSection) =
+proc add*(p: var Path, c: LineSection2) =
   p.lineTo(c.startPoint.V2.vec2)
   p.lineTo(c.endPoint.V2.vec2)
 
-proc add*(p: var Path, c: CircleArc) =
+proc add*(p: var Path, c: CircleArc2) =
   p.arc(c.center.x.float32, c.center.y.float32, c.radius, c.startAngle, c.endAngle, ccw = c.direction == counterclockwise)
 
-proc add*(p: var Path, c: EllipseArc) =
+proc add*(p: var Path, c: EllipseArc2) =
   ## todo
 

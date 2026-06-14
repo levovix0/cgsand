@@ -1,7 +1,7 @@
 import sandbox, geom2d
 import pkg/[bumpy]
 import ../shafts/[shafts]
-import ./bearings
+import ./[bearings, caps]
 
 
 type
@@ -12,7 +12,9 @@ type
     pos*: Point2
     entity*: EntityId
     bearing*: BearingParams
+    caps*: array[2, CapGeomParams]
     bearingEnt*: array[2, EntityId]
+    capEnt*: array[2, EntityId]
 
 
 var mmScale = 1e-3
@@ -76,8 +78,8 @@ mainModule:
   fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm)
   slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm)
 
-  fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm).autoComputeParams
-  slowShaft.bearing = BearingDesc(d: 55.mm, D: 120.mm, B: 29.mm, r: 3.mm).autoComputeParams
+  fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm)
+  slowShaft.bearing = BearingDesc(d: 55.mm, D: 120.mm, B: 29.mm, r: 3.mm)
 
 
   let axial_distance = fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
@@ -92,6 +94,8 @@ mainModule:
   let padding = (wall_thickness * 1.5).ceil(5.mm)
   let bead = padding
   let slowShaftBead = (fastShaft.gear.length - slowShaft.gear.length)/2 + bead
+
+  let bearingOnShaftEndPadding = 5.mm
 
 
   let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)
@@ -113,9 +117,31 @@ mainModule:
       cylindricSegment(d = 55.mm, l = 79.mm),
       cylindricSegment(d = 70.mm, l = slowShaftBead),
       slowShaft.gear,
-      cylindricSegment(d = 55.mm, l = slowShaftBead + slowShaft.bearing.B + 5.mm, right = bevel),
+      cylindricSegment(d = 55.mm, l = slowShaftBead + slowShaft.bearing.B + bearingOnShaftEndPadding, right = bevel),
     ]
   )
+
+  # parameters choosen from table (except for D), todo: autocompute
+  fastShaft.caps[0] = CapDesc(
+    D: 100.mm, h: 20.mm,
+    shaft_d: fastShaft.shaft.segments[^1].section.circle.radius*2,
+  )
+  fastShaft.caps[1] = CapDesc(
+    D: 100.mm, h: 20.mm,
+    shaft_d: fastShaft.shaft.segments[1].section.circle.radius*2,
+    hole: true, cuff_D: 60.mm, cuff_h: 10.mm,
+  )
+
+  slowShaft.caps[0] = CapDesc(
+    D: 120.mm, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
+    shaft_d: slowShaft.shaft.segments[^1].section.circle.radius*2,
+    hole: true, cuff_D: 70.mm, cuff_h: 10.mm,
+  )
+  slowShaft.caps[1] = CapDesc(
+    D: 120.mm, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
+    shaft_d: slowShaft.shaft.segments[1].section.circle.radius*2,
+  )
+
 
   fastShaft.sketch = sketch fastShaft.shaft
   slowShaft.sketch = sketch slowShaft.shaft
@@ -151,6 +177,44 @@ mainModule:
     Transform3 rotateZ(-Pi/2)
   
   let shaftsBounds = doc.entityBounds(fastShaft.bearingEnt[0]) + doc.entityBounds(slowShaft.entity)
+
+
+  fastShaft.capEnt[0] = doc.spawn SubWorld fastShaft.caps[0].sketch(hideBackLines = true):
+    Position2 fastShaft.pos + v2(0,
+      + fastShaft.shaft.segmentX(5, PositionAtRight) +
+      - fastShaft.shaft.segmentX(3, PositionAtCenter) +
+      + fastShaft.caps[0].bounds.size.x +
+      - bearingOnShaftEndPadding +
+    0)
+    Transform3 rotateZ(-Pi/2)
+
+  fastShaft.capEnt[1] = doc.spawn SubWorld fastShaft.caps[1].sketch(hideBackLines = true):
+    Position2 fastShaft.pos + v2(0,
+      + fastShaft.shaft.segmentX(1, PositionAtRight) +
+      - fastShaft.shaft.segmentX(3, PositionAtCenter) +
+      - fastShaft.caps[1].bounds.size.x +
+      - fastShaft.bearing.B +
+    0)
+    Transform3 rotateZ(Pi/2)
+
+
+  slowShaft.capEnt[0] = doc.spawn SubWorld slowShaft.caps[0].sketch(hideBackLines = true):
+    Position2 slowShaft.pos + v2(0,
+      + slowShaft.shaft.segmentX(4, PositionAtRight) +
+      - slowShaft.shaft.segmentX(3, PositionAtCenter) +
+      + slowShaft.caps[0].bounds.size.x +
+      - bearingOnShaftEndPadding +
+    0)
+    Transform3 rotateZ(-Pi/2)
+
+  slowShaft.capEnt[1] = doc.spawn SubWorld slowShaft.caps[1].sketch(hideBackLines = true):
+    Position2 slowShaft.pos + v2(0,
+      + slowShaft.shaft.segmentX(1, PositionAtRight) +
+      - slowShaft.shaft.segmentX(3, PositionAtCenter) +
+      - slowShaft.caps[1].bounds.size.x +
+      - slowShaft.bearing.B +
+    0)
+    Transform3 rotateZ(Pi/2)
 
 
   let innerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2), 1.mm)

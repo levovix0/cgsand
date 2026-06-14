@@ -86,7 +86,7 @@ proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirecti
   )
 
 
-proc drawLineSection*(ctx: DrawContext, obj: LineSection, color: Color, thickness = none Thickness, transform = mat4()) =
+proc drawLineSection*(ctx: DrawContext, obj: LineSection2, color: Color, thickness = none Thickness, transform = mat4()) =
   if thickness.isSome:
     # todo: find simpler way to make lines same thickness, independent of their direction
     let a = obj.startPoint.V2.vec2.vec3(0)
@@ -159,12 +159,12 @@ proc draw2dWorld*(
     meshCache.to.cache(w, the EntityId, mesh)
 
 
-  w.forEach (line: LineSection, color: (Foreground|Color)||globals.foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+  w.forEach (line: LineSection2, color: (Foreground|Color)||globals.foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
     let thk = selectThickness()
     drawLineSection(ctx, line, color, thk, transform = mat4(transform))
 
 
-  w.forEach (curve: CircleArc, opt PointCount, opt Color|Background|Foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+  w.forEach (curve: CircleArc2, opt PointCount, opt Color|Background|Foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
     let screenRadius = float32(curve.radius) * pixelsPerUnit
     let count =
       if has PointCount: the PointCount
@@ -189,7 +189,7 @@ proc draw2dWorld*(
           drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
 
 
-  w.forEach (arc: EllipseArc, color: (Foreground|Color)||globals.foreground, opt PointCount, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+  w.forEach (arc: EllipseArc2, color: (Foreground|Color)||globals.foreground, opt PointCount, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
     let screenRadius = float32(max(arc.size.x, arc.size.y) / 2) * pixelsPerUnit
     let count =
       if has PointCount: the PointCount

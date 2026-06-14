@@ -29,13 +29,13 @@ proc revolveX(profile: openArray[Point3], pointCount = 32): Grid3 =
 proc draw3d*(profile: World, doc = doc) =
   let surfColor = if darkTheme: color(0.5, 0.65, 0.8) else: color(0.2, 0.4, 0.7)
   
-  profile.forEach (curve: LineSection):
+  profile.forEach (curve: LineSection2):
     doc.add PolygonalSurface3 revolveX(@[
       point3(curve.startPoint.x, max(0, curve.startPoint.y), 0),
       point3(curve.endPoint.x, max(0, curve.endPoint.y), 0)
     ]), Foreground surfColor
 
-  profile.forEach (curve: CircleArc):
+  profile.forEach (curve: CircleArc2):
     var points: seq[Point3]
     for t in 0..16:
       let p = curve.pointAtParam(t/16)

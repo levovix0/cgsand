@@ -84,9 +84,9 @@ let lastEntId = doc.entities.high
 
 
 proc isLevelSuccess: bool =
-  var sections: seq[LineSection]
+  var sections: seq[LineSection2]
 
-  doc.forEach (id: EntityId, l: LineSection, t: Text):
+  doc.forEach (id: EntityId, l: LineSection2, t: Text):
     if id.int > lastEntId.int:
       sections.add l
   

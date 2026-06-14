@@ -6,11 +6,11 @@ FontSize
 AxisYDirection
 PositionAt
 Typeface
-LineSection
+LineSection2
 Thickness
-CircleArc
+CircleArc2
 PointCount
-EllipseArc
+EllipseArc2
 PolygonalSurface3
 Transform3
 Text

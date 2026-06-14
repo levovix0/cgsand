@@ -299,11 +299,12 @@ proc drawKarnaughGroups*(
     let wrapY = ya < 0
 
     template addArc(centerX, centerY, sizeX, sizeY, sa, ea: float) =
-      doc.add EllipseArc(
+      doc.add EllipseArc2(
         center: point2(centerX, centerY),
         size: v2(sizeX, sizeY),
         startAngle: sa,
         endAngle: ea,
+        direction: clockwise,
       ), col, thickness
 
     if not wrapX and not wrapY:

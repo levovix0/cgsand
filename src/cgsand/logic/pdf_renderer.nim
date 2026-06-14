@@ -57,7 +57,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
   o.pages[pi].fillRect(0, 0, pageWidthPt, pageHeightPt, backgroundColor)
 
   proc renderWorld(o: var PdfWriter, w: World, wGlobals: DocumentGlobals, extraT: DMat4) =
-    w.forEach (line: LineSection, color: (Foreground|Color)||wGlobals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
+    w.forEach (line: LineSection2, color: (Foreground|Color)||wGlobals.foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t: Transform3||dmat4()):
       let ct = extraT * t
       let a = ct * line.startPoint.V2.vec2
       let b = ct * line.endPoint.V2.vec2
@@ -68,7 +68,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
         if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32,
       )
 
-    w.forEach (curve: CircleArc, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
+    w.forEach (curve: CircleArc2, count: PointCount||20, opt Color, opt Background, opt Foreground, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
       let ct = extraT * t3
       let fg =
         if has Foreground: the Foreground
@@ -107,7 +107,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
           o.pages[pi].drawPolyline(pagePts, fg, lw)
 
 
-    w.forEach (arc: EllipseArc, color: (Foreground|Color)||wGlobals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
+    w.forEach (arc: EllipseArc2, color: (Foreground|Color)||wGlobals.foreground, count: PointCount||32, thickness: Thickness||(0.1/scale), pixThick: opt PixelThickness, t3: Transform3||dmat4()):
       let ct = extraT * t3
       let lw = if has PixelThickness: pixThick else: thickness * scale * mmToPt.float32
 
