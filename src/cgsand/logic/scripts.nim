@@ -85,7 +85,7 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
 
   if info.compile:
     let optFlags = case info.optLevel
-      of optNone:   "--opt:none"
+      of optNone:   "--opt:none --debugger:native"
       of optSpeed: "--opt:speed -d:danger"
     
     var compilePath = info.filename

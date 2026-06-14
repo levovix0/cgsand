@@ -1,4 +1,4 @@
-import sandbox, geom2d, tabledef, paths
+import sandbox, geom2d, tabledef
 import std/[sequtils]
 import pkg/[vmath]
 import ./[drawingGlobals]
@@ -160,15 +160,12 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
   proc addHatching(i: openArray[int], drawIf = Always, parts: openArray[bool] = [false, true]) =
     for up in parts:
       if (drawIf == Always) or (([g.cutoff.bottom, g.cutoff.top][up.int] != 0) == (drawIf == Cutoff)):
-        var p = newPath()
-        p.moveTo (if up: contour[i[0]].negY else: contour[i[0]]).pt.V2.vec2
-        for i2 in countup(0, i.high-1):
-          p.add lineSection(
-            (if up: contour[i[i2]].negY   else: contour[i[i2]]).pt,
-            (if up: contour[i[i2+1]].negY else: contour[i[i2+1]]).pt
-          )
-        p.closePath()
-        sketch.add p, Hatching(period: g.D / 40 * scale), hatchingLine
+        var p = create Path2
+        # todo: either something in ecs or in sigeo interface macro or in both breaks, if Path2 is allocated on the stack, or is passed to ecs as Path2
+        for i2 in countup(0, i.high):
+          p[].add (if up: contour[i[i2]].negY else: contour[i[i2]]).pt
+        close p[]
+        sketch.add p[].Curve2, Hatching(period: g.D / 40 * scale), hatchingLine
 
   for i in 0 ..< (if g.hole: (last + 1) else: last):
     addLineSection i, (i+1) mod (last + 1), drawIf = (if i in 1..10: NotCutoff else: Always)

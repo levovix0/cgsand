@@ -14,6 +14,7 @@ type
     polygonalSurface3*: Table[(pointer, EntityId), Mesh]
     pathStroke*: Table[(pointer, EntityId), Mesh]
     pathFill*: Table[(pointer, EntityId), Mesh]
+    curve2Fill*: Table[(pointer, EntityId), Mesh]
 
 
 template cache*(tabl: var Table[(pointer, EntityId), Mesh], world: World, ent: EntityId, orCreate: Mesh): var Mesh =
@@ -116,6 +117,28 @@ proc drawLineSection*(ctx: DrawContext, obj: LineSection2, color: Color, thickne
     )
 
 
+proc toMesh*(
+  curve: Curve2,
+  pointCount: int,
+  windingRule: WindingRule = NonZero,
+): Mesh =
+  var points: Polygon
+  for t in 0..<pointCount:
+    points.add curve.pointAtParam(t / (pointCount - 1)).V2.vec2
+  let verts = triangulate([points], windingRule)
+  if verts.len > 0:
+    result = newMesh(verts, GL_TRIANGLES)
+
+
+proc recommendedPointCount(curve: Curve2, typicalCount = 32): int =
+  # todo: dynamic, per-curve-param point count
+  if curve.isOf(Path2):
+    for c in curve.castTo(Path2).curves.view:
+      result += recommendedPointCount(c, typicalCount)
+  else:
+    return typicalCount
+
+
 proc drawDocText*(
   ctx: DrawContext,
   text: string, pos: Position2, color: Color, posAt: PositionAt, font: Typeface, fontSize: float, axisYUp: bool,
@@ -202,6 +225,48 @@ proc draw2dWorld*(
 
     for i in 0 ..< points.len - 1:
       drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
+
+  
+  w.forEach (
+    curve: OwnedCurve2|Path2|Curve2,
+    opt Foreground|Color|Background|Hatching,
+    opt Thickness|PixelThickness,
+    pointCount: PointCount||curve.recommendedPointCount,
+    transform: Transform3||dmat4()
+  ):
+    # todo: split into Background and Foreground renderer
+    let t3 = mat4(transform)
+    let thk = selectThickness()
+
+    if has Hatching:
+      var hatching = the Hatching
+      if hatching.period == 0:
+        hatching.period = curve.bounds.size.length / 20
+      let hthk = thk.get(otherwise = hatching.period/4)
+      
+      ctx.drawHatchedPath(
+        curve.toMesh(pointCount).cache(curve2Fill),
+        hatching = hatching,
+        fg = (if has Color: the Color else: globals.foreground),
+        bg = (if has Background: the Background else: color(0, 0, 0, 0)),
+        thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
+        transform = t3,
+      )
+    elif has Background:
+      ctx.fill2dMeshFlat(curve.toMesh(pointCount).cache(curve2Fill), color = the Background, transform = t3)
+    
+    if (has Foreground):
+      let points = curve.points(pointCount)
+      let fg = the Foreground
+      for i in 0 ..< points.len - 1:
+        drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+    elif (has Color) and not(has Hatching):
+      let points = curve.points(pointCount)
+      let fg = the Color
+      for i in 0 ..< points.len - 1:
+        drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+    elif not(has Background) and not(has Hatching):
+      ctx.fill2dMeshFlat(curve.toMesh(pointCount).cache(curve2Fill), color = globals.foreground, transform = t3)
 
 
   w.forEach (path: Path, opt Foreground|Color|Background|Hatching, opt Thickness|PixelThickness, transform: Transform3||dmat4()):

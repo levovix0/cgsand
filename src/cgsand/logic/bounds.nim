@@ -1,6 +1,7 @@
 import std/[options]
 import pkg/[vmath]
 import pkg/pixie/[fonts]
+import pkg/pixie/paths
 import pkg/sigeo/[curves2d]
 import ../lib/[sandbox, geom2d, text]
 import ./[document_globals]
@@ -88,6 +89,25 @@ proc worldBoundsAlongAxis*(
     for pt in curve.points(count):
       let v = pt.V2.vec2
       update(v.x * axis.x + v.y * axis.y)
+
+  w.forEach (EntityId, curve: Curve2, transform3: Transform3||m4()):
+    if not filter(the EntityId): continue
+    addBounds2(transform3 * bounds(curve))
+
+  w.forEach (EntityId, curve: OwnedCurve2, transform3: Transform3||m4()):
+    if not filter(the EntityId): continue
+    addBounds2(transform3 * bounds(cast[Curve2](curve)))
+
+  w.forEach (EntityId, path: Path2, transform3: Transform3||m4()):
+    if not filter(the EntityId): continue
+    addBounds2(transform3 * bounds(path.toCurve2))
+
+  w.forEach (EntityId, path: Path, transform3: Transform3||m4()):
+    if not filter(the EntityId): continue
+    try:
+      let r = path.computeBounds()
+      addBounds2(transform3 * bounds2(p2(float64(r.x), float64(r.y)), p2(float64(r.x + r.w), float64(r.y + r.h))))
+    except: discard
 
   w.forEach (EntityId, surface: PolygonalSurface3, transform3: Transform3||m4()):
     if not filter(the EntityId): continue
