@@ -58,14 +58,14 @@ proc drawDimensions*(doc: World) =
 
     let dimline_a = dim.dimline + projectToAxis(dim.a - dim.dimline, dim.dir)
     let dimline_b = dim.dimline + projectToAxis(dim.b - dim.dimline, dim.dir)
-    doc.add lineSection(dim.a, dimline_a)
-    doc.add lineSection(dim.b, dimline_b)
-    doc.add lineSection(dimline_a, dimline_b)
+    doc.add line(dim.a, dimline_a)
+    doc.add line(dim.b, dimline_b)
+    doc.add line(dimline_a, dimline_b)
 
     if has DimensionText:
       doc.add Text text:
         PositionAtBottom
-        Position2 lineSection(dimline_a, dimline_b).center
+        Position2 line(dimline_a, dimline_b).center
         Transform3 (rotateZ(-(dimline_b - dimline_a).toPolar.theta.abs) * translate(v3(0, -textMargin, 0)))
         fontSize
 
@@ -94,7 +94,7 @@ proc drawFigureBrackets*(doc: World) =
       p = f.a + w * x + f.h * y
 
     for i in 0..<(points.len - 1):
-      doc.add lineSection(points[i], points[i+1])
+      doc.add line(points[i], points[i+1])
 
   for x in entIds:
     doc.update x: add AlreadyDrawn()

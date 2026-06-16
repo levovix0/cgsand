@@ -116,11 +116,11 @@ proc worldBoundsAlongAxis*(
       let p = (transform3 * v4(pt.x, pt.y, pt.z, 1)).xyz
       update(p.x * axis.x + p.y * axis.y + p.z * axis.z)
 
-  w.forEach (EntityId, text: Text, pos: Position2, posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize):
+  w.forEach (EntityId, text: Text, pos: Position2||p2(), posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize):
     if not filter(the EntityId): continue
     addBounds2(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
 
-  w.forEach (EntityId, sub: SubWorld, pos: Position2, transform3: Transform3||m4()):
+  w.forEach (EntityId, sub: SubWorld, pos: Position2||p2(), transform3: Transform3||m4()):
     if not filter(the EntityId): continue
     if sub == nil: continue
     let m = translate(v3(pos.x, pos.y, 0)) * transform3

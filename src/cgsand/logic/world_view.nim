@@ -138,7 +138,7 @@ proc drawDashedPolyline*(
     return
   if dashing.pattern.len == 0:
     for i in 0 ..< points.len - 1:
-      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thickness, transform = transform)
+      drawLineSection(ctx, line(points[i], points[i + 1]), color, thickness, transform = transform)
     return
 
   # total length of the polyline, and whether it forms a closed loop
@@ -168,7 +168,7 @@ proc drawDashedPolyline*(
   template isDash(idx: int): bool = (idx mod 2) == 0
   template drawDot(p: Point2) =
     # a zero-length capsule renders as a round dot (when thickness is given)
-    drawLineSection(ctx, lineSection(p, p), color, thickness, transform = transform)
+    drawLineSection(ctx, line(p, p), color, thickness, transform = transform)
 
   var patIdx = 0
   var patRemaining = pat[0]
@@ -197,7 +197,7 @@ proc drawDashedPolyline*(
         continue
       let step = min(patRemaining, segLen - pos)
       if isDash(patIdx):
-        drawLineSection(ctx, lineSection(a + dir * pos, a + dir * (pos + step)), color, thickness, transform = transform)
+        drawLineSection(ctx, line(a + dir * pos, a + dir * (pos + step)), color, thickness, transform = transform)
       pos += step
       patRemaining -= step
 
@@ -276,7 +276,7 @@ proc draw2dWorld*(
       drawDashedPolyline(ctx, pts, the Dashing, col, thk, transform = t, scale = dashScale)
     else:
       for i in 0 ..< pts.len - 1:
-        drawLineSection(ctx, lineSection(pts[i], pts[i + 1]), col, thk, transform = t)
+        drawLineSection(ctx, line(pts[i], pts[i + 1]), col, thk, transform = t)
 
 
   w.forEach (
@@ -422,7 +422,7 @@ proc draw2dWorld*(
 
   w.forEach (
     text: Text,
-    pos: Position2,
+    pos: Position2||p2(),
     opt Foreground, opt Color,
     posAt: PositionAt||PositionAtTopLeft,
     font: Typeface||globals.font,
@@ -436,7 +436,7 @@ proc draw2dWorld*(
     drawDocText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform))
 
 
-  w.forEach (sub: SubWorld, pos: Position2, transform: Transform3||dmat4()):
+  w.forEach (sub: SubWorld, pos: Position2||p2(), transform: Transform3||dmat4()):
     if sub == nil: continue
     let innerViewport = combine(
       mat4(transform),

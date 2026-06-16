@@ -47,10 +47,10 @@ proc roundRect2geom*(center: Point2, size: V2, radius: float): RoundRect2Geom =
   let sy = size.y / 2
   RoundRect2Geom(
     lines: [
-      lineSection(center + v2(-sx + radius, -sy), center + v2(sx - radius, -sy)),
-      lineSection(center + v2(-sx, -sy + radius), center + v2(-sx, sy - radius)),
-      lineSection(center + v2(-sx + radius, sy), center + v2(sx - radius, sy)),
-      lineSection(center + v2(sx, -sy + radius), center + v2(sx, sy - radius)),
+      line(center + v2(-sx + radius, -sy), center + v2(sx - radius, -sy)),
+      line(center + v2(-sx, -sy + radius), center + v2(-sx, sy - radius)),
+      line(center + v2(-sx + radius, sy), center + v2(sx - radius, sy)),
+      line(center + v2(sx, -sy + radius), center + v2(sx, sy - radius)),
     ],
     arcs: [
       arc(center + v2(-sx + radius, -sy + radius), radius, -Pi/2 .. -Pi),
@@ -81,42 +81,37 @@ converter autoComputeParams*(desc: BearingDesc): BearingParams =
   O.s = 0.15 * O.d_w
 
   O.r = if desc.r != 0: desc.r else: (desc.D - desc.d - O.d_w) / 16
-  #! note: this autocompute is visual-only, check bearing tables for the correct fillet radius values
+  #! note: O.r autocompute is visual-only, check bearing tables for the correct fillet radius values
 
 
 
-proc draw*(g: BearingParams, origin: Position2 = point2(), scale: float = 1, axis: V2 = v2(1, 0), sketch = doc, hideBackLines = false) =
-  let x = axis.normalize
-  let y = x.rotate(Pi/2)
-  proc sc(v: float): float = v * scale
-  proc vt(v: V2): V2 = v.x.sc * x + v.y.sc * y
-  proc pt(v: V2): Point2 = origin + v.vt
+proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
   if sketch == nil: return
 
   let d = g.d; let h = g.h; let B = g.B; let d_w = g.d_w; let d_cp = g.d_cp; let s = g.s; let r = g.r
 
-  let r_t = roundRect2geom(center = v2(0, -d_cp/2).pt, size = v2(B, h).vt, radius = r.sc)
-  let r_b = roundRect2geom(center = v2(0, d_cp/2).pt, size = v2(B, h).vt, radius = r.sc)
+  let r_t = roundRect2geom(center = p2(0, -d_cp/2), size = v2(B, h), radius = r)
+  let r_b = roundRect2geom(center = p2(0, d_cp/2), size = v2(B, h), radius = r)
 
   draw(r_t, sketch = sketch)
   draw(r_b, sketch = sketch)
 
   if hideBackLines:
     # todo: cutContour
-    sketch.add lineSection(r_t.lines[left].endPoint, v2(-B/2, -d/2).pt), mainLine
-    sketch.add lineSection(r_b.lines[left].endPoint, v2(-B/2, d/2).pt), mainLine
-    sketch.add lineSection(r_t.lines[right].endPoint, v2(B/2, -d/2).pt), mainLine
-    sketch.add lineSection(r_b.lines[right].endPoint, v2(B/2, d/2).pt), mainLine
+    sketch.add line(r_t.lines[left].endPoint, p2(-B/2, -d/2)), mainLine
+    sketch.add line(r_b.lines[left].endPoint, p2(-B/2, d/2)), mainLine
+    sketch.add line(r_t.lines[right].endPoint, p2(B/2, -d/2)), mainLine
+    sketch.add line(r_b.lines[right].endPoint, p2(B/2, d/2)), mainLine
     
   else:
-    sketch.add lineSection(r_t.lines[left].endPoint, r_b.lines[left].startPoint), mainLine
-    sketch.add lineSection(r_t.lines[bottom].startPoint, r_b.lines[top].startPoint), mainLine
-    sketch.add lineSection(r_t.lines[bottom].endPoint, r_b.lines[top].endPoint), mainLine
-    sketch.add lineSection(r_t.lines[right].endPoint, r_b.lines[right].startPoint), mainLine
+    sketch.add line(r_t.lines[left].endPoint, r_b.lines[left].startPoint), mainLine
+    sketch.add line(r_t.lines[bottom].startPoint, r_b.lines[top].startPoint), mainLine
+    sketch.add line(r_t.lines[bottom].endPoint, r_b.lines[top].endPoint), mainLine
+    sketch.add line(r_t.lines[right].endPoint, r_b.lines[right].startPoint), mainLine
 
   let circles = [
-    circle(v2(0, -d_cp/2).pt, d_w.sc/2),
-    circle(v2(0, d_cp/2).pt, d_w.sc/2)
+    circle(p2(0, -d_cp/2), d_w/2),
+    circle(p2(0, d_cp/2), d_w/2)
   ]
   for circle in circles: sketch.add circle, mainLine
 
@@ -128,10 +123,10 @@ proc draw*(g: BearingParams, origin: Position2 = point2(), scale: float = 1, axi
       cy + d_w/2 - s,
     ]:
       # todo: cutContour
-      let line = lineSection(v2(-B/2, y).pt, v2(B/2, y).pt)
+      let line = line(p2(-B/2, y), p2(B/2, y))
       let pts = intersectionPointsParams(line, circles[i])
-      let l = lineSection(line.startPoint, line.pointAtParam(pts[0].curveA))
-      let r = lineSection(line.pointAtParam(pts[1].curveA), line.endPoint)
+      let l = line(line.startPoint, line.pointAtParam(pts[0].curveA))
+      let r = line(line.pointAtParam(pts[1].curveA), line.endPoint)
       doc.add l, mainLine
       doc.add r, mainLine
 
@@ -157,15 +152,12 @@ proc draw*(g: BearingParams, origin: Position2 = point2(), scale: float = 1, axi
 
 
 proc sketch*(g: BearingParams, hideBackLines = false): World =
-  result = World()
-  withDocument result:
-    let globals = doc.spawn()
-    setDrawingGlobals(globals)
-    draw(g, sketch = result, hideBackLines = hideBackLines)
+  result = newTechDraw()
+  withDocument result: draw(g, hideBackLines = hideBackLines)
 
 
 
 mainModule:
-  draw BearingDesc(d: 2, D: 4)
+  doc.add SubWorld BearingDesc(d: 2.m, D: 4.m).sketch
 
 

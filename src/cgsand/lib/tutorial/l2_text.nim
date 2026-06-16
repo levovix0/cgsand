@@ -16,16 +16,16 @@ echo(p)
 
 
 addArrow(point2(3.5,0), v2(1,0),0.4, color(1,0.4,0.4))
-doc.add lineSection(point2(-3.25, 0), point2(3.25, 0)), Thickness(0.05), color(1,0.4,0.4)
+doc.add line(point2(-3.25, 0), point2(3.25, 0)), Thickness(0.05), color(1,0.4,0.4)
 
 addArrow(point2(0,1.5), v2(0,1),0.4, color(0.4,1,0.4))
-doc.add lineSection(point2(0, -2.25), point2(0, 1.25)), Thickness(0.05), color(0.4,1,0.4)
+doc.add line(point2(0, -2.25), point2(0, 1.25)), Thickness(0.05), color(0.4,1,0.4)
 
 
 for k in -3..0:
-  doc.add lineSection(point2(-3, float64(k+1)), point2(3, float64(k+1)))
+  doc.add line(point2(-3, float64(k+1)), point2(3, float64(k+1)))
 for k in -3..3:
-  doc.add lineSection(point2(float64(k), -2), point2(float64(k), 1))
+  doc.add line(point2(float64(k), -2), point2(float64(k), 1))
 
 
 let id_del = doc.spawn Text "0.5, -1.5":

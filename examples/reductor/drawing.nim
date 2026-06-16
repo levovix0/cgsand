@@ -29,18 +29,10 @@ proc drawRects(doc: World) =
     let x2 = (r.x + r.w).Float
     let y1 = r.y.Float
     let y2 = (r.y + r.h).Float
-    doc.add lineSection(point2(x1, y1), point2(x2, y1))
-    doc.add lineSection(point2(x2, y1), point2(x2, y2))
-    doc.add lineSection(point2(x2, y2), point2(x1, y2))
-    doc.add lineSection(point2(x1, y2), point2(x1, y1))
-
-
-proc sketch*(shaft: Shaft, dimensions: World = nil): World =
-  result = World()
-  withDocument result:
-    let globals = doc.spawn()
-    setDrawingGlobals(globals)
-    draw(shaft, dimensions = dimensions, scale = 1)
+    doc.add line(point2(x1, y1), point2(x2, y1))
+    doc.add line(point2(x2, y1), point2(x2, y2))
+    doc.add line(point2(x2, y2), point2(x1, y2))
+    doc.add line(point2(x1, y2), point2(x1, y1))
 
 
 proc segmentX*(shaft: Shaft, segmentI: int, p = PositionAtLeft): float =

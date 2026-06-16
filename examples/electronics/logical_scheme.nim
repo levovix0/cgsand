@@ -106,7 +106,7 @@ doc.forEach (p: var Position2, n: SchemeN):
 doc.forEach (text: Sym, p: Position2):
   var text = text
   if text.startsWith("!"):
-    doc.add lineSection(p + v2(0, -0.05), p + v2(1, -0.05))
+    doc.add line(p + v2(0, -0.05), p + v2(1, -0.05))
 
   text.removePrefix "!"
   
@@ -114,7 +114,7 @@ doc.forEach (text: Sym, p: Position2):
     Position2 p + v2(0.5, -1)
     PositionAtBottom
 
-  doc.add lineSection(p + v2(0, -1.25), p + v2(3, -1.25))
+  doc.add line(p + v2(0, -1.25), p + v2(3, -1.25))
 
 
 var rects: seq[(EntityId, Rect)]
@@ -130,7 +130,7 @@ for (id, rect) in rects:
 
 doc.forEach (r2: Rect, AndGate|OrGate, Final):
   let p = r2.pos + v2(r2.wh.x, -r2.wh.y / 2)
-  doc.add lineSection(p, p + v2(3, 0))
+  doc.add line(p, p + v2(3, 0))
   doc.add Text "f":
     Position2 p + v2(1.5, 0.15)
     PositionAtBottom
@@ -169,9 +169,9 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
       # todo: same for Polygon
       # todo: `doc.massAdd [a, b, c]: props` which will add entities that has same props components and a signle diffirent component
       # todo: let noLines = snapshot(); ...; let withLines = snapshot(); doc.forEach (...) {.includes: noLines..withLines.}: ...
-      doc.add lineSection(p[0], p[1])
-      doc.add lineSection(p[1], p[2])
-      doc.add lineSection(p[2], p[3])
+      doc.add line(p[0], p[1])
+      doc.add line(p[1], p[2])
+      doc.add line(p[2], p[3])
     
     if has(InverseOut):
       doc.add circle(point2(r1.pos.x + r1.wh.x, r1.pos.y - r1.wh.y/2), 0.1):
@@ -189,16 +189,16 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
         point2(x_mid, y2),
         point2(r2.pos.x, y2),
       ]
-      doc.add lineSection(p[0], p[1])
-      doc.add lineSection(p[1], p[2])
-      doc.add lineSection(p[2], p[3])
+      doc.add line(p[0], p[1])
+      doc.add line(p[1], p[2])
+      doc.add line(p[2], p[3])
 
 
 doc.forEach (r: Rect):
-  doc.add lineSection(r.pos, r.pos + v2(r.wh.x, 0))
-  doc.add lineSection(r.pos + v2(r.wh.x, 0), r.pos + v2(r.wh.x, -r.wh.y))
-  doc.add lineSection(r.pos + v2(r.wh.x, -r.wh.y), r.pos + v2(0, -r.wh.y))
-  doc.add lineSection(r.pos + v2(0, -r.wh.y), r.pos)
+  doc.add line(r.pos, r.pos + v2(r.wh.x, 0))
+  doc.add line(r.pos + v2(r.wh.x, 0), r.pos + v2(r.wh.x, -r.wh.y))
+  doc.add line(r.pos + v2(r.wh.x, -r.wh.y), r.pos + v2(0, -r.wh.y))
+  doc.add line(r.pos + v2(0, -r.wh.y), r.pos)
 
 
 # todo: text

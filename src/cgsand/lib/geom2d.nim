@@ -4,15 +4,6 @@ export curves2d
 
 type PointCount* = int
 
-proc circle*(center: Point2, radius: float64): CircleArc2 =
-  result = CircleArc2(
-    center: center,
-    radius: radius,
-    startAngle: 0,
-    endAngle: 0,
-    direction: counterclockwise
-  )
-
 
 proc arc*(
   center: Point2,
@@ -25,20 +16,6 @@ proc arc*(
     radius: radius,
     startAngle: arctan2(p1.x - center.x, p1.y - center.y),
     endAngle: arctan2(p2.x - center.x, p2.y - center.y),
-    direction: direction,
-  )
-
-proc arc*(
-  center: Point2,
-  radius: float64,
-  startAngle, endAngle: float,
-  direction: AngleDirection = counterclockwise,
-): CircleArc2 =
-  result = CircleArc2(
-    center: center,
-    radius: radius,
-    startAngle: startAngle,
-    endAngle: endAngle,
     direction: direction,
   )
 

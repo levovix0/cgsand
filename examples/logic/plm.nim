@@ -50,10 +50,10 @@ let h = matrix.len + resMatrix.len
 
 
 for x in 0..<w:
-  doc.add lineSection(point2(x.float * SZ, 0), point2(x.float * SZ, (h-1).float * SZ))
+  doc.add line(point2(x.float * SZ, 0), point2(x.float * SZ, (h-1).float * SZ))
 
 for y in 0..<h:
-  doc.add lineSection(point2(0, y.float * SZ), point2((w-1).float * SZ, y.float * SZ))
+  doc.add line(point2(0, y.float * SZ), point2((w-1).float * SZ, y.float * SZ))
 
 for x in 0..<w:
   for y in 0..<h:
@@ -66,25 +66,25 @@ for i, v in ["x", "y", "z", "t"]:
   doc.add Text v:
     Position2 point2(-8, y)
     PositionAtRight
-  doc.add lineSection(point2(-7, y), point2(0, y))
+  doc.add line(point2(-7, y), point2(0, y))
   doc.add Text v:
     Position2 point2(-6, y + SZ)
     PositionAtRight
-  doc.add lineSection(point2(-5, y + SZ), point2(0, y + SZ))
-  doc.add lineSection(point2(-6.5, y + SZ/4*3), point2(-5.9, y + SZ/4*3))
+  doc.add line(point2(-5, y + SZ), point2(0, y + SZ))
+  doc.add line(point2(-6.5, y + SZ/4*3), point2(-5.9, y + SZ/4*3))
   
   let r = (xy: point2(-4, y + SZ/4), wh: v2(SZ/2, SZ/2))
-  doc.add lineSection(r.xy, r.xy + v2(r.wh.x, 0))
-  doc.add lineSection(r.xy + v2(r.wh.x, 0), r.xy + v2(r.wh.x, r.wh.y))
-  doc.add lineSection(r.xy + v2(r.wh.x, r.wh.y), r.xy + v2(0, r.wh.y))
-  doc.add lineSection(r.xy + v2(0, r.wh.y), r.xy)
+  doc.add line(r.xy, r.xy + v2(r.wh.x, 0))
+  doc.add line(r.xy + v2(r.wh.x, 0), r.xy + v2(r.wh.x, r.wh.y))
+  doc.add line(r.xy + v2(r.wh.x, r.wh.y), r.xy + v2(0, r.wh.y))
+  doc.add line(r.xy + v2(0, r.wh.y), r.xy)
   doc.add Text "¬":
     Position2 r.xy + r.wh/2
     PositionAtCenter
   doc.add circle(point2(-4 + SZ/4, y), 0.1), Background doc.foreground
   doc.add circle(point2(-4 + SZ/4, y + SZ), 0.1), Background doc.foreground
-  doc.add lineSection(point2(-4 + SZ/4, y), point2(-4 + SZ/4, y + SZ/4))
-  doc.add lineSection(point2(-4 + SZ/4, y + SZ/4*3), point2(-4 + SZ/4, y + SZ))
+  doc.add line(point2(-4 + SZ/4, y), point2(-4 + SZ/4, y + SZ/4))
+  doc.add line(point2(-4 + SZ/4, y + SZ/4*3), point2(-4 + SZ/4, y + SZ))
 
 
 # todo: colums of vertical line descriptions (n = x * !z)

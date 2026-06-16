@@ -115,7 +115,7 @@ proc draw*(beam: Beam) =
 
   var x = 0.0
   for i, segment in beam.segments:
-    let line = lineSection(beam.origin + v2(x * beam.meterSize, 0), beam.origin + v2(x * beam.meterSize + segment.length * beam.meterSize, 0))
+    let line = line(beam.origin + v2(x * beam.meterSize, 0), beam.origin + v2(x * beam.meterSize + segment.length * beam.meterSize, 0))
 
     doc.add line, wide
     
@@ -133,7 +133,7 @@ proc draw*(beam: Beam) =
   addTextAt $(beam.segments.len + 1), x
 
   for fp in beam.fixedPositions:
-    let line = lineSection(
+    let line = line(
       beam.origin + v2(fp * beam.meterSize, -beam.meterSize / 4),
       beam.origin + v2(fp * beam.meterSize, beam.meterSize / 4)
     )
@@ -141,24 +141,24 @@ proc draw*(beam: Beam) =
     # todo: hatching
     for y in countup(0, int(beam.meterSize) - 1, 1):
       let y = y / int(beam.meterSize)
-      doc.add lineSection(line.pointAtParam(y), line.pointAtParam(y) + v2(-0.5, 0.5))
+      doc.add line(line.pointAtParam(y), line.pointAtParam(y) + v2(-0.5, 0.5))
   
   
   for load in beam.loads:
     let a = beam.origin + v2(load.x.a * beam.meterSize, 0)
     let b = beam.origin + v2(load.x.b * beam.meterSize, 0)
     let dir = (if load.load > 0: v2(0, -1) else: v2(0, 1)) * 1
-    doc.add lineSection(a, a + dir), loadColor
-    doc.add lineSection(a + dir, b + dir), loadColor
-    doc.add lineSection(b, b + dir), loadColor
+    doc.add line(a, a + dir), loadColor
+    doc.add line(a + dir, b + dir), loadColor
+    doc.add line(b, b + dir), loadColor
 
     for x in countup(0, int((load.x.b - load.x.a) * 4)):
-      let p = lineSection(a, b).pointAtParam(x / int((load.x.b - load.x.a) * 4))
-      doc.add lineSection(p + dir/4, p + dir), loadColor
+      let p = line(a, b).pointAtParam(x / int((load.x.b - load.x.a) * 4))
+      doc.add line(p + dir/4, p + dir), loadColor
       addArrow(p, -dir, dir.length / 2, loadColor)
       
     for x in countup(0, int(load.x.b - load.x.a) - 1):
-      let p = lineSection(a + v2((l*beam.meterSize)/2, 0), b - v2((l*beam.meterSize)/2, 0)).pointAtParam(x / (int(load.x.b - load.x.a) - 1))
+      let p = line(a + v2((l*beam.meterSize)/2, 0), b - v2((l*beam.meterSize)/2, 0)).pointAtParam(x / (int(load.x.b - load.x.a) - 1))
       doc.add Text abs(load.load / (q * l.pow(2))).`$`.addName("q"):
         Position2 (p + dir + dir.normalize * textMargin)
         (if load.load > 0: PositionAtBottom else: PositionAtTop)
@@ -171,7 +171,7 @@ proc draw*(beam: Beam) =
     let pos = beam.origin + v2(force.x * beam.meterSize, 0)
     let dir = (if force.force > 0: v2(0, -1) else: v2(0, 1)) * forceHeight
 
-    doc.add lineSection(pos + dir/4, pos + dir), forceColor, wide
+    doc.add line(pos + dir/4, pos + dir), forceColor, wide
     addArrow(pos, -dir, 1, forceColor)
 
     doc.add Text abs(force.force / (q * l)).`$`.addName("ql"):
@@ -188,9 +188,9 @@ proc draw*(beam: Beam) =
     let dirx = (if moment.moment > 0: v2(-1, 0) else: v2(1, 0)) * momentWidth
     let dir = v2(0, -1) * momentHeight
 
-    doc.add lineSection(pos - dir, pos + dir), momentColor
-    doc.add lineSection(pos - dir, pos - dir - dirx), momentColor
-    doc.add lineSection(pos + dir, pos + dir + dirx), momentColor
+    doc.add line(pos - dir, pos + dir), momentColor
+    doc.add line(pos - dir, pos - dir - dirx), momentColor
+    doc.add line(pos + dir, pos + dir + dirx), momentColor
     addArrow(pos + dir + dirx, dirx, momentWidth/2, momentColor)
     addArrow(pos - dir - dirx, -dirx, momentWidth/2, momentColor)
 
@@ -291,11 +291,11 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
       abs(v / refV).`$`.addName(refName)
 
   # Draw zero-lines (baselines)
-  doc.add lineSection(
+  doc.add line(
     beam.origin + v2(0.0, settings.qOffset),
     beam.origin + v2(totalLength * beam.meterSize, settings.qOffset)
   ), qColor
-  doc.add lineSection(
+  doc.add line(
     beam.origin + v2(0.0, settings.qOffset + settings.mGap),
     beam.origin + v2(totalLength * beam.meterSize, settings.qOffset + settings.mGap)
   ), mColor
@@ -339,7 +339,7 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
   let fullSpanBot = mBaseY + settings.mGap * 0.5
 
   for xi in keyXs:
-    doc.add lineSection(
+    doc.add line(
       point2(bx(xi), fullSpanTop),
       point2(bx(xi), fullSpanBot)
     )
@@ -370,8 +370,8 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
     # Draw outline
     for s in 0..<qPts.len - 1:
-      doc.add lineSection(qPts[s], qPts[s+1]), qColor, Thickness 0.1
-      doc.add lineSection(mPts[s], mPts[s+1]), mColor, Thickness 0.1
+      doc.add line(qPts[s], qPts[s+1]), qColor, Thickness 0.1
+      doc.add line(mPts[s], mPts[s+1]), mColor, Thickness 0.1
 
     # Vertical hatching for Q
     var hx = xa
@@ -380,7 +380,7 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
       let y0 = qBaseY
       let y1 = qWorld(qv)
       if abs(y1 - y0) > 1e-6:
-        doc.add lineSection(
+        doc.add line(
           point2(bx(hx), y0),
           point2(bx(hx), y1)
         ), qColor
@@ -393,7 +393,7 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
       let y0 = mBaseY
       let y1 = mWorld(mv)
       if abs(y1 - y0) > 1e-6:
-        doc.add lineSection(
+        doc.add line(
           point2(bx(hx), y0),
           point2(bx(hx), y1)
         ), mColor
@@ -404,19 +404,19 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
   let qaRight = qAt(keyXs[^1], true)
   let maLeft = mAt(keyXs[0], false)
   let maRight = mAt(keyXs[^1], true)
-  doc.add lineSection(
+  doc.add line(
     point2(bx(keyXs[0]), qBaseY),
     point2(bx(keyXs[0]), qWorld(qaLeft))
   ), qColor
-  doc.add lineSection(
+  doc.add line(
     point2(bx(keyXs[^1]), qBaseY),
     point2(bx(keyXs[^1]), qWorld(qaRight))
   ), qColor
-  doc.add lineSection(
+  doc.add line(
     point2(bx(keyXs[0]), mBaseY),
     point2(bx(keyXs[0]), mWorld(maLeft))
   ), mColor
-  doc.add lineSection(
+  doc.add line(
     point2(bx(keyXs[^1]), mBaseY),
     point2(bx(keyXs[^1]), mWorld(maRight))
   ), mColor
@@ -430,12 +430,12 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
     # Draw jump line if values differ
     if abs(qL - qR) > 1e-9:
-      doc.add lineSection(
+      doc.add line(
         point2(bx(xi), qWorld(qL)),
         point2(bx(xi), qWorld(qR))
       ), qColor
     if abs(mL - mR) > 1e-9:
-      doc.add lineSection(
+      doc.add line(
         point2(bx(xi), mWorld(mL)),
         point2(bx(xi), mWorld(mR))
       ), mColor

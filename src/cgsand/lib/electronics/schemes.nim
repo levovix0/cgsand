@@ -312,11 +312,11 @@ proc exhaustiveInputStamps*(inputs: openArray[Node], startTime = 0.0, step = 1.0
 
 
 proc segmentIntersectsRectBorder(a, b: Point2, r: Rect): bool =
-  let seg = lineSection(a, b)
-  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y      ), point2(r.x + r.w, r.y      ))) or
-  hasIntersectedSegments(seg, lineSection(point2(r.x + r.w, r.y      ), point2(r.x + r.w, r.y + r.h))) or
-  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y + r.h), point2(r.x + r.w, r.y + r.h))) or
-  hasIntersectedSegments(seg, lineSection(point2(r.x,       r.y      ), point2(r.x,       r.y + r.h)))
+  let seg = line(a, b)
+  hasIntersectedSegments(seg, line(point2(r.x,       r.y      ), point2(r.x + r.w, r.y      ))) or
+  hasIntersectedSegments(seg, line(point2(r.x + r.w, r.y      ), point2(r.x + r.w, r.y + r.h))) or
+  hasIntersectedSegments(seg, line(point2(r.x,       r.y + r.h), point2(r.x + r.w, r.y + r.h))) or
+  hasIntersectedSegments(seg, line(point2(r.x,       r.y      ), point2(r.x,       r.y + r.h)))
 
 
 proc segmentPassesThroughRect(a, b: Point2, r: Rect): bool =
@@ -667,7 +667,7 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
           let b = conn2.pts[si + 1]
           if v ~== a or v ~== b: continue
 
-          if hasPoint(lineSection(a, b), v):
+          if hasPoint(line(a, b), v):
             if v notin seenBranches:
               seenBranches.incl v
               doc.add Branch v, conn2.color
@@ -717,10 +717,10 @@ proc placeComponents*(rules: seq[PlacementRule]) =
 
 
 proc drawRect(r: Rect) =
-  doc.add lineSection(point2(r.x, r.y), point2(r.x + r.w, r.y))
-  doc.add lineSection(point2(r.x + r.w, r.y), point2(r.x + r.w, r.y + r.h))
-  doc.add lineSection(point2(r.x + r.w, r.y + r.h), point2(r.x, r.y + r.h))
-  doc.add lineSection(point2(r.x, r.y + r.h), point2(r.x, r.y))
+  doc.add line(point2(r.x, r.y), point2(r.x + r.w, r.y))
+  doc.add line(point2(r.x + r.w, r.y), point2(r.x + r.w, r.y + r.h))
+  doc.add line(point2(r.x + r.w, r.y + r.h), point2(r.x, r.y + r.h))
+  doc.add line(point2(r.x, r.y + r.h), point2(r.x, r.y))
 
 
 
@@ -728,9 +728,9 @@ proc drawComponents* =
   doc.forEach (c: Connection, color: (Foreground|Color)||schemeTheme.foreground, thickness: opt Thickness):
     for i in 0..<(c.len-1):
       if has Thickness:
-        doc.add lineSection(c[i], c[i + 1]), Thickness thickness, color
+        doc.add line(c[i], c[i + 1]), Thickness thickness, color
       else:
-        doc.add lineSection(c[i], c[i + 1]), color
+        doc.add line(c[i], c[i + 1]), color
 
   doc.forEach (b: Branch, color: (Foreground|Color)||schemeTheme.foreground):
     doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius):
@@ -759,13 +759,13 @@ proc drawComponents* =
       name.removePrefix("!")
 
       if n.portOffset.isNone:
-        doc.add lineSection(point2(r.x, r.y), point2(r.x + r.w, r.y))
+        doc.add line(point2(r.x, r.y), point2(r.x + r.w, r.y))
       doc.add Text name:
         Position2 point2(r.x + r.w/2, r.y - 0.2)
         PositionAtBottom
 
       if negate:
-        doc.add lineSection(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness schemeTheme.negationLineThickness
+        doc.add line(point2(r.x, r.y - r.h - 0.1), point2(r.x + r.w, r.y - r.h - 0.1)), Thickness schemeTheme.negationLineThickness
 
     of PackN:
       assert(n.pack != nil)
@@ -776,8 +776,8 @@ proc drawComponents* =
         Position2 point2(r.x + 3, r.y + 0.2)
         PositionAtTop
       
-      doc.add lineSection(point2(r.x + 2, r.y), point2(r.x + 2, r.y + r.h))
-      doc.add lineSection(point2(r.x + 4, r.y), point2(r.x + 4, r.y + r.h))
+      doc.add line(point2(r.x + 2, r.y), point2(r.x + 2, r.y + r.h))
+      doc.add line(point2(r.x + 4, r.y), point2(r.x + 4, r.y + r.h))
 
       let inpH = r.h / n.pack.inputs.len.float
       let outH = r.h / n.pack.outputs.len.float
@@ -785,7 +785,7 @@ proc drawComponents* =
       for i, inpN in n.pack.inputs:
         let y = r.y + i.float * inpH
         if i != 0:
-          doc.add lineSection(point2(r.x, y), point2(r.x + 2, y))
+          doc.add line(point2(r.x, y), point2(r.x + 2, y))
         var name = inpN.name
         let negate = name.startsWith("!")
         name.removePrefix("!")
@@ -794,12 +794,12 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
+          doc.add line(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
 
       for i, outN in n.pack.outputs:
         let y = r.y + i.float * outH
         if i != 0:
-          doc.add lineSection(point2(r.x + 4, y), point2(r.x + 6, y))
+          doc.add line(point2(r.x + 4, y), point2(r.x + 6, y))
         var name = outN.name
         let negate = name.startsWith("!")
         name.removePrefix("!")
@@ -808,7 +808,7 @@ proc drawComponents* =
           Position2 textPos
           PositionAtCenter
         if negate:
-          doc.add lineSection(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
+          doc.add line(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
           doc.add circle(point2(r.x + 6, y + outH/2), radius = schemeTheme.negationCircleRadius):
             Foreground schemeTheme.foreground
             Background schemeTheme.background
@@ -955,9 +955,9 @@ proc draw*(plot: Plot) =
         Position2 point2(plot.origin.x - 0.2, rowY + signalH/2)
         PositionAtRight
       if negate:
-        doc.add lineSection(point2(plot.origin.x - 0.1, rowY), point2(plot.origin.x - 1, rowY)), Thickness 0.05
+        doc.add line(point2(plot.origin.x - 0.1, rowY), point2(plot.origin.x - 1, rowY)), Thickness 0.05
 
-      doc.add lineSection(point2(plot.origin.x, rowY), point2(plot.origin.x, rowY + signalH))
+      doc.add line(point2(plot.origin.x, rowY), point2(plot.origin.x, rowY + signalH))
 
       var prevVal = Value(power: float.low)
 
@@ -968,11 +968,11 @@ proc draw*(plot: Plot) =
         let isHigh = tv.v.power > 0.5
         let lineY = if isHigh: rowY else: rowY + signalH
 
-        doc.add lineSection(point2(x1, lineY), point2(x2, lineY))
+        doc.add line(point2(x1, lineY), point2(x2, lineY))
 
         if i > 0 and (vals[i-1].v.power > 0.5) != isHigh:
           let prevY = if vals[i-1].v.power > 0.5: rowY else: rowY + signalH
-          doc.add lineSection(point2(x1, prevY), point2(x1, lineY))
+          doc.add line(point2(x1, prevY), point2(x1, lineY))
 
         if tv.v != prevVal:
           prevVal = tv.v
@@ -995,14 +995,14 @@ proc draw*(plot: Plot) =
   
   for t in stamps[1..^1]:
     if not plot.skipUnchangedAxes or t.time in changedTimes:
-      doc.add lineSection(
+      doc.add line(
         point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, plot.origin.y),
         point2(plot.origin.x + (t.time - firstTime) * plot.timeScale, y - plot.gap)
       ), schemeTheme.axiesColor
   
   when false:
     let t = plot.timestamps[^1]
-    doc.add lineSection(
+    doc.add line(
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, plot.origin.y),
       point2(plot.origin.x + (t.time + 1) * plot.timeScale, y - plot.gap)
     ), schemeTheme.axiesColor

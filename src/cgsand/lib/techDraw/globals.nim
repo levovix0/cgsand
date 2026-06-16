@@ -21,7 +21,7 @@ let axialLine* = (PixelThickness 2, Dashing(pattern: @[1, 0.5, 0, 0.5]), Foregro
 let dimFontSize* = FontSize 0.5
 
 
-proc setDrawingGlobals*(globals: EntityId) =
+proc setTechDrawGlobals*(globals: EntityId) =
   doc.update globals:
     add OwnerModule "drawing"
     add CanvasSettings(
@@ -36,6 +36,17 @@ proc setDrawingGlobals*(globals: EntityId) =
   if not darkTheme:
     doc.update globals: add Background color(1, 1, 1)
 
+proc setDrawingGlobals*(globals: EntityId) {.deprecated: "use setTechDrawGlobals instead".} =
+  setTechDrawGlobals(globals)
+
+
 if not doc.hasComponent(sandbox.globals, OwnerModule):
-  setDrawingGlobals(sandbox.globals)
+  setTechDrawGlobals(sandbox.globals)
+
+
+proc newTechDraw*(): World =
+  result = World()
+  withDocument result:
+    let globals = doc.spawn()
+    setTechDrawGlobals(globals)
 

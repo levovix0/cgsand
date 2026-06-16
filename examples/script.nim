@@ -22,13 +22,13 @@ let p = [
   ],
 ]
 
-doc.add lineSection(p[`-`][`-`], p[`+`][`+`])
-doc.add lineSection(p[`-`][`+`], p[`+`][`-`])
+doc.add line(p[`-`][`-`], p[`+`][`+`])
+doc.add line(p[`-`][`+`], p[`+`][`-`])
 
-doc.add lineSection(p[`-`][`-`], p[`+`][`-`])
-doc.add lineSection(p[`+`][`-`], p[`+`][`+`])
-doc.add lineSection(p[`+`][`+`], p[`-`][`+`])
-doc.add lineSection(p[`-`][`+`], p[`-`][`-`])
+doc.add line(p[`-`][`-`], p[`+`][`-`])
+doc.add line(p[`+`][`-`], p[`+`][`+`])
+doc.add line(p[`+`][`+`], p[`-`][`+`])
+doc.add line(p[`-`][`+`], p[`-`][`-`])
 
 
 doc.add arc(point2(0, 0), 75, point2(1, 0), point2(0, 1)):

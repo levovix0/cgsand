@@ -127,27 +127,27 @@ proc drawConjunction(sketch: World, origin: Position2, dir: V2, conjunction: Sha
 
   case conjunction.kind
   of None:
-    sketch.add lineSection(
+    sketch.add line(
       v2(0, -h/2).pt,
       v2(0, h/2).pt
     ), mainLine
 
   of Bevel:
-    sketch.add lineSection(
+    sketch.add line(
       v2(0, -h/2 + conjunction.radius).pt,
       v2(0, h/2 - conjunction.radius).pt
     ), mainLine
-    sketch.add lineSection(
+    sketch.add line(
       v2(0, -h/2 + conjunction.radius).pt,
       v2(conjunction.radius, -h/2).pt
     ), mainLine
-    sketch.add lineSection(
+    sketch.add line(
       v2(0, h/2 - conjunction.radius).pt,
       v2(conjunction.radius, h/2).pt
     ), mainLine
 
   of Fillet:
-    sketch.add lineSection(
+    sketch.add line(
       v2(0, -h/2 + conjunction.radius).pt,
       v2(0, h/2 - conjunction.radius).pt
     ), mainLine
@@ -199,17 +199,17 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
       sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), leftConjunction, h, scale=scale)
       sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), rightConjunction, h, scale=scale)
 
-      sketch.add lineSection(
+      sketch.add line(
         v2(x + leftOffset, -h/2).pt,
         v2(x + segment.length - rightOffset, -h/2).pt
       ), mainLine
-      sketch.add lineSection(
+      sketch.add line(
         v2(x + leftOffset, h/2).pt,
         v2(x + segment.length - rightOffset, h/2).pt
       ), mainLine
 
       for (xc, conjunction, dir) in [(x, leftConjunction, 1.0), (x + segment.length, rightConjunction, -1.0)]:
-        sketch.add lineSection(
+        sketch.add line(
           v2(xc + conjunction.radius * dir, -h/2).pt,
           v2(xc + conjunction.radius * dir, h/2).pt
         ), mainLine
@@ -217,12 +217,12 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
       if segment.section.shape == Gear:
         let g = segment.section.gear
         for yc in [-h/2 + (g.adhendiumDiameter - g.rootDiameter)/2, h/2 - (g.adhendiumDiameter - g.rootDiameter)/2]:
-          sketch.add lineSection(
+          sketch.add line(
             v2(x, yc).pt,
             v2(x + segment.length, yc).pt
           ), mainLine
         for yc in [-h/2 + (g.adhendiumDiameter - g.pitchDiameter)/2, h/2 - (g.adhendiumDiameter - g.pitchDiameter)/2]:
-          sketch.add lineSection(
+          sketch.add line(
             v2(x, yc).pt,
             v2(x + segment.length, yc).pt
           ), axialLine
@@ -247,5 +247,9 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
   if dimensions != nil:
     dimensions.drawDimensions()
 
+
+proc sketch*(shaft: Shaft, dimensions: World = nil): World =
+  result = newTechDraw()
+  withDocument result: draw(shaft, dimensions = dimensions, scale = 1)
 
 

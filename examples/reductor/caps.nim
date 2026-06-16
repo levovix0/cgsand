@@ -141,14 +141,14 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
 
   proc addLineSection(a, b: int, drawIf = Always, parts: openArray[bool] = [false, true]) =
     if ((drawIf == Always) or ((g.cutoff.bottom != 0) == (drawIf == Cutoff))) and (false in parts):
-      sketch.add lineSection(contour[a].pt, contour[b].pt), mainLine
+      sketch.add line(contour[a].pt, contour[b].pt), mainLine
     if ((drawIf == Always) or ((g.cutoff.top != 0) == (drawIf == Cutoff))) and (true in parts):
-      sketch.add lineSection(contour[a].negY.pt, contour[b].negY.pt), mainLine
+      sketch.add line(contour[a].negY.pt, contour[b].negY.pt), mainLine
 
   proc addRevolutionLine(a: int) =
     let zero = (if hideBackLines: g.shaft_d/2 else: 0)
-    sketch.add lineSection(contour[a].pt, v2(contour[a].x, zero).pt), mainLine
-    sketch.add lineSection(contour[a].negY.pt, v2(contour[a].x, zero).negY.pt), mainLine
+    sketch.add line(contour[a].pt, v2(contour[a].x, zero).pt), mainLine
+    sketch.add line(contour[a].negY.pt, v2(contour[a].x, zero).negY.pt), mainLine
 
   proc addHatching(i: openArray[int], drawIf = Always, parts: openArray[bool] = [false, true]) =
     for up in parts:
@@ -193,7 +193,7 @@ proc sketch*(g: CapGeomParams, hideBackLines = false): World =
   result = World()
   withDocument result:
     let globals = doc.spawn()
-    setDrawingGlobals(globals)
+    setTechDrawGlobals(globals)
     draw(g, sketch = result, hideBackLines = hideBackLines)
 
 

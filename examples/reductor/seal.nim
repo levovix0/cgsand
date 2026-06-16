@@ -192,7 +192,7 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
     
     block:
       for i in {1, 6..11, 15}:
-        sketch.add lineSection(contour[i].world(top).pt, (
+        sketch.add line(contour[i].world(top).pt, (
           if hideBackLines: v2(contour[i].x, 100).world(top)
           else: v2(v2(contour[i].x, 100).world(top).x, 0)).pt
         ), mainLine
@@ -202,7 +202,7 @@ proc sketch*(g: SealGeomParams, hideBackLines = false): World =
   result = World()
   withDocument result:
     let globals = doc.spawn()
-    setDrawingGlobals(globals)
+    setTechDrawGlobals(globals)
     draw(g, sketch = result, hideBackLines = hideBackLines)
 
 

@@ -251,7 +251,7 @@ proc drawNormalFormImpl(
     if b < sels.len:
       let x0 = float64(sels[a].x - boxX) / float64(sf)
       let x1 = float64(sels[b].x + sels[b].w - boxX) / float64(sf)
-      doc.add lineSection(origin + v2(x0, oy), origin + v2(x1, oy))
+      doc.add line(origin + v2(x0, oy), origin + v2(x1, oy))
 
 
 proc drawSdnf*(doc: World, groups: seq[KarnaughGroup], origin: Point2, typeface = font_default, fontSize: float = 1.0) =
@@ -341,18 +341,18 @@ proc drawCarnotMap*(doc: World, variables: seq[string], data: seq[seq[int]], cel
     Position2 point2()
 
   doc.forEach (r: RectTable, pos: Position2||point2()):
-    doc.add lineSection(pos, pos + v2(r.size.x, 0))
-    doc.add lineSection(pos + v2(r.size.x, 0), pos + v2(r.size.x, r.size.y))
-    doc.add lineSection(pos + v2(r.size.x, r.size.y), pos + v2(0, r.size.y))
-    doc.add lineSection(pos + v2(0, r.size.y), pos)
+    doc.add line(pos, pos + v2(r.size.x, 0))
+    doc.add line(pos + v2(r.size.x, 0), pos + v2(r.size.x, r.size.y))
+    doc.add line(pos + v2(r.size.x, r.size.y), pos + v2(0, r.size.y))
+    doc.add line(pos + v2(0, r.size.y), pos)
 
     for i in 1..<r.rows:
       let y = (i / r.rows) * r.size.y
-      doc.add lineSection(pos + v2(0, y), pos + v2(r.size.x, y))
+      doc.add line(pos + v2(0, y), pos + v2(r.size.x, y))
 
     for i in 1..<r.cols:
       let x = (i / r.cols) * r.size.x
-      doc.add lineSection(pos + v2(x, 0), pos + v2(x, r.size.y))
+      doc.add line(pos + v2(x, 0), pos + v2(x, r.size.y))
 
     let cs = r.size.x / float(r.cols)
     let bH = cs * 0.125
@@ -368,7 +368,7 @@ proc drawCarnotMap*(doc: World, variables: seq[string], data: seq[seq[int]], cel
           of PositionAtRight:  v2(-0.3, -0.5)
           of PositionAtLeft:   v2(0.3, -0.5)
           else: v2()
-        doc.add lineSection(labelPos + v - v2(0.3, 0), labelPos + v + v2(0.3, 0))
+        doc.add line(labelPos + v - v2(0.3, 0), labelPos + v + v2(0.3, 0))
       name.removePrefix("!")
       doc.add Text name:
         Position2 labelPos

@@ -42,10 +42,10 @@ doc.forEach (l: Level):
     subtitleColor
     FontSize 0.5
 
-  doc.add lineSection(tl, tl + v2(wh.x, 0))
-  doc.add lineSection(tl + v2(wh.x, 0), tl + wh)
-  doc.add lineSection(tl + wh, tl + v2(0, wh.y))
-  doc.add lineSection(tl + v2(0, wh.y), tl)
+  doc.add line(tl, tl + v2(wh.x, 0))
+  doc.add line(tl + v2(wh.x, 0), tl + wh)
+  doc.add line(tl + wh, tl + v2(0, wh.y))
+  doc.add line(tl + v2(0, wh.y), tl)
 
 
 

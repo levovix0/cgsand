@@ -56,7 +56,7 @@ doc.add Text "import sandbox, geom2d, tutorial/l1_basics":
   fg_hint
 
 
-doc.add Text "doc.add lineSection(point2(0, 0), point2(1, 0))":
+doc.add Text "doc.add line(point2(0, 0), point2(1, 0))":
   Position2 point2(0, 2)
   PositionAtTop
   FontSize 0.25
@@ -90,7 +90,7 @@ proc isLevelSuccess: bool =
     if id.int > lastEntId.int:
       sections.add l
   
-  let reqSections = [lineSection(p[0], p[1]), lineSection(p[1], p[2]), lineSection(p[2], p[3]), lineSection(p[3], p[0])]
+  let reqSections = [line(p[0], p[1]), line(p[1], p[2]), line(p[2], p[3]), line(p[3], p[0])]
   for y in reqSections:
     block checkExists:
       for x in sections:
