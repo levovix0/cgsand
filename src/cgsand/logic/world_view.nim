@@ -117,6 +117,91 @@ proc drawLineSection*(ctx: DrawContext, obj: LineSection2, color: Color, thickne
     )
 
 
+proc drawDashedPolyline*(
+  ctx: DrawContext,
+  points: openArray[Point2],
+  dashing: Dashing,
+  color: Color,
+  thickness = none Thickness,
+  transform = mat4(),
+  scale: float = 1,
+) =
+  ## draws a polyline with the given dashing pattern.
+  ## pattern[i*2] are dash lengths (0 = dot), pattern[i*2+1] are gap lengths, in document units.
+  ##
+  ## the pattern is automatically scaled so that:
+  ##   a dash is always drawn at the very start and (for open curves) the very end of the curve
+  ##   the number of pattern repetitions stays close to the unscaled one, but always >= minRepeats
+  const minRepeats = 2
+  
+  if points.len < 2:
+    return
+  if dashing.pattern.len == 0:
+    for i in 0 ..< points.len - 1:
+      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thickness, transform = transform)
+    return
+
+  # total length of the polyline, and whether it forms a closed loop
+  var total = 0.0
+  for i in 0 ..< points.len - 1:
+    total += points[i].distanceTo(points[i + 1])
+  let closed = points[0] ~== points[^1]
+
+  var pat = dashing.pattern
+  if scale != 1:
+    for i in 0 ..< pat.len:
+      pat[i] *= scale
+  let cycleLen = pat.sum
+  if cycleLen > 0 and total > 0:
+    # an even-length pattern ends with a gap; dropping the last gap of the last cycle
+    # makes an open curve end exactly on a dash. closed curves tile seamlessly instead.
+    let trailingGap =
+      if (not closed) and (pat.len mod 2 == 0): pat[^1]
+      else: 0.0
+    let reps = max(minRepeats, round(total / cycleLen).int)
+    let target = reps.float * cycleLen - trailingGap
+    if target > 0:
+      let s = total / target
+      for i in 0 ..< pat.len:
+        pat[i] *= s
+
+  template isDash(idx: int): bool = (idx mod 2) == 0
+  template drawDot(p: Point2) =
+    # a zero-length capsule renders as a round dot (when thickness is given)
+    drawLineSection(ctx, lineSection(p, p), color, thickness, transform = transform)
+
+  var patIdx = 0
+  var patRemaining = pat[0]
+
+  # emit a leading dot if the pattern starts with a zero-length dash
+  if isDash(patIdx) and pat[patIdx] == 0:
+    drawDot(points[0])
+    patIdx = (patIdx + 1) mod pat.len
+    patRemaining = pat[patIdx]
+
+  for i in 0 ..< points.len - 1:
+    let a = points[i]
+    let b = points[i + 1]
+    let segLen = a.distanceTo(b)
+    if segLen <= 0: continue
+    let dir = (b - a) / segLen
+    var pos = 0.0
+    while pos < segLen - 1e-9:
+      if patRemaining <= 0:
+        patIdx = (patIdx + 1) mod pat.len
+        patRemaining = pat[patIdx]
+        if isDash(patIdx) and pat[patIdx] == 0:
+          drawDot(a + dir * pos)
+          patIdx = (patIdx + 1) mod pat.len
+          patRemaining = pat[patIdx]
+        continue
+      let step = min(patRemaining, segLen - pos)
+      if isDash(patIdx):
+        drawLineSection(ctx, lineSection(a + dir * pos, a + dir * (pos + step)), color, thickness, transform = transform)
+      pos += step
+      patRemaining -= step
+
+
 proc toMesh*(
   curve: Curve2,
   pointCount: int,
@@ -178,16 +263,41 @@ proc draw2dWorld*(
     elif has Thickness: some the Thickness
     else: none Thickness
   
+  template dashScale: float {.dirty.} =
+    if has DashingScale: the DashingScale
+    else: globals.dashingScale
+
   template cache(mesh: Mesh, to: untyped): Mesh =
     meshCache.to.cache(w, the EntityId, mesh)
 
+  template drawStroke(pts: openArray[Point2], col: Color, thk: Option[Thickness], t: Mat4) {.dirty.} =
+    # draws a polyline stroke, dashed if the entity has a Dashing component
+    if has Dashing:
+      drawDashedPolyline(ctx, pts, the Dashing, col, thk, transform = t, scale = dashScale)
+    else:
+      for i in 0 ..< pts.len - 1:
+        drawLineSection(ctx, lineSection(pts[i], pts[i + 1]), col, thk, transform = t)
 
-  w.forEach (line: LineSection2, color: (Foreground|Color)||globals.foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+
+  w.forEach (
+    line: LineSection2,
+    color: (Foreground|Color)||globals.foreground,
+    opt Thickness|PixelThickness,
+    opt Dashing|DashingScale,
+    transform: Transform3||dmat4()
+  ):
     let thk = selectThickness()
-    drawLineSection(ctx, line, color, thk, transform = mat4(transform))
+    drawStroke([line.startPoint, line.endPoint], color, thk, mat4(transform))
 
 
-  w.forEach (curve: CircleArc2, opt PointCount, opt Color|Background|Foreground, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+  w.forEach (
+    curve: CircleArc2,
+    opt PointCount,
+    opt Color|Background|Foreground,
+    opt Thickness|PixelThickness,
+    opt Dashing|DashingScale,
+    transform: Transform3||dmat4()
+  ):
     let screenRadius = float32(curve.radius) * pixelsPerUnit
     let count =
       if has PointCount: the PointCount
@@ -204,15 +314,20 @@ proc draw2dWorld*(
       if has Background:
         ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count, transform = t3)
       if Background.has.not or Color.has or Foreground.has:
-        for i in 0 ..< points.len - 1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+        drawStroke(points, fg, thk, t3)
     else:
       if Foreground.has or Color.has or Background.has.not:
-        for i in 0 ..< points.len - 1:
-          drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+        drawStroke(points, fg, thk, t3)
 
 
-  w.forEach (arc: EllipseArc2, color: (Foreground|Color)||globals.foreground, opt PointCount, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+  w.forEach (
+    arc: EllipseArc2,
+    color: (Foreground|Color)||globals.foreground,
+    opt PointCount,
+    opt Thickness|PixelThickness,
+    opt Dashing|DashingScale,
+    transform: Transform3||dmat4()
+  ):
     let screenRadius = float32(max(arc.size.x, arc.size.y) / 2) * pixelsPerUnit
     let count =
       if has PointCount: the PointCount
@@ -223,14 +338,14 @@ proc draw2dWorld*(
 
     # todo: Background support (fill ellipse)
 
-    for i in 0 ..< points.len - 1:
-      drawLineSection(ctx, lineSection(points[i], points[i + 1]), color, thk, transform = t3)
+    drawStroke(points, color, thk, t3)
 
   
   w.forEach (
     curve: OwnedCurve2|Path2|Curve2,
     opt Foreground|Color|Background|Hatching,
     opt Thickness|PixelThickness,
+    opt Dashing|DashingScale,
     pointCount: PointCount||curve.recommendedPointCount,
     transform: Transform3||dmat4()
   ):
@@ -257,19 +372,20 @@ proc draw2dWorld*(
     
     if (has Foreground):
       let points = curve.points(pointCount)
-      let fg = the Foreground
-      for i in 0 ..< points.len - 1:
-        drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+      drawStroke(points, the Foreground, thk, t3)
     elif (has Color) and not(has Hatching):
       let points = curve.points(pointCount)
-      let fg = the Color
-      for i in 0 ..< points.len - 1:
-        drawLineSection(ctx, lineSection(points[i], points[i + 1]), fg, thk, transform = t3)
+      drawStroke(points, the Color, thk, t3)
     elif not(has Background) and not(has Hatching):
       ctx.fill2dMeshFlat(curve.toMesh(pointCount).cache(curve2Fill), color = globals.foreground, transform = t3)
 
 
-  w.forEach (path: Path, opt Foreground|Color|Background|Hatching, opt Thickness|PixelThickness, transform: Transform3||dmat4()):
+  w.forEach (
+    path: Path,
+    opt Foreground|Color|Background|Hatching,
+    opt Thickness|PixelThickness,
+    transform: Transform3||dmat4()
+  ):
     let t3 = mat4(transform)
     let thk = selectThickness()
     # todo: wrong pixelScale

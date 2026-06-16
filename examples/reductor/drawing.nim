@@ -1,7 +1,7 @@
 import sandbox, geom2d
 import pkg/[bumpy]
 import ../shafts/[shafts]
-import ./[bearings {.all.}, caps, seal]
+import ./[bearings {.all.}, caps, seal, drawingGlobals]
 
 
 type
@@ -39,7 +39,7 @@ proc sketch*(shaft: Shaft, dimensions: World = nil): World =
   result = World()
   withDocument result:
     let globals = doc.spawn()
-    setShaftsGlobals(globals)
+    setDrawingGlobals(globals)
     draw(shaft, dimensions = dimensions, scale = 1)
 
 
@@ -142,12 +142,12 @@ mainModule:
   )
 
   slowShaft.caps[0] = CapDesc(
-    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
+    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
     # shaft_d: slowShaft.shaft.segments[^1].section.circle.radius*2,
     hole: true, seal: slowShaft.seal,
   )
   slowShaft.caps[1] = CapDesc(
-    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
+    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
     shaft_d: slowShaft.shaft.segments[1].section.circle.radius*2,
   )
 

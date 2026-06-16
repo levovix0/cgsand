@@ -69,9 +69,19 @@ type
   
 
   Hatching* = object
-    ## periodic hatching. Can be added to a Path
+    ## periodic hatching for fill of closed paths/curves. Can be added to a Curve2 or Path
     angle*: float = Pi/4
     period*: float
+  
+  Dashing* = object
+    ## periodic dashing for the stroke of paths/curves. Can be added to any kind of Curve2
+    pattern*: seq[float] = @[1, 0.5, 0, 0.5]
+      ## each i*2 is considered a line length, each i*2+1 is considered a space length
+      ## if line length is a 0, it is considered a dot
+
+  DashingScale* = float
+    ## scale applied to the Dashing pattern, before automatic adjustments.
+    ## can be added to an entity with CanvasSettings to define a default (it is 1 by default)
 
 
   DarkTheme* = bool

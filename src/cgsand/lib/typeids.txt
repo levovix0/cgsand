@@ -6,6 +6,7 @@ FontSize
 AxisYDirection
 PositionAt
 Typeface
+DashingScale
 LineSection2
 Thickness
 CircleArc2
@@ -22,6 +23,7 @@ Position2
 SubWorld
 Color
 PixelThickness
+Dashing
 Hatching
 DarkTheme
 bool

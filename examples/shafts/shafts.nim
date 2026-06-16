@@ -1,6 +1,7 @@
 import std/sequtils
 import sandbox, geom2d
 import annotations/[dimensions]
+import ../reductor/[drawingGlobals]
 
 
 const useCustomFont = not defined(nimcheck)
@@ -59,32 +60,6 @@ type
 
   Shaft* = object
     segments*: seq[ShaftSegment]
-
-
-
-let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
-
-let mainLine* = PixelThickness 3
-let hiddenLine* = PixelThickness 1
-let dimFontSize* = FontSize 0.5
-
-
-proc setShaftsGlobals*(globals: EntityId) =
-  doc.update globals:
-    add OwnerModule "shafts"
-    add CanvasSettings(
-      autoSize: true,
-      margin: v2(2, 2),
-    )
-    add AxisYDown
-    add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
-    add FontSize 1
-
-  if not darkTheme:
-    doc.update globals: add Background color(1, 1, 1)
-
-if not doc.hasComponent(globals, OwnerModule):
-  setShaftsGlobals(globals)
 
 
 
@@ -240,7 +215,7 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
           sketch.add lineSection(
             v2(x, yc).pt,
             v2(x + segment.length, yc).pt
-          )
+          ), axialLine
 
     if dimensions != nil:
       dimensions.add LinearDimension2(
