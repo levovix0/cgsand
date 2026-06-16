@@ -1,7 +1,6 @@
 import std/sequtils
-import sandbox, geom2d
+import sandbox, geom2d, techDraw
 import annotations/[dimensions]
-import ../reductor/[drawingGlobals]
 
 
 const useCustomFont = not defined(nimcheck)
@@ -94,6 +93,9 @@ proc pitchDiameter*(g: GearSection): float =
 proc rootDiameter*(g: GearSection): float =
   g.modulo * (g.teethCount.float - 2.5)
 
+proc bevelRadius*(g: GearSection): float =
+  g.modulo
+
 
 proc gearSegment*(
   l: float,
@@ -177,17 +179,25 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
   for segment in shaft.segments:
     let h = segment.height
 
-    let leftOffset = case segment.left.kind
-      of Bevel, Fillet: segment.left.radius
+    let leftConjunction =
+      if segment.section.shape == Gear: ShaftConjunction(kind: Bevel, radius: segment.section.gear.bevelRadius)
+      else: segment.left
+
+    let rightConjunction =
+      if segment.section.shape == Gear: ShaftConjunction(kind: Bevel, radius: segment.section.gear.bevelRadius)
+      else: segment.right
+
+    let leftOffset = case leftConjunction.kind
+      of Bevel, Fillet: leftConjunction.radius
       of None: 0
 
-    let rightOffset = case segment.right.kind
-      of Bevel, Fillet: segment.right.radius
+    let rightOffset = case rightConjunction.kind
+      of Bevel, Fillet: rightConjunction.radius
       of None: 0
 
     if sketch != nil:
-      sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), segment.left, h, scale=scale)
-      sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), segment.right, h, scale=scale)
+      sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), leftConjunction, h, scale=scale)
+      sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), rightConjunction, h, scale=scale)
 
       sketch.add lineSection(
         v2(x + leftOffset, -h/2).pt,
@@ -198,7 +208,7 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
         v2(x + segment.length - rightOffset, h/2).pt
       ), mainLine
 
-      for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segment.length, segment.right, -1.0)]:
+      for (xc, conjunction, dir) in [(x, leftConjunction, 1.0), (x + segment.length, rightConjunction, -1.0)]:
         sketch.add lineSection(
           v2(xc + conjunction.radius * dir, -h/2).pt,
           v2(xc + conjunction.radius * dir, h/2).pt

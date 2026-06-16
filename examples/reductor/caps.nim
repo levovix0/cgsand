@@ -1,7 +1,7 @@
-import sandbox, geom2d, tabledef
+import sandbox, geom2d, techDraw, tabledef
 import std/[sequtils]
 import pkg/[vmath]
-import ./[drawingGlobals, seal]
+import ./[seal]
 
 
 type

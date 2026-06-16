@@ -1,7 +1,6 @@
-import sandbox, geom2d, paths
+import sandbox, geom2d, techDraw, paths
 import pkg/[vmath]
 import pkg/pixie/paths
-import ./[drawingGlobals]
 
 
 type

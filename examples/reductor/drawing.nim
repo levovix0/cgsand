@@ -1,7 +1,7 @@
-import sandbox, geom2d
+import sandbox, geom2d, techDraw
 import pkg/[bumpy]
 import ../shafts/[shafts]
-import ./[bearings {.all.}, caps, seal, drawingGlobals]
+import ./[bearings {.all.}, caps, seal]
 
 
 type

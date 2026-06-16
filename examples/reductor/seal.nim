@@ -1,8 +1,7 @@
 import std/[tables]
-import sandbox, geom2d, tabledef
+import sandbox, geom2d, techDraw, tabledef
 import pkg/[vmath]
 import pkg/sigeo/macros/cursors
-import ./[drawingGlobals]
 
 
 type

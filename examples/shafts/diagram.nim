@@ -1,5 +1,5 @@
 import std/[sequtils, strutils, algorithm, math]
-import sandbox, geom2d
+import sandbox, geom2d, techDraw
 import annotations/[dimensions]
 import ./[shafts]
 
@@ -329,10 +329,10 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
   block:
     let b = doc.entityBounds(text_Qy)
-    doc.add circle(toPoint(b.min) + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, Foreground qColor
+    doc.add circle(b.min + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, Foreground qColor
   block:
     let b = doc.entityBounds(text_Mx)
-    doc.add circle(toPoint(b.min) + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, Foreground mColor
+    doc.add circle(b.min + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, Foreground mColor
 
   # Full-span vertical lines at load boundaries
   let fullSpanTop = beam.origin.y

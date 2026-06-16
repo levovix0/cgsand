@@ -1,7 +1,15 @@
 import sandbox
 
+## some global setting for tech drawing documents
 
-proc mm(v: float): float = v * 1e-3
+
+var drawingMmScale*: float = 1e-3
+  ## world millimiters per document unit
+
+proc mm*(v: float): float = v * drawingMmScale
+  ## world millimiters to doc units
+proc m*(v: float): float = v * 1e3 * drawingMmScale
+  ## meters to doc units
 
 
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
@@ -15,7 +23,7 @@ let dimFontSize* = FontSize 0.5
 
 proc setDrawingGlobals*(globals: EntityId) =
   doc.update globals:
-    add OwnerModule "shafts"
+    add OwnerModule "drawing"
     add CanvasSettings(
       autoSize: true,
       margin: v2(2, 2),
@@ -28,6 +36,6 @@ proc setDrawingGlobals*(globals: EntityId) =
   if not darkTheme:
     doc.update globals: add Background color(1, 1, 1)
 
-if not doc.hasComponent(globals, OwnerModule):
-  setDrawingGlobals(globals)
+if not doc.hasComponent(sandbox.globals, OwnerModule):
+  setDrawingGlobals(sandbox.globals)
 
