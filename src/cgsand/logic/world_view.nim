@@ -52,7 +52,7 @@ proc drawHatchedPath(
   thickness: Thickness,
   transform: Mat4
 ) =
-  ctx.fillHatching(
+  ctx.fillHatchingAA(
     mesh = mesh,
     color1 = fg, color2 = bg,
     dir = transform.mat3 * vec2(1, 0).rotate(hatching.angle).vec3(0),

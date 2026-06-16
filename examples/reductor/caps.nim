@@ -1,7 +1,7 @@
 import sandbox, geom2d, tabledef
 import std/[sequtils]
 import pkg/[vmath]
-import ./[drawingGlobals]
+import ./[drawingGlobals, seal]
 
 
 type
@@ -10,20 +10,14 @@ type
       ## base cap diameter, m
     
     h*: float
-      ## width of a cuff, m
+      ## appended width, m
     
 
     hole*: bool
       ## should a cup have a hole for the shaft
 
+    seal*: SealGeomParams
     shaft_d*: float
-      ## diameter of a shaft segment and the inner diameter of a cuff, m
-    
-    cuff_D*: float
-      ## outer diameter of a cuff, m
-    
-    cuff_h*: float
-      ## width of a cuff, m
     
 
     cutoff*: tuple[top, bottom: float]
@@ -31,13 +25,13 @@ type
 
   CapGeomParams* = object
     ## all dimensions are in meters
-    ## images/cap_geom.jpg
+    ## images/cap_geom.jpg  # todo: draw dimensions in the script
     D*: float
     h*: float
     hole*: bool
     shaft_d*: float
-    cuff_D*: float
-    cuff_h*: float
+    seal_D*: float
+    seal_h*: float
     cutoff*: tuple[top, bottom: float]
     
     D1*: float
@@ -55,8 +49,8 @@ type
 proc mm(v: float): float = v / 1e3
 
 
-columnTable cap_dimensions, `const`:
-  D   | D1  | D2  | D3  | ld | ld1 | M  | n | H  | s
+columnTable dims, `const`:
+  D   | D1  | D2  | D3  | d | d1 | M  | n | H  | s
   62  | +15 | +30 | -10 | 7  | 14  | 6  | 4 | 10 | 5
   75  | +20 | +40 | -10 | 9  | 18  | 8  | 4 | 12 | 6
   95  | +20 | +40 | -10 | 9  | 18  | 8  | 6 | 12 | 6
@@ -73,23 +67,24 @@ converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
   O.h = desc.h
 
   O.hole = desc.hole
-  O.shaft_d = desc.shaft_d
-  O.cuff_D = desc.cuff_D
-  O.cuff_h = desc.cuff_h
+  O.shaft_d = desc.seal.d
+  O.seal_D = desc.seal.D
+  O.seal_h = desc.seal.h
+  if desc.shaft_d != 0: O.shaft_d = desc.shaft_d
 
   O.cutoff = desc.cutoff
   
-  for i, maxD in cap_dimensions_D:
+  for i, maxD in dims.D:
     if maxD.float.mm > desc.D:
-      O.D1 = desc.D + cap_dimensions_D1[i].float.mm
-      O.D2 = desc.D + cap_dimensions_D2[i].float.mm
-      O.D3 = desc.D + cap_dimensions_D3[i].float.mm
-      O.d = cap_dimensions_ld[i].float.mm
-      O.d1 = cap_dimensions_ld1[i].float.mm
-      O.M = cap_dimensions_M[i].float.mm
-      O.n = cap_dimensions_n[i]
-      O.H = cap_dimensions_H[i].float.mm
-      O.s = cap_dimensions_s[i].float.mm
+      O.D1 = desc.D + dims.D1[i].float.mm
+      O.D2 = desc.D + dims.D2[i].float.mm
+      O.D3 = desc.D + dims.D3[i].float.mm
+      O.d = dims.d[i].float.mm
+      O.d1 = dims.d1[i].float.mm
+      O.M = dims.M[i].float.mm
+      O.n = dims.n[i]
+      O.H = dims.H[i].float.mm
+      O.s = (if O.hole: 4.mm else: dims.s[i].float.mm)
 
 
 
@@ -110,8 +105,6 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
   proc negY(v: V2): V2 = v2(v.x, -v.y)
   if sketch == nil: return
 
-  let s = (if g.hole: 4.mm else: g.s)
-
   var contour = @[
     v2(0, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
     v2(0, g.D1/2 - g.d1/2),  # 1
@@ -127,15 +120,15 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
     v2(g.H, g.D/2),
     v2(g.H + g.h, g.D/2),
     v2(g.H + g.h, g.D3/2),
-    v2(s, g.D3/2),  # 14
-    v2(s, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
+    v2(g.s, g.D3/2),  # 14
+    v2(g.s, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
   ]
 
   if g.hole:
     contour[14..14] = @[
-      v2(s + g.h, g.D3/2),
-      v2(s + g.h, g.cuff_D/2),
-      v2(s, g.cuff_D/2),
+      v2(g.s + g.seal_h + 2.mm, g.D3/2),
+      v2(g.s + g.seal_h + 2.mm, g.seal_D/2),
+      v2(g.s, g.seal_D/2),
     ]
   let last = contour.high
 
@@ -210,6 +203,12 @@ mainModule:
   for i, cutoff in [(0.mm, 0.mm), (15.mm, 0.mm), (0.mm, 25.mm)]:
     draw CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff),
       origin = p2((0.mm + i.float * 120.mm) * 100, 0), scale = 100
-    draw CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, shaft_d: 40.mm, cuff_D: 60.mm, cuff_h: 10.mm),
+    
+    let sealedCap = CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, seal: SealDesc(d: 40.mm))
+    
+    draw sealedCap,
       origin = p2((60.mm + i.float * 120.mm) * 100, 0), scale = 100#, hideBackLines=true
+
+    draw sealedCap.seal,
+      origin = p2((60.mm + i.float * 120.mm) * 100 + sealedCap.autoComputeGeomParams.s*100, 0), scale = 100#, hideBackLines=true
 

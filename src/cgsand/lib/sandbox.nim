@@ -104,15 +104,24 @@ when defined(script) or defined(nimcheck):
   var entityBoundsImpl* {.exportc: "sandbox_entityBoundsImpl", dynlib.}: proc(world: World, eid: EntityId): Bounds2 {.cdecl.}
   var worldBoundsImpl* {.exportc: "sandbox_worldBoundsImpl", dynlib.}: proc(world: World): Bounds2 {.cdecl.}
 
+
   proc textSize*(text: string, fontSize: FontSize): V2 =
     if textSizeImpl != nil:
       let r = textSizeImpl(text, fontSize)
       return v2(r.x.Float, r.y.Float)
 
+
   proc entityBounds*(world: World, eid: EntityId): Bounds2 =
     if entityBoundsImpl != nil: return entityBoundsImpl(world, eid)
 
   proc worldBounds*(world: World): Bounds2 =
+    if worldBoundsImpl != nil: return worldBoundsImpl(world)
+
+
+  proc bounds*(world: World, eid: EntityId): Bounds2 =
+    if entityBoundsImpl != nil: return entityBoundsImpl(world, eid)
+
+  proc world*(world: World): Bounds2 =
     if worldBoundsImpl != nil: return worldBoundsImpl(world)
   
   

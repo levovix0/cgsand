@@ -18,9 +18,7 @@ macro columnTable*(prefix, typ, body) =
 
   var header: seq[NimNode]
   var headerVal: seq[NimNode]
-  for head in body[0].splitInfix.items:
-    let name = ident(prefix.strVal & "_" & head.strVal)
-    name.copyLineInfo(head)
+  for name in body[0].splitInfix.items:
     header.add name
     headerVal.add nnkBracket.newTree()
   
@@ -42,8 +40,11 @@ macro columnTable*(prefix, typ, body) =
     elif typ.strVal in ["constSection", "const"]: nnkConstDef
     else: error("expected letSection|varSection|constSection", typ)
 
+  var resTuple = nnkTupleConstr.newTree()
   for i, name in header:
-    result.add sec.newTree(defs.newTree(name, newEmptyNode(), headerVal[i]))
+    resTuple.add nnkExprColonExpr.newTree(name, headerVal[i])
+
+  result.add sec.newTree(defs.newTree(prefix, newEmptyNode(), resTuple))
 
 
 
@@ -56,6 +57,6 @@ when isMainModule:
     1  | 0  | 1
     1  | 1  | 0
   
-  for i in 0 ..< example_x1.len:
-    echo example_x1[i], " XOR ", example_x2[i], " = ", example_x1_xor_x2[i]
+  for i in 0 ..< example.x1.len:
+    echo example.x1[i], " XOR ", example.x2[i], " = ", example.x1_xor_x2[i]
 

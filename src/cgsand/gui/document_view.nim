@@ -32,7 +32,7 @@ proc fillHatchingRect(
   l1, l2: float32,
   transform: Mat4 = mat4()
 ) =
-  ctx.fillHatching(
+  ctx.fillHatchingAA(
     mesh = ctx.rect,
     color1 = color1, color2 = color2,
     dir = dir.vec3(0),

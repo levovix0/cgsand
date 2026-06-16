@@ -4,7 +4,7 @@ import sandbox
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
 let mainLine* = PixelThickness 3
-let hatchingLine* = PixelThickness 3
+let hatchingLine* = PixelThickness 1
 let hiddenLine* = PixelThickness 1
 let dimFontSize* = FontSize 0.5
 

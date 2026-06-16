@@ -31,7 +31,7 @@ type
       ## if zero, calculated automatically
   
   BearingParams* = object
-    ## images/bearing_geom.jpg
+    ## images/bearing_geom.jpg  # todo: draw dimensions in the script
     d*: float
     D*: float
     B*: float

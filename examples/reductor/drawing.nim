@@ -1,7 +1,7 @@
 import sandbox, geom2d
 import pkg/[bumpy]
 import ../shafts/[shafts]
-import ./[bearings, caps]
+import ./[bearings {.all.}, caps, seal]
 
 
 type
@@ -12,9 +12,11 @@ type
     pos*: Point2
     entity*: EntityId
     bearing*: BearingParams
+    seal*: SealGeomParams
     caps*: array[2, CapGeomParams]
     bearingEnt*: array[2, EntityId]
     capEnt*: array[2, EntityId]
+    sealEnt*: EntityId
 
 
 var mmScale = 1e-3
@@ -78,6 +80,7 @@ mainModule:
   fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm)
   slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm)
 
+  # parameters choosen for the middle series  # todo: autocompute
   fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm)
   slowShaft.bearing = BearingDesc(d: 55.mm, D: 120.mm, B: 29.mm, r: 3.mm)
 
@@ -121,26 +124,38 @@ mainModule:
     ]
   )
 
-  # parameters choosen from table (except for D), todo: autocompute
+  
+  # parameters choosen from table  # todo: autocompute
+  fastShaft.seal = SealDesc(d: fastShaft.shaft.segments[1].section.circle.radius*2)
+  slowShaft.seal = SealDesc(d: slowShaft.shaft.segments[^1].section.circle.radius*2)
+
+
+  # parameters choosen from table  # todo: autocompute
   fastShaft.caps[0] = CapDesc(
-    D: 100.mm, h: 20.mm,
+    D: fastShaft.bearing.D, h: 20.mm,
     shaft_d: fastShaft.shaft.segments[^1].section.circle.radius*2,
   )
   fastShaft.caps[1] = CapDesc(
-    D: 100.mm, h: 20.mm,
-    shaft_d: fastShaft.shaft.segments[1].section.circle.radius*2,
-    hole: true, cuff_D: 60.mm, cuff_h: 10.mm,
+    D: fastShaft.bearing.D, h: 20.mm,
+    # shaft_d: fastShaft.shaft.segments[1].section.circle.radius*2,
+    hole: true, seal: fastShaft.seal,
   )
 
   slowShaft.caps[0] = CapDesc(
-    D: 120.mm, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
-    shaft_d: slowShaft.shaft.segments[^1].section.circle.radius*2,
-    hole: true, cuff_D: 70.mm, cuff_h: 10.mm,
+    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
+    # shaft_d: slowShaft.shaft.segments[^1].section.circle.radius*2,
+    hole: true, seal: slowShaft.seal,
   )
   slowShaft.caps[1] = CapDesc(
-    D: 120.mm, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
+    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B),
     shaft_d: slowShaft.shaft.segments[1].section.circle.radius*2,
   )
+
+  let capCutoff = max(0, fastShaft.caps[0].D2/2 + slowShaft.caps[0].D2/2 + 4.mm - axial_distance)/2  # ! gap must be 2.mm .. 4.mm
+  fastShaft.caps[0].cutoff = (capCutoff, 0.mm)
+  fastShaft.caps[1].cutoff = (0.mm, capCutoff)
+  slowShaft.caps[0].cutoff = (0.mm, capCutoff)
+  slowShaft.caps[1].cutoff = (capCutoff, 0.mm)
 
 
   fastShaft.sketch = sketch fastShaft.shaft
@@ -150,6 +165,9 @@ mainModule:
   slowShaft.pos = point2(-axial_distance, 0)
 
 
+
+  # --- shafts ---
+
   fastShaft.entity = doc.spawn SubWorld fastShaft.sketch:
     Position2 fastShaft.pos
     Transform3 (rotateZ(Pi/2) * translate(v3(-fastShaft.shaft.segmentX(fastShaft.gear) - fastShaft.gear.length/2, 0, 0)))
@@ -158,6 +176,9 @@ mainModule:
     Position2 slowShaft.pos
     Transform3 (rotateZ(-Pi/2) * translate(v3(-slowShaft.shaft.segmentX(slowShaft.gear) - slowShaft.gear.length/2, 0, 0)))
 
+
+
+  # --- bearings ---
   
   fastShaft.bearingEnt[0] = doc.spawn SubWorld fastShaft.bearing.sketch(hideBackLines = true):
     Position2 fastShaft.pos + v2(0, fastShaft.shaft.segmentX(1, PositionAtRight) - fastShaft.bearing.B/2 - fastShaft.shaft.segmentX(3, PositionAtCenter))
@@ -176,8 +197,10 @@ mainModule:
     Position2 slowShaft.pos + v2(0, fastShaft.shaft.segmentX(5, PositionAtLeft) + slowShaft.bearing.B/2 - fastShaft.shaft.segmentX(3, PositionAtCenter))
     Transform3 rotateZ(-Pi/2)
   
-  let shaftsBounds = doc.entityBounds(fastShaft.bearingEnt[0]) + doc.entityBounds(slowShaft.entity)
+  let shaftsBounds = doc.bounds(fastShaft.bearingEnt[0]) + doc.bounds(slowShaft.entity)
 
+
+  # --- caps ---
 
   fastShaft.capEnt[0] = doc.spawn SubWorld fastShaft.caps[0].sketch(hideBackLines = true):
     Position2 fastShaft.pos + v2(0,
@@ -217,12 +240,78 @@ mainModule:
     Transform3 rotateZ(Pi/2)
 
 
-  let innerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2), 1.mm)
-  draw innerBox
 
-  # todo: clip
+  # --- seals ---
+
+  fastShaft.sealEnt = doc.spawn SubWorld fastShaft.seal.sketch(hideBackLines = true):
+    Position2 fastShaft.pos + v2(0,
+      + fastShaft.shaft.segmentX(1, PositionAtRight) +
+      - fastShaft.shaft.segmentX(3, PositionAtCenter) +
+      - fastShaft.caps[1].bounds.size.x +
+      + fastShaft.caps[1].s +
+      - fastShaft.bearing.B +
+    0)
+    Transform3 rotateZ(Pi/2)
+
+  slowShaft.sealEnt = doc.spawn SubWorld slowShaft.seal.sketch(hideBackLines = true):
+    Position2 slowShaft.pos + v2(0,
+      - slowShaft.shaft.segmentX(2, PositionAtLeft) +
+      + slowShaft.shaft.segmentX(3, PositionAtCenter) +
+      + slowShaft.caps[0].bounds.size.x +
+      - slowShaft.caps[0].s +
+      + slowShaft.bearing.B +
+    0)
+    Transform3 rotateZ(-Pi/2)
+
+
+
+  # --- box ---
+
+  let innerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2), 1.mm)
+  
+  # todo: automatically clip
+  for i, line in innerBox.lines:
+    if i notin {RoundRect2Geom_LineIndex.top, bottom}:
+      doc.add line, mainLine
+  for arc in innerBox.arcs:
+    doc.add arc, mainLine
+
+  for line in [innerBox.lines[top], innerBox.lines[bottom]]:
+    doc.add line.cut(
+      0,
+      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x + slowShaft.bearing.r, 0)),
+    ), mainLine
+    doc.add line.cut(
+      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).max.x - slowShaft.bearing.r, 0)),
+      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).min.x + fastShaft.bearing.r, 0)),
+    ), mainLine
+    doc.add line.cut(
+      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).max.x - fastShaft.bearing.r, 0)),
+      1,
+    ), mainLine
+
   let outerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2 + wall_thickness*2, fastShaft.gear.length + padding*2 + wall_thickness*2), 1.mm + wall_thickness)
-  draw outerBox, thickness = hiddenLine
+
+  # todo: automatically clip
+  for i, line in outerBox.lines:
+    if i notin {RoundRect2Geom_LineIndex.top, bottom}:
+      doc.add line, hiddenLine
+  for arc in outerBox.arcs:
+    doc.add arc, hiddenLine
+
+  for line in [outerBox.lines[top], outerBox.lines[bottom]]:
+    doc.add line.cut(
+      0,
+      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x, 0)),
+    ), hiddenLine
+    doc.add line.cut(
+      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).max.x, 0)),
+      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).min.x, 0)),
+    ), hiddenLine
+    doc.add line.cut(
+      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).max.x, 0)),
+      1,
+    ), hiddenLine
     
 
 
