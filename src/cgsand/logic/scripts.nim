@@ -1,5 +1,6 @@
 import std/[os, strformat, dynlib, locks, osproc, streams]
-import pkg/[ecs, vmath]
+import pkg/[ecs, vmath, bumpy]
+import pkg/siwin/platforms/any/window
 import ../lib/sandbox
 
 
@@ -24,6 +25,32 @@ type
   EntityBoundsCb* = proc(world: World, eid: EntityId): Bounds2 {.cdecl.}
   WorldBoundsCb* = proc(world: World): Bounds2 {.cdecl.}
 
+  ProjectionMatrixCb* = proc(): Mat4 {.cdecl.}
+  ViewportMatrixCb* = proc(): Mat4 {.cdecl.}
+  ViewportWindowBoundsCb* = proc(): Rect {.cdecl.}
+  RerunScriptRequestCb* = proc() {.cdecl.}
+
+  ScriptSystems* = object
+    ## procs exported by the script lib that forward window events into its ECS
+    windowEvent_CloseEvent*: proc(e: CloseEvent) {.cdecl.}
+    windowEvent_RenderEvent*: proc(e: RenderEvent) {.cdecl.}
+    windowEvent_TickEvent*: proc(e: TickEvent) {.cdecl.}
+    windowEvent_ResizeEvent*: proc(e: ResizeEvent) {.cdecl.}
+    windowEvent_WindowMoveEvent*: proc(e: WindowMoveEvent) {.cdecl.}
+    windowEvent_MouseMoveEvent*: proc(e: MouseMoveEvent) {.cdecl.}
+    windowEvent_MouseButtonEvent*: proc(e: MouseButtonEvent) {.cdecl.}
+    windowEvent_ScrollEvent*: proc(e: ScrollEvent) {.cdecl.}
+    windowEvent_ClickEvent*: proc(e: ClickEvent) {.cdecl.}
+    windowEvent_KeyEvent*: proc(e: KeyEvent) {.cdecl.}
+    windowEvent_TextInputEvent*: proc(e: TextInputEvent) {.cdecl.}
+    windowEvent_TouchEvent*: proc(e: TouchEvent) {.cdecl.}
+    windowEvent_TouchMoveEvent*: proc(e: TouchMoveEvent) {.cdecl.}
+    windowEvent_TouchPressureChangedEvent*: proc(e: TouchPressureChangedEvent) {.cdecl.}
+    windowEvent_StateBoolChangedEvent*: proc(e: StateBoolChangedEvent) {.cdecl.}
+    windowEvent_PopupEvent*: proc(e: PopupEvent) {.cdecl.}
+    windowEvent_DropEvent*: proc(e: DropEvent) {.cdecl.}
+    mainModuleFinished*: proc() {.cdecl, gcsafe.}
+
   Script* = ref ScriptObj
   ScriptObj* = object
     lib*: LibHandle
@@ -35,6 +62,8 @@ type
     stage* {.guard: lock.}: ScriptStage
     lock*: Lock
 
+    systems*: ScriptSystems
+
     outputChannel*: ptr Channel[string]
 
     thread: Thread[WorkerArgs]
@@ -43,6 +72,11 @@ type
 var scriptTextSize*: TextSizeCb
 var scriptEntityBounds*: EntityBoundsCb
 var scriptWorldBounds*: WorldBoundsCb
+
+var scriptProjectionMatrix*: ProjectionMatrixCb
+var scriptViewportMatrix*: ViewportMatrixCb
+var scriptViewportWindowBounds*: ViewportWindowBoundsCb
+var scriptRerunScriptRequest*: RerunScriptRequestCb
 
 
 proc `=destroy`(this: ScriptObj) =
@@ -139,6 +173,33 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
   setScriptCb("sandbox_entityBoundsImpl", scriptEntityBounds)
   setScriptCb("sandbox_worldBoundsImpl", scriptWorldBounds)
 
+  setScriptCb("interactive_systems_projectionMatrix", scriptProjectionMatrix)
+  setScriptCb("interactive_systems_viewportMatrix", scriptViewportMatrix)
+  setScriptCb("interactive_systems_viewportWindowBounds", scriptViewportWindowBounds)
+  setScriptCb("interactive_systems_rerunScript", scriptRerunScriptRequest)
+
+  template resolveEventProc(fld: untyped, sym: string) =
+    s.systems.fld = cast[typeof(s.systems.fld)](s.lib.symAddr(sym))
+
+  resolveEventProc windowEvent_CloseEvent, "interactive_systems_windowEvent_CloseEvent"
+  resolveEventProc windowEvent_RenderEvent, "interactive_systems_windowEvent_RenderEvent"
+  resolveEventProc windowEvent_TickEvent, "interactive_systems_windowEvent_TickEvent"
+  resolveEventProc windowEvent_ResizeEvent, "interactive_systems_windowEvent_ResizeEvent"
+  resolveEventProc windowEvent_WindowMoveEvent, "interactive_systems_windowEvent_WindowMoveEvent"
+  resolveEventProc windowEvent_MouseMoveEvent, "interactive_systems_windowEvent_MouseMoveEvent"
+  resolveEventProc windowEvent_MouseButtonEvent, "interactive_systems_windowEvent_MouseButtonEvent"
+  resolveEventProc windowEvent_ScrollEvent, "interactive_systems_windowEvent_ScrollEvent"
+  resolveEventProc windowEvent_ClickEvent, "interactive_systems_windowEvent_ClickEvent"
+  resolveEventProc windowEvent_KeyEvent, "interactive_systems_windowEvent_KeyEvent"
+  resolveEventProc windowEvent_TextInputEvent, "interactive_systems_windowEvent_TextInputEvent"
+  resolveEventProc windowEvent_TouchEvent, "interactive_systems_windowEvent_TouchEvent"
+  resolveEventProc windowEvent_TouchMoveEvent, "interactive_systems_windowEvent_TouchMoveEvent"
+  resolveEventProc windowEvent_TouchPressureChangedEvent, "interactive_systems_windowEvent_TouchPressureChangedEvent"
+  resolveEventProc windowEvent_StateBoolChangedEvent, "interactive_systems_windowEvent_StateBoolChangedEvent"
+  resolveEventProc windowEvent_PopupEvent, "interactive_systems_windowEvent_PopupEvent"
+  resolveEventProc windowEvent_DropEvent, "interactive_systems_windowEvent_DropEvent"
+  resolveEventProc mainModuleFinished, "interactive_systems_mainModuleFinished"
+
   withLock s.lock: s.stage = Executing
   nimMain()
 
@@ -146,6 +207,9 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
   let scriptHandleError = cast[proc: bool {.cdecl, gcsafe.}](s.lib.symAddr("handleErrorAfterNimMain"))
   if scriptHandleError != nil:
     if scriptHandleError(): fail()
+
+  if s.systems.mainModuleFinished != nil:
+    s.systems.mainModuleFinished()
 
   let w = s.lib.symAddr("world_instance")
   if w == nil: fail()

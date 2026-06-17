@@ -76,6 +76,40 @@ proc hasWorldToDraw(script: Script): bool =
   true
 
 
+proc canSendEvents(script: Script): bool =
+  ## true once the script lib is loaded and not currently (re)compiling
+  if script == nil: return false
+  withLock script.lock:
+    result = script.stage == Idle
+
+
+var activeDocumentView: DocumentView
+  ## the DocumentView whose script is currently handling a window event;
+  ## set only for the duration of that call, so the interactive_systems
+  ## callbacks below know which view's viewport/projection to report
+
+proc projectionMatrixCallback(): Mat4 {.cdecl.} =
+  if activeDocumentView == nil or activeDocumentView.script[].hasWorldToDraw.not: return mat4()
+  activeDocumentView.projection
+
+proc viewportMatrixCallback(): Mat4 {.cdecl.} =
+  if activeDocumentView == nil: return mat4()
+  activeDocumentView.viewport[]
+
+proc viewportWindowBoundsCallback(): Rect {.cdecl.} =
+  if activeDocumentView == nil: return rect(vec2(0, 0), vec2(0, 0))
+  rect(vec2(0, 0), vec2(activeDocumentView.w[], activeDocumentView.h[]))
+
+proc rerunScriptCallback() {.cdecl.} =
+  if activeDocumentView != nil and activeDocumentView.script[] != nil:
+    rerunScript(activeDocumentView.script[])
+
+scriptProjectionMatrix = projectionMatrixCallback
+scriptViewportMatrix = viewportMatrixCallback
+scriptViewportWindowBounds = viewportWindowBoundsCallback
+scriptRerunScriptRequest = rerunScriptCallback
+
+
 proc worldCenter3D*(w: World): Vec3 =
   ## Returns the center of the 3D bounding box of the world.
   let globals = w.documentGlobals
@@ -178,6 +212,40 @@ method draw*(this: DocumentView, ctx: DrawContext) =
   this.drawAfter(ctx)
 
 
+method recieve*(this: DocumentView, signal: Signal) =
+  procCall this.super.recieve(signal)
+
+  if signal of WindowEvent:
+    let script = this.script[]
+    if script.canSendEvents:
+      let e = signal.WindowEvent.event
+      let prevActive = activeDocumentView
+      activeDocumentView = this
+      defer: activeDocumentView = prevActive
+
+      template forward(E, fld) =
+        if e of E:
+          if script.systems.fld != nil:
+            script.systems.fld(((ref E)e)[])
+
+      forward CloseEvent, windowEvent_CloseEvent
+      forward RenderEvent, windowEvent_RenderEvent
+      forward ResizeEvent, windowEvent_ResizeEvent
+      forward WindowMoveEvent, windowEvent_WindowMoveEvent
+      forward MouseMoveEvent, windowEvent_MouseMoveEvent
+      forward MouseButtonEvent, windowEvent_MouseButtonEvent
+      forward ScrollEvent, windowEvent_ScrollEvent
+      forward ClickEvent, windowEvent_ClickEvent
+      forward KeyEvent, windowEvent_KeyEvent
+      forward TextInputEvent, windowEvent_TextInputEvent
+      forward TouchEvent, windowEvent_TouchEvent
+      forward TouchMoveEvent, windowEvent_TouchMoveEvent
+      forward TouchPressureChangedEvent, windowEvent_TouchPressureChangedEvent
+      forward StateBoolChangedEvent, windowEvent_StateBoolChangedEvent
+      forward PopupEvent, windowEvent_PopupEvent
+      forward DropEvent, windowEvent_DropEvent
+
+
 
 proc recompileScript*(this: DocumentView) =
   if this.script[] != nil:
@@ -201,10 +269,16 @@ method init*(this: DocumentView) =
 
   var prevDragPos = vec2(0, 0)
 
-  this.parentUiRoot.onTick.connectTo this:
-    if this.script[] != nil:
-      withLock this.script[].lock:
-        this.scriptStage[] = this.script[].stage
+  this.parentUiRoot.onTick.connectTo this, e:
+    let script = this.script[]
+    if script != nil:
+      withLock script.lock:
+        this.scriptStage[] = script.stage
+      if script.canSendEvents and script.systems.windowEvent_TickEvent != nil:
+        let prevActive = activeDocumentView
+        activeDocumentView = this
+        script.systems.windowEvent_TickEvent(e)
+        activeDocumentView = prevActive
 
   this.makeLayout:
     - UiRect.new:
