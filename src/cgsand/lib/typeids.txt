@@ -9,6 +9,7 @@ Typeface
 DashingScale
 LineSection2
 Thickness
+NoBounds
 CircleArc2
 PointCount
 EllipseArc2

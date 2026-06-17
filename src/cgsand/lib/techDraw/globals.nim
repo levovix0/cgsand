@@ -6,10 +6,16 @@ import ../sandbox
 var drawingMmScale*: float = 1e-3
   ## world millimiters per document unit
 
+
 proc mm*(v: float): float = v * drawingMmScale
   ## world millimiters to doc units
+
 proc m*(v: float): float = v * 1e3 * drawingMmScale
   ## meters to doc units
+
+
+proc ceil*(x: float, step: float): float =
+  ceil(x / step) * step
 
 
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)

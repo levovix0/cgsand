@@ -101,6 +101,10 @@ type
 
   PolygonalSurface3* = ref Grid3
     ## ref-wrapped Grid3 for ECS component storage; use polygonalSurface3() to construct
+  
+
+  NoBounds* = object
+    ## ignore this entity when calculating bounds
 
 
 

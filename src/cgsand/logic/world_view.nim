@@ -257,6 +257,10 @@ proc draw2dWorld*(
 
   let globals = w.documentGlobals
 
+  # todo: seems like something in rice disables GlBlend
+  glEnable(GlBlend)
+  glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
+
 
   template selectThickness: Option[Thickness] {.dirty.} =
     if has PixelThickness: some(the(PixelThickness) / pixelsPerUnit)
@@ -339,7 +343,6 @@ proc draw2dWorld*(
     # todo: Background support (fill ellipse)
 
     drawStroke(points, color, thk, t3)
-
   
   w.forEach (
     curve: OwnedCurve2|Path2|Curve2,

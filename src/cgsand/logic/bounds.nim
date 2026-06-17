@@ -74,53 +74,56 @@ proc worldBoundsAlongAxis*(
     for c in [b.min, p2(b.max.x, b.min.y), p2(b.min.x, b.max.y), b.max]:
       update(c.x * axis.x + c.y * axis.y)
 
-  w.forEach (EntityId, line: LineSection2, thickness: opt Thickness):
+  w.forEach (EntityId, line: LineSection2, thickness: opt Thickness, not NoBounds):
     if not filter(the EntityId): continue
     addBounds2(lineBounds(line, if has Thickness: some thickness else: none Thickness))
 
-  w.forEach (EntityId, curve: CircleArc2, count: PointCount||20):
+  w.forEach (EntityId, curve: CircleArc2, count: PointCount||20, not NoBounds):
     if not filter(the EntityId): continue
     for pt in curve.points(count):
       let v = pt.V2.vec2
       update(v.x * axis.x + v.y * axis.y)
 
-  w.forEach (EntityId, curve: EllipseArc2, count: PointCount||32):
+  w.forEach (EntityId, curve: EllipseArc2, count: PointCount||32, not NoBounds):
     if not filter(the EntityId): continue
     for pt in curve.points(count):
       let v = pt.V2.vec2
       update(v.x * axis.x + v.y * axis.y)
 
-  w.forEach (EntityId, curve: Curve2, transform3: Transform3||m4()):
+  w.forEach (EntityId, curve: Curve2, transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     addBounds2(transform3 * bounds(curve))
 
-  w.forEach (EntityId, curve: OwnedCurve2, transform3: Transform3||m4()):
+  w.forEach (EntityId, curve: OwnedCurve2, transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     addBounds2(transform3 * bounds(cast[Curve2](curve)))
 
-  w.forEach (EntityId, path: Path2, transform3: Transform3||m4()):
+  w.forEach (EntityId, path: Path2, transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     addBounds2(transform3 * bounds(path.toCurve2))
 
-  w.forEach (EntityId, path: Path, transform3: Transform3||m4()):
+  w.forEach (EntityId, path: Path, transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     try:
       let r = path.computeBounds()
       addBounds2(transform3 * bounds2(p2(float64(r.x), float64(r.y)), p2(float64(r.x + r.w), float64(r.y + r.h))))
     except: discard
 
-  w.forEach (EntityId, surface: PolygonalSurface3, transform3: Transform3||m4()):
+  w.forEach (EntityId, surface: PolygonalSurface3, transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     if surface == nil: continue
     for pt in surface[].points:
       let p = (transform3 * v4(pt.x, pt.y, pt.z, 1)).xyz
       update(p.x * axis.x + p.y * axis.y + p.z * axis.z)
 
-  w.forEach (EntityId, text: Text, pos: Position2||p2(), posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize):
+  w.forEach (
+    EntityId, text: Text, pos: Position2||p2(),
+    posAt: PositionAt||PositionAtTopLeft, font: Typeface||globals.font, size: FontSize||globals.fontSize, not NoBounds
+  ):
     if not filter(the EntityId): continue
     addBounds2(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
 
-  w.forEach (EntityId, sub: SubWorld, pos: Position2||p2(), transform3: Transform3||m4()):
+  w.forEach (EntityId, sub: SubWorld, pos: Position2||p2(), transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     if sub == nil: continue
     let m = translate(v3(pos.x, pos.y, 0)) * transform3

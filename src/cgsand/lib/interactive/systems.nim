@@ -28,6 +28,7 @@ declare_ecs_system windowEvent(e: PopupEvent)
 declare_ecs_system windowEvent(e: DropEvent)
 
 declare_ecs_system mainModuleFinished()
+declare_ecs_system viewportChanged()
 
 
 var projectionMatrix* {.exportc: "interactive_systems_projectionMatrix", dynlib.}: proc(): Mat4 {.cdecl.}
@@ -59,6 +60,7 @@ proc interactive_systems_windowEvent_PopupEvent(e: PopupEvent) {.exportc, dynlib
 proc interactive_systems_windowEvent_DropEvent(e: DropEvent) {.exportc, dynlib.} = doc.windowEvent(e)
 
 proc interactive_systems_mainModuleFinished() {.exportc, dynlib.} = doc.mainModuleFinished()
+proc interactive_systems_viewportChanged() {.exportc, dynlib.} = doc.viewportChanged()
 
 
 proc secs*(d: Duration): float =

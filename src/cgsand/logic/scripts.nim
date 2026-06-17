@@ -50,6 +50,7 @@ type
     windowEvent_PopupEvent*: proc(e: PopupEvent) {.cdecl.}
     windowEvent_DropEvent*: proc(e: DropEvent) {.cdecl.}
     mainModuleFinished*: proc() {.cdecl, gcsafe.}
+    viewportChanged*: proc() {.cdecl, gcsafe.}
 
   Script* = ref ScriptObj
   ScriptObj* = object
@@ -199,6 +200,7 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
   resolveEventProc windowEvent_PopupEvent, "interactive_systems_windowEvent_PopupEvent"
   resolveEventProc windowEvent_DropEvent, "interactive_systems_windowEvent_DropEvent"
   resolveEventProc mainModuleFinished, "interactive_systems_mainModuleFinished"
+  resolveEventProc viewportChanged, "interactive_systems_viewportChanged"
 
   withLock s.lock: s.stage = Executing
   nimMain()

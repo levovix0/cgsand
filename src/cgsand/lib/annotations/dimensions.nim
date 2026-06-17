@@ -23,14 +23,17 @@ let textMargin* = 0.2
 
 
 
-proc addArrow*(to: Point2, dir: NormalVec2, size: float, color = doc.foreground) =
+proc addArrow*(to: Point2, dir: NormalVec2, size: float, color = doc.foreground, noBounds = false) =
   # todo: proc arrow(to: Point2, dir: NormalVec2, size: float, color = doc.foreground): (Path, Background)
   letCur p: create(Path2)[]
   p.add to
   p.add to - (dir * size).rotate(Pi / 16)
   p.add to - (dir * size).rotate(-Pi / 16)
   close p
-  doc.add p.Curve2, Background color
+  if noBounds:
+    doc.add p.Curve2, Background color, NoBounds()
+  else:
+    doc.add p.Curve2, Background color
 
 
 
@@ -51,25 +54,33 @@ proc drawDimensions*(doc: World) =
     text: opt DimensionText,
     arrowSize: ArrowSize||0.5,
     fontSize: FontSize||doc.fontSize,
+    opt NoBounds,
     not AlreadyDrawn,
   ):
     entIds.add id
+    var drawnIds: seq[EntityId]
 
     let dimline_a = dim.dimline + projectToAxis(dim.a - dim.dimline, dim.dir)
     let dimline_b = dim.dimline + projectToAxis(dim.b - dim.dimline, dim.dir)
-    doc.add line(dim.a, dimline_a)
-    doc.add line(dim.b, dimline_b)
-    doc.add line(dimline_a, dimline_b)
+    drawnIds.add doc.spawn line(dim.a, dimline_a)
+    drawnIds.add doc.spawn line(dim.b, dimline_b)
+    drawnIds.add doc.spawn line(dimline_a, dimline_b)
 
     if has DimensionText:
-      doc.add Text text:
-        PositionAtBottom
-        Position2 line(dimline_a, dimline_b).center
-        Transform3 (rotateZ(-(dimline_b - dimline_a).toPolar.theta.abs) * translate(v3(0, -textMargin, 0)))
-        fontSize
+      let angle = (dimline_b - dimline_a).toPolar.theta
+      drawnIds.add:
+        doc.spawn Text text:
+          PositionAtBottom
+          Position2 line(dimline_a, dimline_b).center
+          Transform3 (rotateZ(if abs(angle) < Pi/2: angle else: Pi + angle) * translate(v3(0, fontSize * -textMargin, 0)))
+          fontSize
 
-    addArrow(dimline_a, dimline_a - dimline_b, arrowSize)
-    addArrow(dimline_b, dimline_b - dimline_a, arrowSize)
+    addArrow(dimline_a, dimline_a - dimline_b, arrowSize, noBounds = has NoBounds)
+    addArrow(dimline_b, dimline_b - dimline_a, arrowSize, noBounds = has NoBounds)
+
+    if has NoBounds:
+      for x in drawnIds:
+        doc.update x: add NoBounds()
 
   for x in entIds:
     doc.update x: add AlreadyDrawn()

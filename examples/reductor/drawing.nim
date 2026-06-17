@@ -1,7 +1,8 @@
 import sandbox, geom2d, techDraw
 import pkg/[bumpy]
-import ../shafts/[shafts]
+import ../shafts/[shafts, gears]
 import ./[bearings {.all.}, caps, seal]
+import interactive_tools/measurement
 
 
 type
@@ -58,10 +59,6 @@ proc gearPitchDiameter*(x: ShaftEx): float =
   x.gear.section.gear.pitchDiameter
 
 
-proc ceil(x: float, step: float): float =
-  ceil(x / step) * step
-
-
 
 mainModule:
   var fastShaft = ShaftEx()
@@ -70,7 +67,7 @@ mainModule:
   doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
 
   fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm)
-  slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm)
+  slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm, shaft_d = 60.mm)  # ! shaft_d = d_c = (d_n = 55.mm) + 5.mm
 
   # parameters choosen for the middle series  # todo: autocompute
   fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm)
@@ -79,11 +76,11 @@ mainModule:
 
   let axial_distance = fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
   let wall_thickness: float =
-    if axial_distance <= 80: 6.mm
-    elif axial_distance <= 180: 8.mm
-    elif axial_distance <= 280: 10.mm
-    elif axial_distance <= 355: 12.mm
-    elif axial_distance <= 450: 14.mm
+    if axial_distance <= 80.mm: 6.mm
+    elif axial_distance <= 180.mm: 8.mm
+    elif axial_distance <= 280.mm: 10.mm
+    elif axial_distance <= 355.mm: 12.mm
+    elif axial_distance <= 450.mm: 14.mm
     else: 16.mm
   
   let padding = (wall_thickness * 1.5).ceil(5.mm)
@@ -167,6 +164,16 @@ mainModule:
   slowShaft.entity = doc.spawn SubWorld slowShaft.sketch:
     Position2 slowShaft.pos
     Transform3 (rotateZ(-Pi/2) * translate(v3(-slowShaft.shaft.segmentX(slowShaft.gear) - slowShaft.gear.length/2, 0, 0)))
+
+  doc.add line(
+    fastShaft.pos + v2(0, fastShaft.shaft.segmentX(0, PositionAtLeft) - fastShaft.shaft.segmentX(3, PositionAtCenter) - 5.mm),
+    fastShaft.pos + v2(0, fastShaft.shaft.segmentX(5, PositionAtRight) - fastShaft.shaft.segmentX(3, PositionAtCenter) + 5.mm),
+  ), axialLine
+
+  doc.add line(
+    slowShaft.pos + v2(0, -(slowShaft.shaft.segmentX(4, PositionAtRight) - slowShaft.shaft.segmentX(3, PositionAtCenter)) - 5.mm),
+    slowShaft.pos + v2(0, -(slowShaft.shaft.segmentX(0, PositionAtLeft) - slowShaft.shaft.segmentX(3, PositionAtCenter)) + 5.mm),
+  ), axialLine
 
 
 
@@ -282,7 +289,11 @@ mainModule:
       1,
     ), mainLine
 
-  let outerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2 + wall_thickness*2, fastShaft.gear.length + padding*2 + wall_thickness*2), 1.mm + wall_thickness)
+  let outerBox = roundRect2geom(
+    point2(shaftsBounds.center.x, 0),
+    v2(shaftsBounds.size.x + padding*2 + wall_thickness*2, fastShaft.gear.length + padding*2 + wall_thickness*2),
+    1.mm + wall_thickness
+  )
 
   # todo: automatically clip
   for i, line in outerBox.lines:
@@ -308,5 +319,7 @@ mainModule:
 
 
   doc.drawRects()
+
+  measurementTool()
 
 

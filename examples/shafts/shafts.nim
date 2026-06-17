@@ -1,6 +1,7 @@
 import std/sequtils
 import sandbox, geom2d, techDraw
 import annotations/[dimensions]
+import ./gears
 
 
 const useCustomFont = not defined(nimcheck)
@@ -19,10 +20,6 @@ type
     tension_limit*: float  ## in pascals
 
 
-  GearSection* = object
-    modulo*: float  # in meters
-    teethCount*: int
-
   Section* = object
     case shape*: SectionShape
     of Circle:
@@ -36,7 +33,7 @@ type
       ]
     
     of Gear:
-      gear*: GearSection
+      gear*: GearDesc
     
     material*: Material
     unknownDimensions*: bool
@@ -83,29 +80,18 @@ proc cylindricSegment*(
 
 
 
-
-proc adhendiumDiameter*(g: GearSection): float =
-  g.modulo * (g.teethCount.float + 2)
-
-proc pitchDiameter*(g: GearSection): float =
-  g.modulo * (g.teethCount.float)
-
-proc rootDiameter*(g: GearSection): float =
-  g.modulo * (g.teethCount.float - 2.5)
-
-proc bevelRadius*(g: GearSection): float =
-  g.modulo
-
-
 proc gearSegment*(
   l: float,
   z: int, modulo: float,
   material = steel,
   left = ShaftConjunction(),
   right = ShaftConjunction(),
+  shaft_d: float = 0,
 ): ShaftSegment =
   ShaftSegment(
-    section: Section(shape: Gear, gear: GearSection(teethCount: z, modulo: modulo), material: material),
+    section: Section(shape: Gear, gear: GearDesc(
+      teethCount: z, modulo: modulo, shaft_d: shaft_d, holesAndKey: shaft_d != 0, height: l
+    ), material: material),
     length: l, left: left, right: right
   )
 
@@ -163,14 +149,14 @@ proc drawConjunction(sketch: World, origin: Position2, dir: V2, conjunction: Sha
     ), mainLine
 
 
-proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimensions = doc, sketch = doc) =
+proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimensions = doc, sketch = doc, hatching = true) =
   proc pt(v: V2): Point2 = origin + v * scale
 
   proc height(segment: ShaftSegment): float =
     case segment.section.shape
     of Circle: segment.section.circle.radius*2
     of Rectangle: max(segment.section.rectangle.w, segment.section.rectangle.h)
-    of Gear: segment.section.gear.adhendiumDiameter
+    of Gear: segment.section.gear.shaft_d
 
   let maxH = shaft.segments.mapIt(it.height).max
   let dimlineY = maxH/2 + 5/scale
@@ -179,53 +165,37 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
   for segment in shaft.segments:
     let h = segment.height
 
-    let leftConjunction =
-      if segment.section.shape == Gear: ShaftConjunction(kind: Bevel, radius: segment.section.gear.bevelRadius)
-      else: segment.left
-
-    let rightConjunction =
-      if segment.section.shape == Gear: ShaftConjunction(kind: Bevel, radius: segment.section.gear.bevelRadius)
-      else: segment.right
-
-    let leftOffset = case leftConjunction.kind
-      of Bevel, Fillet: leftConjunction.radius
+    let leftOffset = case segment.left.kind
+      of Bevel, Fillet: segment.left.radius
       of None: 0
 
-    let rightOffset = case rightConjunction.kind
-      of Bevel, Fillet: rightConjunction.radius
+    let rightOffset = case segment.right.kind
+      of Bevel, Fillet: segment.right.radius
       of None: 0
 
     if sketch != nil:
-      sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), leftConjunction, h, scale=scale)
-      sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), rightConjunction, h, scale=scale)
+      if segment.section.shape == Gear:
+        sketch.add SubWorld segment.section.gear.sketchSection(hatching = hatching, centralAxial = false, backLines = false),
+          Position2 v2(x, 0).pt, Transform3 scale(v3(scale))
 
-      sketch.add line(
-        v2(x + leftOffset, -h/2).pt,
-        v2(x + segment.length - rightOffset, -h/2).pt
-      ), mainLine
-      sketch.add line(
-        v2(x + leftOffset, h/2).pt,
-        v2(x + segment.length - rightOffset, h/2).pt
-      ), mainLine
+      if h != 0:
+        sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), segment.left, h, scale=scale)
+        sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), segment.right, h, scale=scale)
 
-      for (xc, conjunction, dir) in [(x, leftConjunction, 1.0), (x + segment.length, rightConjunction, -1.0)]:
         sketch.add line(
-          v2(xc + conjunction.radius * dir, -h/2).pt,
-          v2(xc + conjunction.radius * dir, h/2).pt
+          v2(x + leftOffset, -h/2).pt,
+          v2(x + segment.length - rightOffset, -h/2).pt
+        ), mainLine
+        sketch.add line(
+          v2(x + leftOffset, h/2).pt,
+          v2(x + segment.length - rightOffset, h/2).pt
         ), mainLine
 
-      if segment.section.shape == Gear:
-        let g = segment.section.gear
-        for yc in [-h/2 + (g.adhendiumDiameter - g.rootDiameter)/2, h/2 - (g.adhendiumDiameter - g.rootDiameter)/2]:
+        for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segment.length, segment.right, -1.0)]:
           sketch.add line(
-            v2(x, yc).pt,
-            v2(x + segment.length, yc).pt
+            v2(xc + conjunction.radius * dir, -h/2).pt,
+            v2(xc + conjunction.radius * dir, h/2).pt
           ), mainLine
-        for yc in [-h/2 + (g.adhendiumDiameter - g.pitchDiameter)/2, h/2 - (g.adhendiumDiameter - g.pitchDiameter)/2]:
-          sketch.add line(
-            v2(x, yc).pt,
-            v2(x + segment.length, yc).pt
-          ), axialLine
 
     if dimensions != nil:
       dimensions.add LinearDimension2(

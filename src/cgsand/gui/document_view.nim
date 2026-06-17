@@ -98,7 +98,7 @@ proc viewportMatrixCallback(): Mat4 {.cdecl.} =
 
 proc viewportWindowBoundsCallback(): Rect {.cdecl.} =
   if activeDocumentView == nil: return rect(vec2(0, 0), vec2(0, 0))
-  rect(vec2(0, 0), vec2(activeDocumentView.w[], activeDocumentView.h[]))
+  rect(vec2(activeDocumentView.globalX[], activeDocumentView.globalY[]), vec2(activeDocumentView.w[], activeDocumentView.h[]))
 
 proc rerunScriptCallback() {.cdecl.} =
   if activeDocumentView != nil and activeDocumentView.script[] != nil:
@@ -215,7 +215,7 @@ method draw*(this: DocumentView, ctx: DrawContext) =
 method recieve*(this: DocumentView, signal: Signal) =
   procCall this.super.recieve(signal)
 
-  if signal of WindowEvent:
+  if signal of WindowEvent and not signal.WindowEvent.handled:
     let script = this.script[]
     if script.canSendEvents:
       let e = signal.WindowEvent.event
@@ -279,6 +279,14 @@ method init*(this: DocumentView) =
         activeDocumentView = this
         script.systems.windowEvent_TickEvent(e)
         activeDocumentView = prevActive
+
+  this.viewport.changed.connectTo this:
+    let script = this.script[]
+    if script != nil and script.canSendEvents and script.systems.viewportChanged != nil:
+      let prevActive = activeDocumentView
+      activeDocumentView = this
+      script.systems.viewportChanged()
+      activeDocumentView = prevActive
 
   this.makeLayout:
     - UiRect.new:
