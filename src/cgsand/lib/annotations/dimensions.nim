@@ -1,6 +1,6 @@
 import std/[strutils]
-import sandbox, geom2d
-import pkg/pixie/paths
+import ../[sandbox, geom2d]
+import pkg/sigeo/macros/cursors
 
 
 type
@@ -24,14 +24,13 @@ let textMargin* = 0.2
 
 
 proc addArrow*(to: Point2, dir: NormalVec2, size: float, color = doc.foreground) =
-  # todo: add something like paths to sigeo
   # todo: proc arrow(to: Point2, dir: NormalVec2, size: float, color = doc.foreground): (Path, Background)
-  let p = newPath()
-  p.moveTo vmath.vec2 to.V2
-  p.lineTo vmath.vec2 (to - (dir * size).rotate(Pi / 16)).V2
-  p.lineTo vmath.vec2 (to - (dir * size).rotate(-Pi / 16)).V2
-  p.closePath()
-  doc.add p, Background color
+  letCur p: create(Path2)[]
+  p.add to
+  p.add to - (dir * size).rotate(Pi / 16)
+  p.add to - (dir * size).rotate(-Pi / 16)
+  close p
+  doc.add p.Curve2, Background color
 
 
 

@@ -1,4 +1,4 @@
-import sandbox
+import ../sandbox
 
 ## some global setting for tech drawing documents
 

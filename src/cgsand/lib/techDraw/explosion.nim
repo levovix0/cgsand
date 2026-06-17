@@ -1,6 +1,5 @@
-import sandbox, geom2d
+import ../[sandbox, geom2d]
 import pkg/vmath
-import pkg/pixie/paths
 
 ## utility function to copy contents of a techDraw world onto another with Transform3 applied
 ## needed in rare cases, usually just adding a SubWorld works
@@ -11,7 +10,8 @@ proc explode*(dest: World, subWorld: World, transform: Transform3 = m4()) =
   ## only entities that carry a drawable thing are copied
   subWorld.forEach (
     eid: EntityId,
-    LineSection2|CircleArc2|EllipseArc2|Curve2|OwnedCurve2|Path2|Path|Text|SubWorld|PolygonalSurface3,
+    LineSection2|CircleArc2|EllipseArc2|Curve2|OwnedCurve2|Path2|Text|SubWorld|PolygonalSurface3,
+    # note: Path is not included since it's deprecated anyway
     opt Transform3
   ):
     let newEid = dest.teleportClone(subWorld, eid)
