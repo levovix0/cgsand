@@ -12,6 +12,7 @@ type
     
     shaft_d*: float
     holesAndKey*: bool
+    reverseHatching*: bool
 
 
 
@@ -52,7 +53,10 @@ proc drawSection*(g: GearDesc, sketch = doc, backLines = true, axialLines = true
   let dou2 = dhol - g.shaft_d
 
   let contour = (doc.foreground, mainLine)
-  let hatch = (Hatching(period: if g.holesAndKey: g.modulo else: g.modulo/2), hatchingLine)
+  let hatch = (Hatching(
+    period: (if g.holesAndKey: g.modulo else: g.modulo/2),
+    angle: (if g.reverseHatching: -Pi/4 else: Pi/4),
+  ), hatchingLine)
 
   if g.holesAndKey:
     let pts = @[

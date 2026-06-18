@@ -87,10 +87,12 @@ proc gearSegment*(
   left = ShaftConjunction(),
   right = ShaftConjunction(),
   shaft_d: float = 0,
+  reverseHatching = false,
 ): ShaftSegment =
   ShaftSegment(
     section: Section(shape: Gear, gear: GearDesc(
-      teethCount: z, modulo: modulo, shaft_d: shaft_d, holesAndKey: shaft_d != 0, height: l
+      teethCount: z, modulo: modulo, shaft_d: shaft_d, holesAndKey: shaft_d != 0, height: l,
+      reverseHatching: reverseHatching,
     ), material: material),
     length: l, left: left, right: right
   )
@@ -137,16 +139,28 @@ proc drawConjunction(sketch: World, origin: Position2, dir: V2, conjunction: Sha
       v2(0, -h/2 + conjunction.radius).pt,
       v2(0, h/2 - conjunction.radius).pt
     ), mainLine
-    sketch.add circleArc(
-      center = v2(conjunction.radius, -h/2 - conjunction.radius).pt,
-      radius = conjunction.radius * scale,
-      startAngle = 0, endAngle = -Pi/2,
-    ), mainLine
-    sketch.add circleArc(
-      center = v2(conjunction.radius, h/2 + conjunction.radius).pt,
-      radius = conjunction.radius * scale,
-      startAngle = Pi/2, endAngle = 0,
-    ), mainLine
+    if dir.x < 0:
+      sketch.add circleArc(
+        center = v2(conjunction.radius, -h/2 - conjunction.radius).pt,
+        radius = conjunction.radius * scale,
+        startAngle = 0, endAngle = -Pi/2,
+      ), mainLine
+      sketch.add circleArc(
+        center = v2(conjunction.radius, h/2 + conjunction.radius).pt,
+        radius = conjunction.radius * scale,
+        startAngle = Pi/2, endAngle = 0,
+      ), mainLine
+    else:
+      sketch.add circleArc(
+        center = v2(conjunction.radius, -h/2 - conjunction.radius).pt,
+        radius = conjunction.radius * scale,
+        startAngle = Pi, endAngle = Pi/2,
+      ), mainLine
+      sketch.add circleArc(
+        center = v2(conjunction.radius, h/2 + conjunction.radius).pt,
+        radius = conjunction.radius * scale,
+        startAngle = -Pi/2, endAngle = Pi,
+      ), mainLine
 
 
 proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimensions = doc, sketch = doc, hatching = true) =
@@ -192,10 +206,11 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
         ), mainLine
 
         for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segment.length, segment.right, -1.0)]:
-          sketch.add line(
-            v2(xc + conjunction.radius * dir, -h/2).pt,
-            v2(xc + conjunction.radius * dir, h/2).pt
-          ), mainLine
+          if conjunction.kind != Fillet:
+            sketch.add line(
+              v2(xc + conjunction.radius * dir, -h/2).pt,
+              v2(xc + conjunction.radius * dir, h/2).pt
+            ), mainLine
 
     if dimensions != nil:
       dimensions.add LinearDimension2(

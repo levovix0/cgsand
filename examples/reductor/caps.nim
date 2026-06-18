@@ -5,7 +5,7 @@ import ./[seal]
 
 
 type
-  CapDesc* = object
+  CapDesc* = object of RootObj
     D*: float
       ## base cap diameter, m
     
@@ -21,19 +21,13 @@ type
     
 
     cutoff*: tuple[top, bottom: float]
+
+    reverseHatching*: bool
     
 
-  CapGeomParams* = object
+  CapGeomParams* = object of CapDesc
     ## all dimensions are in meters
     ## images/cap_geom.jpg  # todo: draw dimensions in the script
-    D*: float
-    h*: float
-    hole*: bool
-    shaft_d*: float
-    seal_D*: float
-    seal_h*: float
-    cutoff*: tuple[top, bottom: float]
-    
     D1*: float
     D2*: float
     D3*: float
@@ -43,6 +37,7 @@ type
     n*: int
     H*: float
     s*: float
+    boltDepth*: float
 
 
 
@@ -62,17 +57,13 @@ columnTable dims, `const`:
 
 converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
   template O: var CapGeomParams = result
+  cast[ptr CapDesc](O.addr)[] = desc
   
-  O.D = desc.D
-  O.h = desc.h
-
-  O.hole = desc.hole
-  O.shaft_d = desc.seal.d
-  O.seal_D = desc.seal.D
-  O.seal_h = desc.seal.h
   if desc.shaft_d != 0: O.shaft_d = desc.shaft_d
+  else: O.shaft_d = desc.seal.d
 
   O.cutoff = desc.cutoff
+  O.boltDepth = 2.mm
   
   for i, maxD in dims.D:
     if maxD.float.mm > desc.D:
@@ -85,7 +76,11 @@ converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
       O.n = dims.n[i]
       O.H = dims.H[i].float.mm
       O.s = (if O.hole: 4.mm else: dims.s[i].float.mm)
+      break
 
+
+proc totalHeight*(g: CapGeomParams): float =
+  g.H + g.h
 
 
 proc bounds*(g: CapGeomParams): Bounds2 =
@@ -108,10 +103,10 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
   var contour = @[
     v2(0, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
     v2(0, g.D1/2 - g.d1/2),  # 1
-    v2(2.mm, g.D1/2 - g.d1/2),
-    v2(2.mm, g.D1/2 - g.d/2),  # 3
-    v2(2.mm, g.D1/2 + g.d/2),  # 4
-    v2(2.mm, g.D1/2 + g.d1/2),
+    v2(g.boltDepth, g.D1/2 - g.d1/2),
+    v2(g.boltDepth, g.D1/2 - g.d/2),  # 3
+    v2(g.boltDepth, g.D1/2 + g.d/2),  # 4
+    v2(g.boltDepth, g.D1/2 + g.d1/2),
     v2(0, g.D1/2 + g.d1/2),  # 6
     v2(0, g.D2/2),
     v2(g.H, g.D2/2),
@@ -126,9 +121,9 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
 
   if g.hole:
     contour[14..14] = @[
-      v2(g.s + g.seal_h + 2.mm, g.D3/2),
-      v2(g.s + g.seal_h + 2.mm, g.seal_D/2),
-      v2(g.s, g.seal_D/2),
+      v2(g.s + g.seal.h + g.boltDepth, g.D3/2),
+      v2(g.s + g.seal.h + g.boltDepth, g.seal.D/2),
+      v2(g.s, g.seal.D/2),
     ]
   let last = contour.high
 
@@ -158,7 +153,10 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
         for i2 in countup(0, i.high):
           p[].add (if up: contour[i[i2]].negY else: contour[i[i2]]).pt
         close p[]
-        sketch.add p[].Curve2, Hatching(period: g.D / 40 * scale), hatchingLine
+        sketch.add p[].Curve2, Hatching(
+          period: (g.D / 40 * scale),
+          angle: (if g.reverseHatching: -Pi/4 else: Pi/4),
+        ), hatchingLine
 
   for i in 0 ..< (if g.hole: (last + 1) else: last):
     addLineSection i, (i+1) mod (last + 1), drawIf = (if i in 1..10: NotCutoff else: Always)
@@ -198,17 +196,22 @@ proc sketch*(g: CapGeomParams, hideBackLines = false): World =
 
 
 
+when isMainModule: import interactive_tools/measurement
 
 mainModule:
+  doc[globals, CanvasSettings].margin = v2(20.mm, 20.mm)
+  
   for i, cutoff in [(0.mm, 0.mm), (15.mm, 0.mm), (0.mm, 25.mm)]:
     draw CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff),
-      origin = p2((0.mm + i.float * 120.mm) * 100, 0), scale = 100
+      origin = p2((0.mm + i.float * 120.mm), 0)
     
     let sealedCap = CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, seal: SealDesc(d: 40.mm))
     
     draw sealedCap,
-      origin = p2((60.mm + i.float * 120.mm) * 100, 0), scale = 100#, hideBackLines=true
+      origin = p2((60.mm + i.float * 120.mm), 0)#, hideBackLines=true
 
     draw sealedCap.seal,
-      origin = p2((60.mm + i.float * 120.mm) * 100 + sealedCap.autoComputeGeomParams.s*100, 0), scale = 100#, hideBackLines=true
+      origin = p2((60.mm + i.float * 120.mm) + sealedCap.autoComputeGeomParams.s, 0)#, hideBackLines=true
+  
+  measurementTool()
 

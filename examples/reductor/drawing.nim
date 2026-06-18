@@ -11,6 +11,8 @@ type
     sketch*: World
     gear*: ShaftSegment
     pos*: Point2
+    exitDiameter*: float
+
     entity*: EntityId
     bearing*: BearingParams
     seal*: SealGeomParams
@@ -59,15 +61,21 @@ proc gearPitchDiameter*(x: ShaftEx): float =
   x.gear.section.gear.pitchDiameter
 
 
+proc secondDiameter*(shaft: ShaftEx): float =
+  (shaft.exitDiameter + 5.mm).ceil(5.mm)
+  
+proc thirdDiameter*(shaft: ShaftEx): float =
+  (shaft.secondDiameter + 5.mm).ceil(5.mm)
+
 
 mainModule:
-  var fastShaft = ShaftEx()
-  var slowShaft = ShaftEx()
+  var fastShaft = ShaftEx(exitDiameter: 40.mm)
+  var slowShaft = ShaftEx(exitDiameter: 48.mm)
 
   doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
 
-  fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm)
-  slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm, shaft_d = 60.mm)  # ! shaft_d = d_c = (d_n = 55.mm) + 5.mm
+  fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm, reverseHatching = true)
+  slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm, shaft_d = slowShaft.thirdDiameter)
 
   # parameters choosen for the middle series  # todo: autocompute
   fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm)
@@ -89,62 +97,105 @@ mainModule:
 
   let bearingOnShaftEndPadding = 5.mm
 
+  
+  fastShaft.seal = SealDesc(d: fastShaft.secondDiameter)
+  slowShaft.seal = SealDesc(d: slowShaft.secondDiameter)
 
-  let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)
-  let fillet = ShaftConjunction(kind: Fillet, radius: 2.mm)
+
+  # height choosen from table  # todo: autocompute
+  fastShaft.caps[0] = CapDesc(
+    D: fastShaft.bearing.D,
+    h: 20.mm,
+    shaft_d: fastShaft.secondDiameter,
+    reverseHatching: true,
+  )
+  fastShaft.caps[1] = CapDesc(
+    D: fastShaft.bearing.D,
+    h: 20.mm,
+    # shaft_d: fastShaft.secondDiameter,
+    hole: true, seal: fastShaft.seal,
+    reverseHatching: true,
+  )
+
+  slowShaft.caps[0] = CapDesc(
+    D: slowShaft.bearing.D,
+    h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
+    shaft_d: slowShaft.secondDiameter,
+    reverseHatching: true,
+  )
+  slowShaft.caps[1] = CapDesc(
+    D: slowShaft.bearing.D,
+    h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
+    # shaft_d: slowShaft.secondDiameter,
+    hole: true, seal: slowShaft.seal,
+    reverseHatching: true,
+  )
+
+  let boltHeadHeight = 7.mm  # choosen from table # todo: autocomplete
+  let distanceFromBoltHeight = 4.mm  # 3.mm .. 5.mm
+
+
+  let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)  # choosen from table # todo: autocomplete
+  let fillet = ShaftConjunction(kind: Fillet, radius: 2.mm)  # choosen from table # todo: autocomplete
   fastShaft.shaft = Shaft(
     segments: @[
-      cylindricSegment(d = 40.mm, l = 82.mm, left = bevel, right = fillet),
-      cylindricSegment(d = 45.mm, l = 87.mm),
-      cylindricSegment(d = 53.mm, l = bead),  # ! was extended so bearings has a detent
+      cylindricSegment(
+        d = fastShaft.exitDiameter,
+        l = 82.mm,  # legth choosen form table # todo: autocomplete
+        left = bevel, right = fillet,
+      ),
+      
+      cylindricSegment(
+        d = fastShaft.bearing.d,
+        l = fastShaft.bearing.B + fastShaft.caps[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - fastShaft.caps[1].boltDepth,
+        right = fillet,
+      ),
+      
+      cylindricSegment(d = 53.mm, l = bead, right = fillet),  # ! diameter was extended so bearings has a detent
+      
       fastShaft.gear,
-      cylindricSegment(d = 53.mm, l = bead),  # ! was extended so bearings has a detent
-      cylindricSegment(d = 45.mm, l = fastShaft.bearing.B + 5.mm, right = bevel),
+      
+      cylindricSegment(d = 53.mm, l = bead, left = fillet),  # ! diameter was extended so bearings has a detent
+      
+      cylindricSegment(
+        d = fastShaft.bearing.d,
+        l = fastShaft.bearing.B + 5.mm,
+        right = bevel
+      ),
     ]
   )
 
   slowShaft.shaft = Shaft(
     segments: @[
-      cylindricSegment(d = 48.mm, l = 82.mm, left = bevel, right = fillet),
-      cylindricSegment(d = 55.mm, l = 79.mm),
+      cylindricSegment(
+        d = slowShaft.exitDiameter,
+        l = 82.mm,  # legth choosen form table # todo: autocomplete
+        left = bevel, right = fillet
+      ),
+      
+      cylindricSegment(
+        d = slowShaft.bearing.d,
+        l = slowShaft.bearing.B + slowShaft.caps[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - slowShaft.caps[1].boltDepth,
+      ),
+      
       cylindricSegment(d = 70.mm, l = slowShaftBead),
+      
       slowShaft.gear,
-      cylindricSegment(d = 55.mm, l = slowShaftBead + slowShaft.bearing.B + bearingOnShaftEndPadding, right = bevel),
+      
+      cylindricSegment(
+        d = slowShaft.bearing.d,
+        l = slowShaftBead + slowShaft.bearing.B + bearingOnShaftEndPadding,
+        right = bevel,
+      ),
     ]
   )
 
-  
-  # parameters choosen from table  # todo: autocompute
-  fastShaft.seal = SealDesc(d: fastShaft.shaft.segments[1].section.circle.radius*2)
-  slowShaft.seal = SealDesc(d: slowShaft.shaft.segments[^1].section.circle.radius*2)
 
-
-  # parameters choosen from table  # todo: autocompute
-  fastShaft.caps[0] = CapDesc(
-    D: fastShaft.bearing.D, h: 20.mm,
-    shaft_d: fastShaft.shaft.segments[^1].section.circle.radius*2,
-  )
-  fastShaft.caps[1] = CapDesc(
-    D: fastShaft.bearing.D, h: 20.mm,
-    # shaft_d: fastShaft.shaft.segments[1].section.circle.radius*2,
-    hole: true, seal: fastShaft.seal,
-  )
-
-  slowShaft.caps[0] = CapDesc(
-    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
-    # shaft_d: slowShaft.shaft.segments[^1].section.circle.radius*2,
-    hole: true, seal: slowShaft.seal,
-  )
-  slowShaft.caps[1] = CapDesc(
-    D: slowShaft.bearing.D, h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
-    shaft_d: slowShaft.shaft.segments[1].section.circle.radius*2,
-  )
-
-  let capCutoff = max(0, fastShaft.caps[0].D2/2 + slowShaft.caps[0].D2/2 + 4.mm - axial_distance)/2  # ! gap must be 2.mm .. 4.mm
+  let capCutoff = max(0, fastShaft.caps[0].D2/2 + slowShaft.caps[1].D2/2 + 4.mm - axial_distance)/2  # ! gap must be 2.mm .. 4.mm
   fastShaft.caps[0].cutoff = (capCutoff, 0.mm)
   fastShaft.caps[1].cutoff = (0.mm, capCutoff)
-  slowShaft.caps[0].cutoff = (0.mm, capCutoff)
-  slowShaft.caps[1].cutoff = (capCutoff, 0.mm)
+  slowShaft.caps[1].cutoff = (0.mm, capCutoff)
+  slowShaft.caps[0].cutoff = (capCutoff, 0.mm)
 
 
   fastShaft.sketch = sketch fastShaft.shaft
@@ -222,21 +273,21 @@ mainModule:
 
   slowShaft.capEnt[0] = doc.spawn SubWorld slowShaft.caps[0].sketch(hideBackLines = true):
     Position2 slowShaft.pos + v2(0,
-      + slowShaft.shaft.segmentX(4, PositionAtRight) +
-      - slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      + slowShaft.caps[0].bounds.size.x +
-      - bearingOnShaftEndPadding +
-    0)
-    Transform3 rotateZ(-Pi/2)
-
-  slowShaft.capEnt[1] = doc.spawn SubWorld slowShaft.caps[1].sketch(hideBackLines = true):
-    Position2 slowShaft.pos + v2(0,
       + slowShaft.shaft.segmentX(1, PositionAtRight) +
       - slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      - slowShaft.caps[1].bounds.size.x +
+      - slowShaft.caps[0].bounds.size.x +
       - slowShaft.bearing.B +
     0)
     Transform3 rotateZ(Pi/2)
+
+  slowShaft.capEnt[1] = doc.spawn SubWorld slowShaft.caps[1].sketch(hideBackLines = true):
+    Position2 slowShaft.pos + v2(0,
+      + slowShaft.shaft.segmentX(4, PositionAtRight) +
+      - slowShaft.shaft.segmentX(3, PositionAtCenter) +
+      + slowShaft.caps[1].bounds.size.x +
+      - bearingOnShaftEndPadding +
+    0)
+    Transform3 rotateZ(-Pi/2)
 
 
 
@@ -256,8 +307,8 @@ mainModule:
     Position2 slowShaft.pos + v2(0,
       - slowShaft.shaft.segmentX(2, PositionAtLeft) +
       + slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      + slowShaft.caps[0].bounds.size.x +
-      - slowShaft.caps[0].s +
+      + slowShaft.caps[1].bounds.size.x +
+      - slowShaft.caps[1].s +
       + slowShaft.bearing.B +
     0)
     Transform3 rotateZ(-Pi/2)
