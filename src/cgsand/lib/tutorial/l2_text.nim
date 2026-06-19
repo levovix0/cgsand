@@ -2,7 +2,7 @@
 
 import sandbox, geom2d
 import ./utils
-import annotations/dimensions except textMargin
+import techDraw/dimensions except textMargin
 import strformat
 
 

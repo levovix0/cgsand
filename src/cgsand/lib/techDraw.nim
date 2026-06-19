@@ -1,2 +1,2 @@
-import techDraw/[globals, explosion, macros]
-export globals, explosion, macros
+import techDraw/[globals, explosion, macros, dimensions]
+export globals, explosion, macros, dimensions

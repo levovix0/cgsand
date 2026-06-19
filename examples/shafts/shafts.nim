@@ -1,6 +1,6 @@
 import std/sequtils
 import sandbox, geom2d, techDraw
-import annotations/[dimensions]
+import techDraw/[dimensions]
 import ./gears
 
 

@@ -2,7 +2,7 @@ import sandbox, geom2d, techDraw
 import pkg/[bumpy]
 import ../shafts/[shafts, gears]
 import ./[bearings {.all.}, covers, seal, bushing]
-import interactive_tools/measurement
+import tools/measurement
 
 
 type

@@ -1,9 +1,7 @@
 import std/[math]
 import ../[sandbox, geom2d, techDraw]
-import ../annotations/dimensions
 import ../interactive
 import pkg/[vmath, bumpy]
-import pkg/sigeo/macros/cursors
 
 ## Interactive distance-measurement tool for the drawing.
 ##
@@ -23,6 +21,7 @@ import pkg/sigeo/macros/cursors
 const maxMeasurements* = 64
   ## measurements are kept in a fixed-size value-type array so the whole state
   ## is plain-old-data and survives script re-runs safely (see cache mechanics)
+  ## todo: allow to cache non plain-old-data
 
 const
   snapPixels = 12.0       ## snap radius to curve endpoints
@@ -49,20 +48,15 @@ type
     worldPerPixel*: float     ## captured from the viewport during input events
 
 
-## display scale: measured distance (in document units) is multiplied by this
-## before being shown. The default 1000 matches the drawing convention where
-## one document unit is one meter, so the dimension text is in millimeters.
-var measurementScale* = 1000.0
-var measurementUnits* = "mm"
+var measurementUnit* = 1.mm
+var measurementUnitName* = "mm"
 
 
-# the measurement geometry lives in its own SubWorld so it can be cheaply
-# rebuilt on every mouse move / viewport change without re-running (and
-# re-laying-out) the whole script. The SubWorld is drawn at identity, so its
-# coordinates match the document's, and it is tagged NoBounds so it never
-# affects the page layout.
-var measureWorld: World         ## the current measurement SubWorld
-var measureEntity: EntityId     ## the SubWorld entity inside `doc`
+## the measurement geometry lives in its own SubWorld for easier deletion
+## The SubWorld is drawn at identity, so its coordinates match the document's,
+## and it is tagged NoBounds so it never affects the page layout.
+var measureWorld: SubWorld      ## the current measurement SubWorld
+var measureEntity: EntityId     ## the SubWorld entity inside `doc`  # todo: typed EntityId[SubWorld]
 var measureSpawned = false
 
 
@@ -85,7 +79,9 @@ proc anyMeasurement(s: MeasurementState): bool =
 
 
 
-# --- viewport <-> world conversion (only valid while handling an input event) ---
+# --- viewport <-> world conversion ---
+# todo: should raycast to the XY plane, instead of assuming that vieport is 2D
+# todo: move to lib/
 
 proc viewTransform(): tuple[ok: bool, toGl: Mat4, wb: Rect] =
   if projectionMatrix == nil or viewportMatrix == nil or viewportWindowBounds == nil:
@@ -93,7 +89,6 @@ proc viewTransform(): tuple[ok: bool, toGl: Mat4, wb: Rect] =
   let wb = viewportWindowBounds()
   if wb.w <= 0 or wb.h <= 0:
     return (false, mat4(), wb)
-  # combine(viewport, projection) == projection * viewport
   (true, projectionMatrix() * viewportMatrix(), wb)
 
 
@@ -112,7 +107,7 @@ proc screenToWorld(window: Window): tuple[ok: bool, p: Point2] =
 
 
 proc viewportWorldPerPixel(): float =
-  ## world units per screen pixel, so arrows / text can be a constant pixel size
+  ## world units per screen pixel
   let (ok, toGl, wb) = viewTransform()
   if not ok:
     return 0
@@ -124,11 +119,11 @@ proc viewportWorldPerPixel(): float =
 
 
 
-# --- snapping to curve endpoints ----------------------------------------------
+# --- snapping to curve endpoints ---
+# todo: snapping to points on curves
+# todo: move to lib/
 
-proc collectEndpoints(w: World, toWorld: M4, acc: var seq[Point2]) =
-  ## gather the world-space END points of every curve in `w` (recursing into
-  ## SubWorlds, applying their Position2/Transform3). Only endpoints, by design.
+proc allSnapPointsAux(w: World, toWorld: M4, acc: var seq[Point2]) =
   template emit(t3: M4, p: Point2) =
     let v = (toWorld * t3) * v4(p.x, p.y, 0, 1)
     acc.add point2(v.x, v.y)
@@ -160,15 +155,16 @@ proc collectEndpoints(w: World, toWorld: M4, acc: var seq[Point2]) =
 
   w.forEach (sub: SubWorld, pos: Position2||p2(), t3: Transform3||m4()):
     if sub == nil or sub == measureWorld: continue
-    collectEndpoints(sub, toWorld * (translate(v3(pos.x, pos.y, 0)) * t3), acc)
+    allSnapPointsAux(sub, toWorld * (translate(v3(pos.x, pos.y, 0)) * t3), acc)
+
+proc allSnapPoints(w: World): seq[Point2] =
+  allSnapPointsAux(w, m4(), result)
 
 
-proc snap(p: Point2, wpp: float): Point2 =
+proc snap(p: Point2, wpp: float, pts = doc.allSnapPoints): Point2 =
   ## snap `p` to the nearest curve endpoint within the snap radius
   if wpp <= 0: return p
   let radius = snapPixels * wpp
-  var pts: seq[Point2]
-  collectEndpoints(doc, m4(), pts)
   result = p
   var bestD = radius
   for e in pts:
@@ -179,7 +175,7 @@ proc snap(p: Point2, wpp: float): Point2 =
 
 
 
-# --- code-facing API ----------------------------------------------------------
+# --- API ---
 
 proc addMeasurement*(a, b: Point2): int {.discardable.} =
   ## create a finished measurement between two known points, returns its index (or -1 if full)
@@ -213,7 +209,8 @@ proc clearMeasurements*() =
 
 
 
-# --- layout & bounds ----------------------------------------------------------
+# --- layout & bounds ---
+# todo: use existant host-side bounds computation instead
 
 proc hvDimlines(m: Measurement, wpp: float): tuple[h, v: Point2] =
   ## the points the horizontal / vertical dimension lines pass through, placed
@@ -240,7 +237,7 @@ proc contains(b: tuple[lo, hi: Point2], p: Point2): bool =
 
 
 
-# --- drawing ------------------------------------------------------------------
+# --- drawing ---
 
 proc drawMarker(p: Point2, halfSize: float) =
   if halfSize <= 0: return
@@ -252,7 +249,7 @@ proc addDim(a, b: Point2, dir: V2, dimline: Point2, value, wpp: float) =
   let arrowSz = (if wpp > 0: wpp * arrowPixels else: value * 0.04)
   let fontSz = (if wpp > 0: wpp * textPixels else: value * 0.08)
   doc.add LinearDimension2(a: a, b: b, dir: dir, dimline: dimline):
-    dimensionText(value * measurementScale, measurementUnits)
+    dimensionText(value / measurementUnit, measurementUnitName)
     ArrowSize arrowSz
     FontSize fontSz
 
@@ -287,8 +284,7 @@ proc emitMeasurements(w: World) =
 
 
 proc rebuildMeasurements*() =
-  ## refresh the measurement overlay to match the current state. Cheap: it only
-  ## rebuilds the dedicated SubWorld, leaving the rest of the document untouched.
+  ## remove existing dimensions SubWorld and create the newer one
   let w = newTechDraw()
   emitMeasurements(w)
   measureWorld = w
@@ -296,11 +292,11 @@ proc rebuildMeasurements*() =
     measureEntity = doc.spawn(SubWorld w, NoBounds())
     measureSpawned = true
   else:
-    doc.update measureEntity: add SubWorld w
+    doc[measureEntity, SubWorld] = w
 
 
 
-# --- input systems ------------------------------------------------------------
+# --- input systems ---
 
 proc registerMeasurementSystems() =
   ecs_system windowEvent(e: MouseButtonEvent):
@@ -358,8 +354,6 @@ proc registerMeasurementSystems() =
     redraw e.window
 
   ecs_system viewportChanged():
-    # zoom / pan changed the scale: refresh so arrows and text keep their pixel
-    # size. The app redraws after a viewport change, so no explicit redraw here.
     letCur s: mstate()
     if not s.anyMeasurement: return
     s.worldPerPixel = viewportWorldPerPixel()
@@ -370,8 +364,8 @@ var systemsRegistered = false
 
 
 proc measurementTool*() =
-  ## activate the interactive measurement tool. Call once from the top level of
-  ## a script: it registers the input handlers and draws all current measurements.
+  ## enable the interactive measurement tool
+  ## todo: add ability to disable the tool
   if not systemsRegistered:
     registerMeasurementSystems()
     systemsRegistered = true

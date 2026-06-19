@@ -190,7 +190,7 @@ defineSketch draw
 
 
 
-when isMainModule: import interactive_tools/measurement
+when isMainModule: import tools/measurement
 
 mainModule:
   doc[globals, CanvasSettings].margin = v2(20.mm, 20.mm)

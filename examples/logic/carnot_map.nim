@@ -1,6 +1,6 @@
 import std/[strutils, unicode, sets]
 import sandbox, geom2d, text
-import annotations/[dimensions]
+import techDraw/[dimensions]
 
 
 type
