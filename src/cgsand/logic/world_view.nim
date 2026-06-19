@@ -383,7 +383,7 @@ proc draw2dWorld*(
     drawStroke(points, color, thk, t3)
   
   w.forEach (
-    curve: OwnedCurve2|Path2|Curve2,
+    curve: Curve2|OwnedCurve2|Path2,
     opt Foreground|Color|Background|Hatching,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,

@@ -1,6 +1,5 @@
 import std/[strutils]
 import ../[sandbox, geom2d]
-import pkg/sigeo/macros/cursors
 
 
 type
@@ -25,15 +24,15 @@ let textMargin* = 0.2
 
 proc addArrow*(to: Point2, dir: NormalVec2, size: float, color = doc.foreground, noBounds = false) =
   # todo: proc arrow(to: Point2, dir: NormalVec2, size: float, color = doc.foreground): (Path, Background)
-  letCur p: create(Path2)[]
+  var p = Path2()
   p.add to
   p.add to - (dir * size).rotate(Pi / 16)
   p.add to - (dir * size).rotate(-Pi / 16)
   close p
   if noBounds:
-    doc.add p.Curve2, Background color, NoBounds()
+    doc.add p, Background color, NoBounds()
   else:
-    doc.add p.Curve2, Background color
+    doc.add p, Background color
 
 
 

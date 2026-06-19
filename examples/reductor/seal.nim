@@ -131,8 +131,8 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
     # todo: either something in ecs or in sigeo interface macro or in both breaks,
     # if Path2 is allocated on the stack, or is passed to ecs as Path2
     
-    letCur profile: create(Path2)[]
-    letCur armoredProfile: create(Path2)[]
+    var profile = Path2()
+    var armoredProfile = Path2()
 
     block:
       letCur p: profile
@@ -147,7 +147,7 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
           p.fillet (fillets[i] * min(scaleX, scaleY)).sc
       
       close p
-      sketch.add p.Curve2, doc.foreground, mainLine
+      sketch.add p, doc.foreground, mainLine
 
     block:
       letCur p: armoredProfile
@@ -158,37 +158,37 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
           p.fillet (armoredFillets[i] * min(scaleX, scaleY)).sc
       
       close p
-      sketch.add p.Curve2, doc.foreground, mainLine
-      sketch.add p.Curve2, Hatching(period: (g.D - g.d) / 70 * scale), hatchingLine
-      sketch.add p.Curve2, Hatching(angle: -Pi/4, period: (g.D - g.d) / 70 * scale), hatchingLine
+      sketch.add p, doc.foreground, mainLine
+      sketch.add p, Hatching(period: (g.D - g.d) / 70 * scale), hatchingLine
+      sketch.add p, Hatching(angle: -Pi/4, period: (g.D - g.d) / 70 * scale), hatchingLine
     
     block:
-      letCur p: create(Path2)[]
+      var p = Path2()
       for i in 0..3: p.add profile.curves[i]
       for i in 5..7: p.add armoredProfile.curves[i]
       close p
-      # sketch.add p.Curve2, Foreground color(1, 0.4, 0.4), PixelThickness 5
-      sketch.add p.Curve2, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
+      # sketch.add p, Foreground color(1, 0.4, 0.4), PixelThickness 5
+      sketch.add p, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
     
     block:
-      letCur p: create(Path2)[]
+      var p = Path2()
       for i in countdown(profile.curves.high, 4): p.add profile.curves[i].cut(1, 0)
       for i in countdown(4, 0): p.add armoredProfile.curves[i].cut(1, 0)
       close p
-      # sketch.add p.Curve2, Foreground color(1, 0.4, 0.4), PixelThickness 5
-      sketch.add p.Curve2, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
+      # sketch.add p, Foreground color(1, 0.4, 0.4), PixelThickness 5
+      sketch.add p, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
     
     block:
-      letCur p: create(CircleArc2)[]
+      var p = CircleArc2()
       p = circleArc(v2(67.5, 70).world(top).pt, (7.5 * min(scaleX, scaleY)).sc)
       sketch.add p, doc.foreground, mainLine
-      sketch.add p.Curve2, Hatching(period: (g.D - g.d) / 70 * scale), hatchingLine
+      sketch.add p, Hatching(period: (g.D - g.d) / 70 * scale), hatchingLine
     
     block:
-      letCur p: create(CircleArc2)[]
+      var p = CircleArc2()
       p = circleArc(v2(67.5, 70).world(top).pt, (5 * min(scaleX, scaleY)).sc)
       sketch.add p, doc.foreground, mainLine
-      sketch.add p.Curve2, Hatching(angle: -Pi/4, period: (g.D - g.d) / 70 * scale), hatchingLine
+      sketch.add p, Hatching(angle: -Pi/4, period: (g.D - g.d) / 70 * scale), hatchingLine
     
     block:
       for i in {1, 6..11, 15}:

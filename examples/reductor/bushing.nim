@@ -56,7 +56,7 @@ proc draw*(g: BushingDesc, sketch = doc, backLines = true, axialLines = true, ha
   let fillet = bevel
 
   for ydir in [1.0, -1.0]:
-    letCur p: create(Path2)[]
+    var p = Path2()
     
     p.add p2(g.H, g.d/2 * ydir); p.fillet(fillet)
     p.y = g.D/2 * ydir; p.bevel(bevel)
@@ -68,8 +68,8 @@ proc draw*(g: BushingDesc, sketch = doc, backLines = true, axialLines = true, ha
     p.y = g.d/2 * ydir; p.fillet(fillet)
     close p
 
-    doc.add p.Curve2, fgLine
-    if hatching: doc.add p.Curve2, haLine
+    doc.add p, fgLine
+    if hatching: doc.add p, haLine
   
     let y = (if backLines: 0.0 else: g.d/2 * ydir)
     for pt in [p2(0, (g.d/2 + fillet) * ydir), p2(fillet, g.d/2 * ydir), p2(g.H, (g.d/2 + fillet) * ydir), p2(g.H - fillet, g.d/2 * ydir)]:

@@ -1,6 +1,5 @@
 import sandbox, geom2d, techDraw
 import pkg/[vmath]
-import pkg/sigeo/macros/cursors
 
 
 type
@@ -133,7 +132,7 @@ proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
       when true:
         var arc = circles[i].cut(pts[0].curveB, pts[1].curveB)
 
-        letCur p: create(Path2)[]
+        var p = Path2()
         if j == 0:
           p.add l.pointAtParam(0)
           p.add l; p.add arc; p.add r
@@ -148,7 +147,7 @@ proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
           p.add rr.lines[bottom].reverse
           p.add rr.arcs[bottomLeft].reverse
           close p
-        doc.add p.Curve2, Hatching(), hatchingLine
+        doc.add p, Hatching(), hatchingLine
 
 
 proc sketch*(g: BearingParams, hideBackLines = false): World =

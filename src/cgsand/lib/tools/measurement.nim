@@ -142,16 +142,25 @@ proc allSnapPointsAux(w: World, toWorld: M4, acc: var seq[Point2]) =
 
   w.forEach (c: Curve2, t3: Transform3||m4()):
     emit(t3, c.pointAtParam(0.FloatParam))
-    emit(t3, c.pointAtParam(1.FloatParam))
+    if c.isOf(Path2):
+      for c in c.castTo(Path2).curves:
+        emit(t3, c.pointAtParam(1.FloatParam))
+    else:
+      emit(t3, c.pointAtParam(1.FloatParam))
 
   w.forEach (c: OwnedCurve2, t3: Transform3||m4()):
     let cc = cast[Curve2](c)
     emit(t3, cc.pointAtParam(0.FloatParam))
-    emit(t3, cc.pointAtParam(1.FloatParam))
+    if c.isOf(Path2):
+      for c in c.castTo(Path2).curves:
+        emit(t3, c.pointAtParam(1.FloatParam))
+    else:
+      emit(t3, cc.pointAtParam(1.FloatParam))
 
   w.forEach (c: Path2, t3: Transform3||m4()):
     emit(t3, c.pointAtParam(0.FloatParam))
-    emit(t3, c.pointAtParam(1.FloatParam))
+    for c in c.curves:
+      emit(t3, c.pointAtParam(1.FloatParam))
 
   w.forEach (sub: SubWorld, pos: Position2||p2(), t3: Transform3||m4()):
     if sub == nil or sub == measureWorld: continue

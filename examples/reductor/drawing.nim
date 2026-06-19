@@ -390,62 +390,7 @@ mainModule:
     
 
   # --- corpus ---
-  when false:
-    # ! the parametric intersections are too inconvinient to use, buggy and errorprone.
-    # todo: rewrite the intersections to be more predictable and easier to use
-    # todo: and fix the memory-related bugs in sigeo's interfaces / ecs / whatever breaks here
-    let cover_rb_p_rt = doc.bounds(fastShaft.coverEnt[0]).max - v2(0, fastShaft.covers[0].H)
-
-    let K3 = 29.mm  # selected from table # todo: autocomplete
-    let C3 = 15.mm  # selected from table # todo: autocomplete
-    let d3 = 12.mm  # selected from table # todo: autocomplete
-
-    let owW = (shaftsBounds.center.x + shaftsBounds.size.x/2 + padding + wall_thickness) * 2
-    let owH = (fastShaft.gear.length/2 + padding + wall_thickness) * 2
-    let W = owW + K3 * 2
-    let H = owH + K3 * 2
-
-    let boltHole = circle(p2(cover_rb_p_rt.x, owH/2 + C3), d3/2)
-    doc.add boltHole, mainLine
-
-    let boltCorpus = circle(boltHole.center, C3, Pi/2, -Pi/2)
-    # doc.add boltCorpus, mainLine
-
-    var igCurves: seq[OwnedCurve2]
-    var pathsPoints: seq[tuple[startP, endP: Point2]]
-
-    letCur p: create(Path2)[]
-    
-    p.add p2(W/2, 0)
-    p.y = H/2; p.fillet(K3)
-    p.x -= 50.mm
-
-    # doc.add p.Curve2, doc.foreground, mainLine
-    pathsPoints.add (p.pointAtParam(0), p.pointAtParam(1))
-    
-    # todo: add here breaks sigeo
-    # igCurves.add p.curves
-    igCurves = move p.curves
-    
-    igCurves.add boltCorpus.toOwnedCurve2
-    igCurves.add line(pathsPoints[0].startP, boltCorpus.pointAtParam(1)).toOwnedCurve2
-
-    # todo: if used p instead of p.curves, intersection graph breaks
-    var ig = buildIntersectionGraph(igCurves)
-
-    for x in ig.edges:
-      let oc = create(OwnedCurve2)
-      oc[] = ig.curves[x.curve].cut(x.startParam, x.endParam)
-      doc.add oc[].Curve2, hiddenLine
-
-    removeDeadEnds ig
-
-    for x in ig.edges:
-      let oc = create(OwnedCurve2)
-      oc[] = ig.curves[x.curve].cut(x.startParam, x.endParam)
-      doc.add oc[].Curve2, doc.foreground, mainLine
-  
-  elif true:
+  when true:
     # ! this is not parametric
     proc addSymmetric[T](doc: World, v: Curve2, other: T) =
       let oc = create(OwnedCurve2)
@@ -460,7 +405,6 @@ mainModule:
       doc.add line(circle.center - v2(circle.radius * 1.1, 0), circle.center + v2(circle.radius * 1.1, 0)), axialLine
       doc.add line(circle.center - v2(0, circle.radius * 1.1), circle.center + v2(0, circle.radius * 1.1)), axialLine
 
-    let cover_rb_p_rt = doc.bounds(fastShaft.coverEnt[0]).max - v2(0, fastShaft.covers[0].H)
 
     let K2 = 32.mm  # selected from table # todo: autocomplete
     let C2 = 16.mm  # selected from table # todo: autocomplete
@@ -470,61 +414,117 @@ mainModule:
     let C3 = 15.mm  # selected from table # todo: autocomplete
     let d3 = 12.mm  # selected from table # todo: autocomplete
 
-    let owW = (shaftsBounds.center.x + shaftsBounds.size.x/2 + padding + wall_thickness) * 2  # = 0.1500000014901161
     let owH = (fastShaft.gear.length/2 + padding + wall_thickness) * 2  # = 0.094875
-    let W = owW + K3 * 2  # = 0.2080000014901161
     let H = owH + K3 * 2  # = 0.152875
 
-    let boltHole = circle(p2(cover_rb_p_rt.x, owH/2 + C2), d2/2)
-    doc.addSymmetric boltHole, (doc.foreground, mainLine)
-    doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
-    doc.addAxial boltHole
-    doc.addAxial boltHole.transform(scale v3(1, -1, 1))
+    let jointBoltCount = 3
+    # let jointPadding = 0.mm
+    let jointPadding = H * 1/5/2
 
-    let boltCorpus = circle(boltHole.center, C2, Pi/2, -Pi/2)
-    # doc.add boltCorpus, mainLine
-    
-    doc.addSymmetric line(boltCorpus.pointAtParam(0), cover_rb_p_rt), (doc.foreground, mainLine)
-    doc.addSymmetric line(boltCorpus.pointAtParam(1), outerBox.lines[RoundRect2Geom_LineIndex.right].pointAtParam(1)), hiddenLine
-
-
+    # --- right-side ---
     block:
-      letCur p: create(Path2)[]
+      let wallX = outerBox.lines[RoundRect2Geom_LineIndex.right].pointAtParam(0).x
+      let X = wallX + K3
+      let coverPoint = doc.bounds(fastShaft.coverEnt[0]).max - v2(0, fastShaft.covers[0].H)
       
-      p.add p2(W/2, 0)
-      p.y = H/2; p.fillet(K3)
-      p.x -= 50.mm
+      let boltHole = circle(p2(coverPoint.x, owH/2 + C2), d2/2)
+      doc.addSymmetric boltHole, (doc.foreground, mainLine)
+      doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
+      doc.addAxial boltHole
+      doc.addAxial boltHole.transform(scale v3(1, -1, 1))
 
-      # doc.add p.Curve2, doc.foreground, mainLine
+      let boltCorpus = circle(boltHole.center, C2, Pi/2, -Pi/2)
+      # doc.add boltCorpus, mainLine
       
-      var ig = buildIntersectionGraph(@[p.toOwnedCurve2, boltCorpus.toOwnedCurve2])
+      doc.addSymmetric line(boltCorpus.pointAtParam(0), coverPoint), (doc.foreground, mainLine)
+      doc.addSymmetric line(boltCorpus.pointAtParam(1), outerBox.lines[RoundRect2Geom_LineIndex.right].pointAtParam(1)), hiddenLine
 
-      for x in ig.edges:
-        if x.curve == 0 and x.startParam < (1/3 + 0.01):
-          doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
 
-        elif x.curve == 1:
-          if x.startParam ~== 0:
-            # todo: allow conditionals in ecs spawn macro
+      block:
+        var p = Path2()
+        
+        p.add p2(X, 0)
+        p.y = H/2; p.fillet(K3)
+        p.x -= 50.mm
+
+        # doc.add p.Curve2, doc.foreground, mainLine
+        
+        var ig = buildIntersectionGraph(@[p.toOwnedCurve2, boltCorpus.toOwnedCurve2])
+
+        for x in ig.edges:
+          if x.curve == 0 and x.startParam < (1/3 + 0.01):
             doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
-          else:
-            # note: components in conditionals should owerride components already added
-            doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), hiddenLine
+
+          elif x.curve == 1:
+            if x.startParam ~== 0:
+              # todo: allow conditionals in ecs spawn macro
+              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+            else:
+              # note: components in conditionals should owerride components already added
+              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), hiddenLine
     
 
-    # bolts on the half-corpus joint
-    block:
-      let boltCount = 3
-      # let padding = 0.mm
-      let padding = H * 1/5/2
+      # bolts on the half-corpus joint
+      block:
+        for boltI in 0..<jointBoltCount:
+          let y = (((1 + boltI) / (jointBoltCount + 1)) - 0.5) * (H - jointPadding*2)
+          let bolt3Hole = circle(p2(wallX + C3, y), d3/2)
+          # CircleArc drawing should be unified with Curve2 drawing (by default - drawn as contour line)
+          doc.add bolt3Hole, mainLine
+          doc.add bolt3Hole, Hatching(), color doc.foreground, hatchingLine
+          doc.addAxial bolt3Hole
 
-      for boltI in 0..<boltCount:
-        let y = (((1 + boltI) / (boltCount + 1)) - 0.5) * (H - padding*2)
-        let bolt3Hole = circle(p2(owW/2 + C3, y), d3/2)
-        # CircleArc drawing should be unified with Curve2 drawing (by default - drawn as contour line)
-        doc.add bolt3Hole, mainLine
-        doc.add bolt3Hole, Hatching(), color doc.foreground, hatchingLine
-        doc.addAxial bolt3Hole
+
+    # --- left-side
+    block:
+      let wallX = outerBox.lines[RoundRect2Geom_LineIndex.left].pointAtParam(0).x
+      let X = wallX - K3
+      let coverPoint = doc.bounds(slowShaft.coverEnt[1]).min + v2(0, fastShaft.covers[0].h)
+
+      let boltHole = circle(p2(coverPoint.x, owH/2 + C2), d2/2)
+      doc.addSymmetric boltHole, (doc.foreground, mainLine)
+      doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
+      doc.addAxial boltHole
+      doc.addAxial boltHole.transform(scale v3(1, -1, 1))
+
+      let boltCorpus = circle(boltHole.center, C2, Pi/2, Pi, clockwise)
+      # doc.add boltCorpus, mainLine
+
+      doc.addSymmetric line(boltCorpus.pointAtParam(0), coverPoint), (doc.foreground, mainLine)
+      
+      block:
+        var p = Path2()
+        
+        p.add p2(X, 0)
+        p.y = H/2; p.fillet(K3)
+        p.x = slowShaft.pos.x
+
+        # doc.add p.Curve2, doc.foreground, mainLine
+        
+        var ig = buildIntersectionGraph(@[p.toOwnedCurve2, boltCorpus.toOwnedCurve2])
+
+        for x in ig.edges:
+          if x.curve == 0 and x.startParam < (1/3 + 0.01):
+            doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+
+          elif x.curve == 1:
+            if x.startParam ~== 0:
+              # todo: allow conditionals in ecs spawn macro
+              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+            else:
+              # note: components in conditionals should owerride components already added
+              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), hiddenLine
+
+
+      # bolts on the half-corpus joint
+      block:
+        for boltI in 0..<jointBoltCount:
+          let y = (((1 + boltI) / (jointBoltCount + 1)) - 0.5) * (H - jointPadding*2)
+          let bolt3Hole = circle(p2(wallX - C3, y), d3/2)
+          # CircleArc drawing should be unified with Curve2 drawing (by default - drawn as contour line)
+          doc.add bolt3Hole, mainLine
+          doc.add bolt3Hole, Hatching(), color doc.foreground, hatchingLine
+          doc.addAxial bolt3Hole
 
 
   doc.drawRects()

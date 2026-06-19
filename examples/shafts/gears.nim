@@ -76,7 +76,7 @@ proc drawSection*(g: GearDesc, sketch = doc, backLines = true, axialLines = true
     for yhole in [1.0, -1.0]:
       let yorg = dhol/2 * yhole
       for ydir in [1.0, -1.0]:
-        letCur p: create(Path2)[]
+        var p = Path2()
         for i, pt in pts:
           var pt = pt
           if pt.y == do1/2 and (ydir * yhole) < 0:
@@ -90,8 +90,8 @@ proc drawSection*(g: GearDesc, sketch = doc, backLines = true, axialLines = true
           if i in {3, 6}: p.fillet(filletRadius)
         close p
         
-        sketch.add p.Curve2, contour
-        if hatching: sketch.add p.Curve2, hatch
+        sketch.add p, contour
+        if hatching: sketch.add p, hatch
 
       for i in [2, 7]:
         let x = if i == 2: -1.0 else: 1.0
@@ -117,22 +117,22 @@ proc drawSection*(g: GearDesc, sketch = doc, backLines = true, axialLines = true
       v2(g.b, -g.d_t/2),
       v2(0, -g.d_t/2),
     ]
-    letCur p: create(Path2)[]
+    var p = Path2()
     for i, pt in pts:
       p.add p2(pt.x, pt.y)
     close p
     
-    sketch.add p.Curve2, contour
-    if hatching: sketch.add p.Curve2, hatch
+    sketch.add p, contour
+    if hatching: sketch.add p, hatch
   
   for ydir in [1.0, -1.0]:
-    letCur p: create(Path2)[]
+    var p = Path2()
     p.add p2(0, g.d_t/2 * ydir)
     p.add p2(0, g.d_a/2 * ydir); p.bevel(g.m)
     p.add p2(g.b, g.d_a/2 * ydir); p.bevel(g.m)
     p.add p2(g.b, g.d_t/2 * ydir)
     close p
-    sketch.add p.Curve2, contour
+    sketch.add p, contour
     if axialLines: sketch.add line(p2(0, g.d/2 * ydir), p2(g.b, g.d/2 * ydir)), axialLine
 
   if centralAxial: sketch.add line(p2(-g.m, 0), p2(g.b+g.m, 0)), axialLine
