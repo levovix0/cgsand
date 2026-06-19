@@ -2,6 +2,7 @@ import sandbox, geom2d, techDraw, tabledef
 import std/[sequtils]
 import pkg/[vmath]
 import ./[seal]
+when isMainModule: import tools/measurement
 
 
 type
@@ -190,8 +191,6 @@ defineSketch draw
 
 
 
-when isMainModule: import tools/measurement
-
 mainModule:
   doc[globals, CanvasSettings].margin = v2(20.mm, 20.mm)
   
@@ -206,6 +205,4 @@ mainModule:
 
     draw sealedCover.seal,
       origin = p2((60.mm + i.float * 120.mm) + sealedCover.autoComputeGeomParams.s, 0)#, hideBackLines=true
-  
-  measurementTool()
 

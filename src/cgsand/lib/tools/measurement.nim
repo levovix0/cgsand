@@ -1,3 +1,4 @@
+{.used.}
 import std/[math]
 import ../[sandbox, geom2d, techDraw]
 import ../interactive
@@ -5,7 +6,6 @@ import pkg/[vmath, bumpy]
 
 ## Interactive distance-measurement tool for the drawing.
 ##
-## Call `measurementTool()` once from the top level of a script to activate it.
 ## While active:
 ##   - left click places measurement points: the first click starts a new
 ##     measurement, the second fixes it. Each measurement shows three dimensions
@@ -360,13 +360,6 @@ proc registerMeasurementSystems() =
     rebuildMeasurements()
 
 
-var systemsRegistered = false
-
-
-proc measurementTool*() =
-  ## enable the interactive measurement tool
-  ## todo: add ability to disable the tool
-  if not systemsRegistered:
-    registerMeasurementSystems()
-    systemsRegistered = true
-  rebuildMeasurements()
+## todo: add ability to disable the tool
+registerMeasurementSystems()
+rebuildMeasurements()

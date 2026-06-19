@@ -151,13 +151,22 @@ proc drawDashedPolyline*(
   if scale != 1:
     for i in 0 ..< pat.len:
       pat[i] *= scale
+
   let cycleLen = pat.sum
   if cycleLen > 0 and total > 0:
-    # an even-length pattern ends with a gap; dropping the last gap of the last cycle
-    # makes an open curve end exactly on a dash. closed curves tile seamlessly instead.
-    let trailingGap =
-      if (not closed) and (pat.len mod 2 == 0): pat[^1]
-      else: 0.0
+    ## for an open curve, drop the tail of the last cycle that comes after its last positive-length dash,
+    ## so the curve always ends on a drawn line (not a gap or a dot).
+    ## e.g. for [dash, gap, dot, gap] this drops [gap, dot, gap].
+    var trailingGap = 0.0
+    if not closed:
+      var lastDash = -1
+      for i in 0 ..< pat.len:
+        if (i mod 2) == 0 and pat[i] > 0:
+          lastDash = i
+      if lastDash >= 0:
+        for i in lastDash + 1 ..< pat.len:
+          trailingGap += pat[i]
+    
     let reps = max(minRepeats, round(total / cycleLen).int)
     let target = reps.float * cycleLen - trailingGap
     if target > 0:
@@ -283,6 +292,13 @@ proc draw2dWorld*(
         drawLineSection(ctx, line(pts[i], pts[i + 1]), col, thk, transform = t)
 
 
+  # todo: instead of all of this, draw in three layers: Background, Hatching, Foreground
+  # todo: and unify color selection boilerplate
+  # todo: and unify efficiently castable to Curve2 curve rendering
+  # todo: and fix the broken OwnedCurve2 and Path2 rendering
+  # todo: and add the convinient RefCurve2
+
+
   w.forEach (
     line: LineSection2,
     color: (Foreground|Color)||globals.foreground,
@@ -297,16 +313,16 @@ proc draw2dWorld*(
   w.forEach (
     curve: CircleArc2,
     opt PointCount,
-    opt Color|Background|Foreground,
+    opt Color|Background|Foreground|Hatching,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,
     transform: Transform3||dmat4()
   ):
     let screenRadius = float32(curve.radius) * pixelsPerUnit
-    let count =
+    let pointCount =
       if has PointCount: the PointCount
       else: clamp(int(screenRadius * abs(float32(curve.angularLength)) / 4.0), 8, 256)
-    let points = curve.points(count)
+    let points = curve.points(pointCount)
     let fg =
       if has Foreground: the Foreground
       elif has Color: the Color
@@ -316,12 +332,34 @@ proc draw2dWorld*(
 
     if curve.closed:
       if has Background:
-        ctx.fillCircle(color = the Background, radius = curve.radius, center = curve.center.DVec2.vec2.vec3(0), pointCount = count, transform = t3)
-      if Background.has.not or Color.has or Foreground.has:
+        ctx.fillCircle(
+          color = the Background,
+          radius = curve.radius,
+          center = curve.center.DVec2.vec2.vec3(0),
+          pointCount = pointCount,
+          transform = t3,
+        )
+
+      if (Background.has.not and Hatching.has.not) or (Color.has and Hatching.has.not) or Foreground.has:
         drawStroke(points, fg, thk, t3)
     else:
       if Foreground.has or Color.has or Background.has.not:
         drawStroke(points, fg, thk, t3)
+
+    if has Hatching:
+      var hatching = the Hatching
+      if hatching.period == 0:
+        hatching.period = curve.bounds.size.length / 20
+      let hthk = thk.get(otherwise = hatching.period/4)
+      
+      ctx.drawHatchedPath(
+        curve.toMesh(pointCount).cache(curve2Fill),
+        hatching = hatching,
+        fg = (if has Color: the Color else: globals.foreground),
+        bg = (if has Background: the Background else: color(0, 0, 0, 0)),
+        thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
+        transform = t3,
+      )
 
 
   w.forEach (

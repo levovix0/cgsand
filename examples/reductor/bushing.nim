@@ -1,6 +1,7 @@
 import std/[tables]
 import sandbox, geom2d, techDraw
 import pkg/[vmath]
+when isMainModule: import tools/measurement
 
 
 type
