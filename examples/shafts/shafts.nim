@@ -91,7 +91,7 @@ proc gearSegment*(
 ): ShaftSegment =
   ShaftSegment(
     section: Section(shape: Gear, gear: GearDesc(
-      teethCount: z, modulo: modulo, shaft_d: shaft_d, holesAndKey: shaft_d != 0, height: l,
+      teethCount: z, modulo: modulo, shaft_d: shaft_d, holes: shaft_d != 0, height: l,
       reverseHatching: reverseHatching,
     ), material: material),
     length: l, left: left, right: right
@@ -163,7 +163,7 @@ proc drawConjunction(sketch: World, origin: Position2, dir: V2, conjunction: Sha
       ), mainLine
 
 
-proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimensions = doc, sketch = doc, hatching = true) =
+proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 1, dimensions = doc, sketch = doc, hatching = true) =
   proc pt(v: V2): Point2 = origin + v * scale
 
   proc height(segment: ShaftSegment): float =
@@ -232,9 +232,6 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 100, dimen
   if dimensions != nil:
     dimensions.drawDimensions()
 
-
-proc sketch*(shaft: Shaft, dimensions: World = nil): World =
-  result = newTechDraw()
-  withDocument result: draw(shaft, dimensions = dimensions, scale = 1)
+defineSketch draw
 
 

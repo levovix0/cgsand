@@ -5,9 +5,9 @@ import ./[seal]
 
 
 type
-  CapDesc* = object of RootObj
+  CoverDesc* = object of RootObj
     D*: float
-      ## base cap diameter, m
+      ## base cover diameter, m
     
     h*: float
       ## appended width, m
@@ -25,9 +25,9 @@ type
     reverseHatching*: bool
     
 
-  CapGeomParams* = object of CapDesc
+  CoverGeomParams* = object of CoverDesc
     ## all dimensions are in meters
-    ## images/cap_geom.jpg  # todo: draw dimensions in the script
+    ## images/cover_geom.jpg  # todo: draw dimensions in the script
     D1*: float
     D2*: float
     D3*: float
@@ -55,9 +55,9 @@ columnTable dims, `const`:
 
 
 
-converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
-  template O: var CapGeomParams = result
-  cast[ptr CapDesc](O.addr)[] = desc
+converter autoComputeGeomParams*(desc: CoverDesc): CoverGeomParams =
+  template O: var CoverGeomParams = result
+  cast[ptr CoverDesc](O.addr)[] = desc
   
   if desc.shaft_d != 0: O.shaft_d = desc.shaft_d
   else: O.shaft_d = desc.seal.d
@@ -79,16 +79,16 @@ converter autoComputeGeomParams*(desc: CapDesc): CapGeomParams =
       break
 
 
-proc totalHeight*(g: CapGeomParams): float =
+proc totalHeight*(g: CoverGeomParams): float =
   g.H + g.h
 
 
-proc bounds*(g: CapGeomParams): Bounds2 =
+proc bounds*(g: CoverGeomParams): Bounds2 =
   bounds2(p2(0, -g.D2/2), p2(g.H + g.h, g.D2/2))
 
 
 
-proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axis: V2 = v2(1, 0), sketch = doc, hideBackLines = false) =
+proc draw*(g: CoverGeomParams, origin: Position2 = point2(), scale: float = 1, axis: V2 = v2(1, 0), sketch = doc, hideBackLines = false) =
   type DrawIf = enum
     Always, Cutoff, NotCutoff
 
@@ -186,13 +186,7 @@ proc draw*(g: CapGeomParams, origin: Position2 = point2(), scale: float = 1, axi
 
   # todo: fillets
 
-
-proc sketch*(g: CapGeomParams, hideBackLines = false): World =
-  result = World()
-  withDocument result:
-    let globals = doc.spawn()
-    setTechDrawGlobals(globals)
-    draw(g, sketch = result, hideBackLines = hideBackLines)
+defineSketch draw
 
 
 
@@ -201,17 +195,17 @@ when isMainModule: import interactive_tools/measurement
 mainModule:
   doc[globals, CanvasSettings].margin = v2(20.mm, 20.mm)
   
-  for i, cutoff in [(0.mm, 0.mm), (15.mm, 0.mm), (0.mm, 25.mm)]:
-    draw CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff),
+  for i, cutoff in [(0.mm, 0.mm), (10.mm, 0.mm), (0.mm, 20.mm)]:
+    draw CoverDesc(D: 100.mm, h: 20.mm, cutoff: cutoff),
       origin = p2((0.mm + i.float * 120.mm), 0)
     
-    let sealedCap = CapDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, seal: SealDesc(d: 40.mm))
+    let sealedCover = CoverDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, seal: SealDesc(d: 40.mm))
     
-    draw sealedCap,
+    draw sealedCover,
       origin = p2((60.mm + i.float * 120.mm), 0)#, hideBackLines=true
 
-    draw sealedCap.seal,
-      origin = p2((60.mm + i.float * 120.mm) + sealedCap.autoComputeGeomParams.s, 0)#, hideBackLines=true
+    draw sealedCover.seal,
+      origin = p2((60.mm + i.float * 120.mm) + sealedCover.autoComputeGeomParams.s, 0)#, hideBackLines=true
   
   measurementTool()
 

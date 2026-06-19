@@ -1,7 +1,6 @@
 import std/[tables]
 import sandbox, geom2d, techDraw, tabledef
 import pkg/[vmath]
-import pkg/sigeo/macros/cursors
 
 
 type
@@ -77,6 +76,7 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
   proc pt(v: V2): Point2 = origin + v.vt
   if sketch == nil: return
 
+  # ! all dimensions here are proportional and visual-only
   let contour = @[
     v2(100, 0),
     v2(100, 30),
@@ -143,8 +143,8 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
 
         p.add contour[i].world(top).pt
 
-        if fillets.hasKey(i - 1):
-          p.addFillet (fillets[i-1] * min(scaleX, scaleY)).sc
+        if fillets.hasKey(i):
+          p.fillet (fillets[i] * min(scaleX, scaleY)).sc
       
       close p
       sketch.add p.Curve2, doc.foreground, mainLine
@@ -154,8 +154,8 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
       for i in 0 ..< armored.len:
         p.add armored[i].world(top).pt
 
-        if armoredFillets.hasKey(i - 1):
-          p.addFillet (armoredFillets[i-1] * min(scaleX, scaleY)).sc
+        if armoredFillets.hasKey(i):
+          p.fillet (armoredFillets[i] * min(scaleX, scaleY)).sc
       
       close p
       sketch.add p.Curve2, doc.foreground, mainLine
@@ -164,15 +164,15 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
     
     block:
       letCur p: create(Path2)[]
-      for i in 0..4: p.add profile.curves[i]
-      for i in 5..8: p.add armoredProfile.curves[i]
+      for i in 0..3: p.add profile.curves[i]
+      for i in 5..7: p.add armoredProfile.curves[i]
       close p
       # sketch.add p.Curve2, Foreground color(1, 0.4, 0.4), PixelThickness 5
       sketch.add p.Curve2, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
     
     block:
       letCur p: create(Path2)[]
-      for i in countdown(profile.curves.high, 5): p.add profile.curves[i].cut(1, 0)
+      for i in countdown(profile.curves.high, 4): p.add profile.curves[i].cut(1, 0)
       for i in countdown(4, 0): p.add armoredProfile.curves[i].cut(1, 0)
       close p
       # sketch.add p.Curve2, Foreground color(1, 0.4, 0.4), PixelThickness 5
@@ -197,13 +197,7 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
           else: v2(v2(contour[i].x, 100).world(top).x, 0)).pt
         ), mainLine
 
-
-proc sketch*(g: SealGeomParams, hideBackLines = false): World =
-  result = World()
-  withDocument result:
-    let globals = doc.spawn()
-    setTechDrawGlobals(globals)
-    draw(g, sketch = result, hideBackLines = hideBackLines)
+defineSketch draw
 
 
 

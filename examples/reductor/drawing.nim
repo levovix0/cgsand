@@ -1,7 +1,7 @@
 import sandbox, geom2d, techDraw
 import pkg/[bumpy]
 import ../shafts/[shafts, gears]
-import ./[bearings {.all.}, caps, seal]
+import ./[bearings {.all.}, covers, seal, bushing]
 import interactive_tools/measurement
 
 
@@ -16,9 +16,9 @@ type
     entity*: EntityId
     bearing*: BearingParams
     seal*: SealGeomParams
-    caps*: array[2, CapGeomParams]
+    covers*: array[2, CoverGeomParams]
     bearingEnt*: array[2, EntityId]
-    capEnt*: array[2, EntityId]
+    coverEnt*: array[2, EntityId]
     sealEnt*: EntityId
 
 
@@ -102,14 +102,17 @@ mainModule:
   slowShaft.seal = SealDesc(d: slowShaft.secondDiameter)
 
 
+  let bushing = BushingDesc(d: slowShaft.secondDiameter, H: slowShaftBead, reversedHatching: true)
+
+
   # height choosen from table  # todo: autocompute
-  fastShaft.caps[0] = CapDesc(
+  fastShaft.covers[0] = CoverDesc(
     D: fastShaft.bearing.D,
     h: 20.mm,
     shaft_d: fastShaft.secondDiameter,
     reverseHatching: true,
   )
-  fastShaft.caps[1] = CapDesc(
+  fastShaft.covers[1] = CoverDesc(
     D: fastShaft.bearing.D,
     h: 20.mm,
     # shaft_d: fastShaft.secondDiameter,
@@ -117,13 +120,13 @@ mainModule:
     reverseHatching: true,
   )
 
-  slowShaft.caps[0] = CapDesc(
+  slowShaft.covers[0] = CoverDesc(
     D: slowShaft.bearing.D,
     h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
     shaft_d: slowShaft.secondDiameter,
     reverseHatching: true,
   )
-  slowShaft.caps[1] = CapDesc(
+  slowShaft.covers[1] = CoverDesc(
     D: slowShaft.bearing.D,
     h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
     # shaft_d: slowShaft.secondDiameter,
@@ -147,7 +150,7 @@ mainModule:
       
       cylindricSegment(
         d = fastShaft.bearing.d,
-        l = fastShaft.bearing.B + fastShaft.caps[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - fastShaft.caps[1].boltDepth,
+        l = fastShaft.bearing.B + fastShaft.covers[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - fastShaft.covers[1].boltDepth,
         right = fillet,
       ),
       
@@ -175,7 +178,7 @@ mainModule:
       
       cylindricSegment(
         d = slowShaft.bearing.d,
-        l = slowShaft.bearing.B + slowShaft.caps[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - slowShaft.caps[1].boltDepth,
+        l = slowShaft.bearing.B + slowShaft.covers[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - slowShaft.covers[1].boltDepth,
       ),
       
       cylindricSegment(d = 70.mm, l = slowShaftBead),
@@ -191,15 +194,15 @@ mainModule:
   )
 
 
-  let capCutoff = max(0, fastShaft.caps[0].D2/2 + slowShaft.caps[1].D2/2 + 4.mm - axial_distance)/2  # ! gap must be 2.mm .. 4.mm
-  fastShaft.caps[0].cutoff = (capCutoff, 0.mm)
-  fastShaft.caps[1].cutoff = (0.mm, capCutoff)
-  slowShaft.caps[1].cutoff = (0.mm, capCutoff)
-  slowShaft.caps[0].cutoff = (capCutoff, 0.mm)
+  let coverCutoff = max(0, fastShaft.covers[0].D2/2 + slowShaft.covers[1].D2/2 + 4.mm - axial_distance)/2  # ! gap must be 2.mm .. 4.mm
+  fastShaft.covers[0].cutoff = (coverCutoff, 0.mm)
+  fastShaft.covers[1].cutoff = (0.mm, coverCutoff)
+  slowShaft.covers[1].cutoff = (0.mm, coverCutoff)
+  slowShaft.covers[0].cutoff = (coverCutoff, 0.mm)
 
 
-  fastShaft.sketch = sketch fastShaft.shaft
-  slowShaft.sketch = sketch slowShaft.shaft
+  fastShaft.sketch = fastShaft.shaft.sketch.sketch
+  slowShaft.sketch = slowShaft.shaft.sketch.sketch
 
   fastShaft.pos = point2(0, 0)
   slowShaft.pos = point2(-axial_distance, 0)
@@ -250,41 +253,41 @@ mainModule:
   let shaftsBounds = doc.bounds(fastShaft.bearingEnt[0]) + doc.bounds(slowShaft.entity)
 
 
-  # --- caps ---
+  # --- covers ---
 
-  fastShaft.capEnt[0] = doc.spawn SubWorld fastShaft.caps[0].sketch(hideBackLines = true):
+  fastShaft.coverEnt[0] = doc.spawn SubWorld fastShaft.covers[0].sketch(hideBackLines = true):
     Position2 fastShaft.pos + v2(0,
       + fastShaft.shaft.segmentX(5, PositionAtRight) +
       - fastShaft.shaft.segmentX(3, PositionAtCenter) +
-      + fastShaft.caps[0].bounds.size.x +
+      + fastShaft.covers[0].bounds.size.x +
       - bearingOnShaftEndPadding +
     0)
     Transform3 rotateZ(-Pi/2)
 
-  fastShaft.capEnt[1] = doc.spawn SubWorld fastShaft.caps[1].sketch(hideBackLines = true):
+  fastShaft.coverEnt[1] = doc.spawn SubWorld fastShaft.covers[1].sketch(hideBackLines = true):
     Position2 fastShaft.pos + v2(0,
       + fastShaft.shaft.segmentX(1, PositionAtRight) +
       - fastShaft.shaft.segmentX(3, PositionAtCenter) +
-      - fastShaft.caps[1].bounds.size.x +
+      - fastShaft.covers[1].bounds.size.x +
       - fastShaft.bearing.B +
     0)
     Transform3 rotateZ(Pi/2)
 
 
-  slowShaft.capEnt[0] = doc.spawn SubWorld slowShaft.caps[0].sketch(hideBackLines = true):
+  slowShaft.coverEnt[0] = doc.spawn SubWorld slowShaft.covers[0].sketch(hideBackLines = true):
     Position2 slowShaft.pos + v2(0,
       + slowShaft.shaft.segmentX(1, PositionAtRight) +
       - slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      - slowShaft.caps[0].bounds.size.x +
+      - slowShaft.covers[0].bounds.size.x +
       - slowShaft.bearing.B +
     0)
     Transform3 rotateZ(Pi/2)
 
-  slowShaft.capEnt[1] = doc.spawn SubWorld slowShaft.caps[1].sketch(hideBackLines = true):
+  slowShaft.coverEnt[1] = doc.spawn SubWorld slowShaft.covers[1].sketch(hideBackLines = true):
     Position2 slowShaft.pos + v2(0,
       + slowShaft.shaft.segmentX(4, PositionAtRight) +
       - slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      + slowShaft.caps[1].bounds.size.x +
+      + slowShaft.covers[1].bounds.size.x +
       - bearingOnShaftEndPadding +
     0)
     Transform3 rotateZ(-Pi/2)
@@ -297,8 +300,8 @@ mainModule:
     Position2 fastShaft.pos + v2(0,
       + fastShaft.shaft.segmentX(1, PositionAtRight) +
       - fastShaft.shaft.segmentX(3, PositionAtCenter) +
-      - fastShaft.caps[1].bounds.size.x +
-      + fastShaft.caps[1].s +
+      - fastShaft.covers[1].bounds.size.x +
+      + fastShaft.covers[1].s +
       - fastShaft.bearing.B +
     0)
     Transform3 rotateZ(Pi/2)
@@ -307,17 +310,32 @@ mainModule:
     Position2 slowShaft.pos + v2(0,
       - slowShaft.shaft.segmentX(2, PositionAtLeft) +
       + slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      + slowShaft.caps[1].bounds.size.x +
-      - slowShaft.caps[1].s +
+      + slowShaft.covers[1].bounds.size.x +
+      - slowShaft.covers[1].s +
       + slowShaft.bearing.B +
     0)
     Transform3 rotateZ(-Pi/2)
+
+  
+  # --- bushing ---
+
+  doc.add SubWorld bushing.sketch(backlines = false):
+    Position2 slowShaft.pos + v2(0,
+      - slowShaft.shaft.segmentX(4, PositionAtLeft) +
+      + slowShaft.shaft.segmentX(3, PositionAtCenter) +
+      - bushing.H +
+    0)
+    Transform3 rotateZ(Pi/2)
+
 
 
 
   # --- box ---
 
-  let innerBox = roundRect2geom(point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2), 1.mm)
+  let innerBox = roundRect2geom(
+    point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2),
+    radius = (0.5*wall_thickness).ceil(1.mm),
+  )
   
   # todo: automatically clip
   for i, line in innerBox.lines:
@@ -343,7 +361,7 @@ mainModule:
   let outerBox = roundRect2geom(
     point2(shaftsBounds.center.x, 0),
     v2(shaftsBounds.size.x + padding*2 + wall_thickness*2, fastShaft.gear.length + padding*2 + wall_thickness*2),
-    1.mm + wall_thickness
+    radius = (0.5*wall_thickness).ceil(1.mm) + wall_thickness,
   )
 
   # todo: automatically clip
