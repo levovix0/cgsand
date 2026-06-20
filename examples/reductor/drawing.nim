@@ -165,7 +165,7 @@ mainModule:
       cylindricSegment(
         d = fastShaft.bearing.d,
         l = fastShaft.bearing.B + 5.mm,
-        right = bevel
+        right = bevel, left = fillet,
       ),
     ]
   )
@@ -181,16 +181,20 @@ mainModule:
       cylindricSegment(
         d = slowShaft.bearing.d,
         l = slowShaft.bearing.B + slowShaft.covers[1].totalHeight + boltHeadHeight + distanceFromBoltHeight - slowShaft.covers[1].boltDepth,
+        right = fillet,
       ),
       
-      cylindricSegment(d = 70.mm, l = slowShaftBead),
+      cylindricSegment(
+        d = 70.mm,
+        l = slowShaftBead,
+      ),
       
       slowShaft.gear,
       
       cylindricSegment(
         d = slowShaft.bearing.d,
         l = slowShaftBead + slowShaft.bearing.B + bearingOnShaftEndPadding,
-        right = bevel,
+        right = bevel, left = ShaftConjunction(kind: Fillet, radius: bushing.bevelRadius * 2/3),
       ),
     ]
   )
@@ -393,13 +397,8 @@ mainModule:
   when true:
     # ! this is not parametric
     proc addSymmetric[T](doc: World, v: Curve2, other: T) =
-      let oc = create(OwnedCurve2)
-      oc[] = v.transform(m4())
-      doc.add oc[].Curve2, other
-
-      let oc2 = create(OwnedCurve2)
-      oc2[] = v.transform(scale v3(1, -1, 1))
-      doc.add oc2[].Curve2, other
+      doc.add v.transform(m4()), other
+      doc.add v.transform(scale v3(1, -1, 1)), other
     
     proc addAxial(doc: World, circle: CircleArc2) =
       doc.add line(circle.center - v2(circle.radius * 1.1, 0), circle.center + v2(circle.radius * 1.1, 0)), axialLine
@@ -407,6 +406,8 @@ mainModule:
 
 
     let K2 = 32.mm  # selected from table # todo: autocomplete
+    # todo: use to calculate the cover height
+    
     let C2 = 16.mm  # selected from table # todo: autocomplete
     let d2 = 15.mm  # selected from table # todo: autocomplete
 
@@ -418,12 +419,12 @@ mainModule:
     let H = owH + K3 * 2  # = 0.152875
 
     let jointBoltCount = 3
-    # let jointPadding = 0.mm
-    let jointPadding = H * 1/5/2
+    let jointPadding = 0.mm
+    # let jointPadding = H * 1/5/2
 
     # --- right-side ---
     block:
-      let wallX = outerBox.lines[RoundRect2Geom_LineIndex.right].pointAtParam(0).x
+      let wallX = outerBox.lines[RoundRect2Geom_LineIndex.right].pointAt(0).x
       let X = wallX + K3
       let coverPoint = doc.bounds(fastShaft.coverEnt[0]).max - v2(0, fastShaft.covers[0].H)
       
@@ -436,8 +437,8 @@ mainModule:
       let boltCorpus = circle(boltHole.center, C2, Pi/2, -Pi/2)
       # doc.add boltCorpus, mainLine
       
-      doc.addSymmetric line(boltCorpus.pointAtParam(0), coverPoint), (doc.foreground, mainLine)
-      doc.addSymmetric line(boltCorpus.pointAtParam(1), outerBox.lines[RoundRect2Geom_LineIndex.right].pointAtParam(1)), hiddenLine
+      doc.addSymmetric line(boltCorpus.pointAt(0), coverPoint), (doc.foreground, mainLine)
+      doc.addSymmetric line(boltCorpus.pointAt(1), outerBox.lines[RoundRect2Geom_LineIndex.right].pointAt(1)), hiddenLine
 
 
       block:
@@ -477,7 +478,7 @@ mainModule:
 
     # --- left-side
     block:
-      let wallX = outerBox.lines[RoundRect2Geom_LineIndex.left].pointAtParam(0).x
+      let wallX = outerBox.lines[RoundRect2Geom_LineIndex.left].pointAt(0).x
       let X = wallX - K3
       let coverPoint = doc.bounds(slowShaft.coverEnt[1]).min + v2(0, fastShaft.covers[0].h)
 
@@ -490,7 +491,14 @@ mainModule:
       let boltCorpus = circle(boltHole.center, C2, Pi/2, Pi, clockwise)
       # doc.add boltCorpus, mainLine
 
-      doc.addSymmetric line(boltCorpus.pointAtParam(0), coverPoint), (doc.foreground, mainLine)
+      doc.addSymmetric line(boltCorpus.pointAt(0), coverPoint), (doc.foreground, mainLine)
+
+      block:
+        let pt = p2(boltCorpus.pointAt(1).x, outerBox.lines[RoundRect2Geom_LineIndex.bottom].pointAt(0).y)
+        let r = (0.5 * wall_thickness).ceil(1.mm)
+        let c = circleArc(pt + v2(-r, +r), r, 0, -Pi/2)
+        doc.addSymmetric c, hiddenLine
+        doc.addSymmetric line(c.pointAt(0), boltCorpus.pointAt(1)), hiddenLine
       
       block:
         var p = Path2()
@@ -525,6 +533,20 @@ mainModule:
           doc.add bolt3Hole, mainLine
           doc.add bolt3Hole, Hatching(), color doc.foreground, hatchingLine
           doc.addAxial bolt3Hole
+    
+
+    # --- center ---
+    block:
+      let coverA = doc.bounds(fastShaft.coverEnt[0]).min + v2(0, fastShaft.covers[0].h)
+      let coverB = doc.bounds(slowShaft.coverEnt[1]).max - v2(0, slowShaft.covers[1].H)
+
+      doc.addSymmetric line(coverA, coverB), (doc.foreground, mainLine)
+
+      let boltHole = circle(p2(line(coverA, coverB).center.x, owH/2 + C2), d2/2)
+      doc.addSymmetric boltHole, (doc.foreground, mainLine)
+      doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
+      doc.addAxial boltHole
+      doc.addAxial boltHole.transform(scale v3(1, -1, 1))
 
 
   doc.drawRects()

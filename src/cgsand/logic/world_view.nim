@@ -218,7 +218,7 @@ proc toMesh*(
 ): Mesh =
   var points: Polygon
   for t in 0..<pointCount:
-    points.add curve.pointAtParam(t / (pointCount - 1)).V2.vec2
+    points.add curve.pointAt(t / (pointCount - 1)).V2.vec2
   let verts = triangulate([points], windingRule)
   if verts.len > 0:
     result = newMesh(verts, GL_TRIANGLES)

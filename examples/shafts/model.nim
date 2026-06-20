@@ -36,7 +36,7 @@ proc draw3d*(profile: World, doc = doc) =
   profile.forEach (curve: CircleArc2):
     var points: seq[Point3]
     for t in 0..16:
-      let p = curve.pointAtParam(t/16)
+      let p = curve.pointAt(t/16)
       points.add point3(p.x, p.y, 0)
     doc.add PolygonalSurface3 revolveX(points)
 

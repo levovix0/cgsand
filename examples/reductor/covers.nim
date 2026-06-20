@@ -84,82 +84,89 @@ proc totalHeight*(g: CoverGeomParams): float =
   g.H + g.h
 
 
+proc hatching*(g: CoverGeomParams): Hatching =
+  Hatching(
+    period: (g.D / 40),
+    angle: (if g.reverseHatching: -Pi/4 else: Pi/4),
+  )
+
+
 proc bounds*(g: CoverGeomParams): Bounds2 =
   bounds2(p2(0, -g.D2/2), p2(g.H + g.h, g.D2/2))
 
 
 
-proc draw*(g: CoverGeomParams, origin: Position2 = point2(), scale: float = 1, axis: V2 = v2(1, 0), sketch = doc, hideBackLines = false) =
+proc draw*(g: CoverGeomParams, sketch = doc, hideBackLines = false) =
   type DrawIf = enum
     Always, Cutoff, NotCutoff
 
-  let x = axis.normalize
-  let y = x.rotate(Pi/2)
-  proc sc(v: float): float = v * scale
-  proc vt(v: V2): V2 = v.x.sc * x + v.y.sc * y
-  proc pt(v: V2): Point2 = origin + v.vt
-  proc negY(v: V2): V2 = v2(v.x, -v.y)
+  proc negY(v: P2): P2 = p2(v.x, -v.y)
   if sketch == nil: return
 
+  proc addSymmetric[T, Curve](doc: World, v: Curve, other: T) =
+    doc.add v, other
+    doc.add v.transform(scale v3(1, -1, 1)), other
+
+  let haLine = (g.hatching, hatchingLine)
+  let bevel = 2.mm
+  let fillet = bevel
+
   var contour = @[
-    v2(0, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
-    v2(0, g.D1/2 - g.d1/2),  # 1
-    v2(g.boltDepth, g.D1/2 - g.d1/2),
-    v2(g.boltDepth, g.D1/2 - g.d/2),  # 3
-    v2(g.boltDepth, g.D1/2 + g.d/2),  # 4
-    v2(g.boltDepth, g.D1/2 + g.d1/2),
-    v2(0, g.D1/2 + g.d1/2),  # 6
-    v2(0, g.D2/2),
-    v2(g.H, g.D2/2),
-    v2(g.H, g.D1/2 + g.d/2),
-    v2(g.H, g.D1/2 - g.d/2),
-    v2(g.H, g.D/2),
-    v2(g.H + g.h, g.D/2),
-    v2(g.H + g.h, g.D3/2),
-    v2(g.s, g.D3/2),  # 14
-    v2(g.s, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
+    p2(0, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
+    p2(0, g.D1/2 - g.d1/2),  # 1
+    p2(g.boltDepth, g.D1/2 - g.d1/2),
+    p2(g.boltDepth, g.D1/2 - g.d/2),  # 3
+    p2(g.boltDepth, g.D1/2 + g.d/2),  # 4
+    p2(g.boltDepth, g.D1/2 + g.d1/2),
+    p2(0, g.D1/2 + g.d1/2),  # 6
+    p2(0, g.D2/2),
+    p2(g.H, g.D2/2),
+    p2(g.H, g.D1/2 + g.d/2),
+    p2(g.H, g.D1/2 - g.d/2),
+    p2(g.H, g.D/2),
+    p2(g.H + g.h, g.D/2),
+    p2(g.H + g.h, g.D3/2),
+    p2(g.s, g.D3/2),  # 14
+    p2(g.s, (if g.hole: g.shaft_d/2 + 1.mm else: 0)),
   ]
 
   if g.hole:
     contour[14..14] = @[
-      v2(g.s + g.seal.h + g.boltDepth, g.D3/2),
-      v2(g.s + g.seal.h + g.boltDepth, g.seal.D/2),
-      v2(g.s, g.seal.D/2),
+      p2(g.s + g.seal.h + bevel, g.D3/2),
+      p2(g.s + g.seal.h + bevel, g.seal.D/2),
+      p2(g.s, g.seal.D/2),
     ]
   let last = contour.high
 
   contour.add @[
-    v2(0, g.D2/2 - g.cutoff.bottom),
-    v2(g.H, g.D2/2 - g.cutoff.bottom),
-    v2(0, g.D2/2 - g.cutoff.top),
-    v2(g.H, g.D2/2 - g.cutoff.top),
+    p2(0, g.D2/2 - g.cutoff.bottom),
+    p2(g.H, g.D2/2 - g.cutoff.bottom),
+    p2(0, g.D2/2 - g.cutoff.top),
+    p2(g.H, g.D2/2 - g.cutoff.top),
   ]
 
   proc addLineSection(a, b: int, drawIf = Always, parts: openArray[bool] = [false, true]) =
     if ((drawIf == Always) or ((g.cutoff.bottom != 0) == (drawIf == Cutoff))) and (false in parts):
-      sketch.add line(contour[a].pt, contour[b].pt), mainLine
+      sketch.add line(contour[a], contour[b]), mainLine
     if ((drawIf == Always) or ((g.cutoff.top != 0) == (drawIf == Cutoff))) and (true in parts):
-      sketch.add line(contour[a].negY.pt, contour[b].negY.pt), mainLine
+      sketch.add line(contour[a].negY, contour[b].negY), mainLine
 
   proc addRevolutionLine(a: int) =
     let zero = (if hideBackLines: g.shaft_d/2 else: 0)
-    sketch.add line(contour[a].pt, v2(contour[a].x, zero).pt), mainLine
-    sketch.add line(contour[a].negY.pt, v2(contour[a].x, zero).negY.pt), mainLine
+    sketch.add line(contour[a], p2(contour[a].x, zero)), mainLine
+    sketch.add line(contour[a].negY, p2(contour[a].x, zero).negY), mainLine
 
   proc addHatching(i: openArray[int], drawIf = Always, parts: openArray[bool] = [false, true]) =
     for up in parts:
       if (drawIf == Always) or (([g.cutoff.bottom, g.cutoff.top][up.int] != 0) == (drawIf == Cutoff)):
-        var p = create Path2
-        # todo: either something in ecs or in sigeo interface macro or in both breaks, if Path2 is allocated on the stack, or is passed to ecs as Path2
+        var p = Path2()
         for i2 in countup(0, i.high):
-          p[].add (if up: contour[i[i2]].negY else: contour[i[i2]]).pt
-        close p[]
-        sketch.add p[].Curve2, Hatching(
-          period: (g.D / 40 * scale),
-          angle: (if g.reverseHatching: -Pi/4 else: Pi/4),
-        ), hatchingLine
+          p.add (if up: contour[i[i2]].negY else: contour[i[i2]])
+        close p
+        sketch.add p, haLine
 
   for i in 0 ..< (if g.hole: (last + 1) else: last):
+    if i in 13..14: continue
     addLineSection i, (i+1) mod (last + 1), drawIf = (if i in 1..10: NotCutoff else: Always)
   
   addLineSection 1, 6, drawIf = NotCutoff
@@ -178,14 +185,20 @@ proc draw*(g: CoverGeomParams, origin: Position2 = point2(), scale: float = 1, a
   if g.hole:
     addRevolutionLine last
     addRevolutionLine last - 4
-  
+
   addHatching toSeq(0..3) & toSeq(10..last), drawIf = NotCutoff
   addHatching toSeq(4..9), drawIf = NotCutoff
 
   addHatching @[0, contour.high-3, contour.high-2] & toSeq(11..last), drawIf = Cutoff, parts = [false]
   addHatching @[0, contour.high-1, contour.high] & toSeq(11..last), drawIf = Cutoff, parts = [true]
 
-  # todo: fillets
+  # fillets
+  block:
+    let c = circleArc(contour[14] + v2(fillet, -fillet), fillet, Pi, Pi/2)
+    doc.addSymmetric c, mainLine
+    doc.addSymmetric line(c.pointAt(0), contour[15]), mainLine
+    doc.addSymmetric line(c.pointAt(1), contour[13]), mainLine
+    
 
 defineSketch draw
 
@@ -195,14 +208,14 @@ mainModule:
   doc[globals, CanvasSettings].margin = v2(20.mm, 20.mm)
   
   for i, cutoff in [(0.mm, 0.mm), (10.mm, 0.mm), (0.mm, 20.mm)]:
-    draw CoverDesc(D: 100.mm, h: 20.mm, cutoff: cutoff),
-      origin = p2((0.mm + i.float * 120.mm), 0)
+    doc.add SubWorld CoverDesc(D: 100.mm, h: 20.mm, cutoff: cutoff).sketch():
+      Position2 p2((0.mm + i.float * 120.mm), 0)
     
     let sealedCover = CoverDesc(D: 100.mm, h: 20.mm, cutoff: cutoff, hole: true, seal: SealDesc(d: 40.mm))
     
-    draw sealedCover,
-      origin = p2((60.mm + i.float * 120.mm), 0)#, hideBackLines=true
+    doc.add SubWorld sealedCover.sketch():
+      Position2 p2((60.mm + i.float * 120.mm), 0)
 
-    draw sealedCover.seal,
-      origin = p2((60.mm + i.float * 120.mm) + sealedCover.autoComputeGeomParams.s, 0)#, hideBackLines=true
+    doc.add SubWorld sealedCover.seal.sketch():
+      Position2 p2((60.mm + i.float * 120.mm) + sealedCover.autoComputeGeomParams.s, 0)
 

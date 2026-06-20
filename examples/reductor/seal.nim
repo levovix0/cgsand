@@ -128,9 +128,6 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
     else: v.bool.not.AngleDirection
 
   for top in [false, true]:
-    # todo: either something in ecs or in sigeo interface macro or in both breaks,
-    # if Path2 is allocated on the stack, or is passed to ecs as Path2
-    
     var profile = Path2()
     var armoredProfile = Path2()
 

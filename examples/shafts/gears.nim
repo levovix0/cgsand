@@ -1,7 +1,6 @@
 import std/[tables]
 import sandbox, geom2d, techDraw
 import pkg/[vmath]
-import pkg/sigeo/macros/[genAliases, cursors]
 
 
 type

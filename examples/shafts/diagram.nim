@@ -141,7 +141,7 @@ proc draw*(beam: Beam) =
     # todo: hatching
     for y in countup(0, int(beam.meterSize) - 1, 1):
       let y = y / int(beam.meterSize)
-      doc.add line(line.pointAtParam(y), line.pointAtParam(y) + v2(-0.5, 0.5))
+      doc.add line(line.pointAt(y), line.pointAt(y) + v2(-0.5, 0.5))
   
   
   for load in beam.loads:
@@ -153,12 +153,12 @@ proc draw*(beam: Beam) =
     doc.add line(b, b + dir), loadColor
 
     for x in countup(0, int((load.x.b - load.x.a) * 4)):
-      let p = line(a, b).pointAtParam(x / int((load.x.b - load.x.a) * 4))
+      let p = line(a, b).pointAt(x / int((load.x.b - load.x.a) * 4))
       doc.add line(p + dir/4, p + dir), loadColor
       addArrow(p, -dir, dir.length / 2, loadColor)
       
     for x in countup(0, int(load.x.b - load.x.a) - 1):
-      let p = line(a + v2((l*beam.meterSize)/2, 0), b - v2((l*beam.meterSize)/2, 0)).pointAtParam(x / (int(load.x.b - load.x.a) - 1))
+      let p = line(a + v2((l*beam.meterSize)/2, 0), b - v2((l*beam.meterSize)/2, 0)).pointAt(x / (int(load.x.b - load.x.a) - 1))
       doc.add Text abs(load.load / (q * l.pow(2))).`$`.addName("q"):
         Position2 (p + dir + dir.normalize * textMargin)
         (if load.load > 0: PositionAtBottom else: PositionAtTop)

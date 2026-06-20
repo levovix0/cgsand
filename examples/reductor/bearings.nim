@@ -124,8 +124,8 @@ proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
       # todo: cutContour
       let line = line(p2(-B/2, y), p2(B/2, y))
       let pts = intersectionPointsParams(line, circles[i])
-      let l = line(line.startPoint, line.pointAtParam(pts[0].curveA))
-      let r = line(line.pointAtParam(pts[1].curveA), line.endPoint)
+      let l = line(line.startPoint, line.pointAt(pts[0].curveA))
+      let r = line(line.pointAt(pts[1].curveA), line.endPoint)
       doc.add l, mainLine
       doc.add r, mainLine
 
@@ -134,14 +134,14 @@ proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
 
         var p = Path2()
         if j == 0:
-          p.add l.pointAtParam(0)
+          p.add l.pointAt(0)
           p.add l; p.add arc; p.add r
           p.add rr.arcs[topRight]
           p.add rr.lines[top].reverse
           p.add rr.arcs[topLeft]
           close p
         else:
-          p.add l.pointAtParam(0)
+          p.add l.pointAt(0)
           p.add l; p.add arc; p.add r
           p.add rr.arcs[bottomRight].reverse
           p.add rr.lines[bottom].reverse

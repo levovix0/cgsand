@@ -34,6 +34,9 @@ proc b1*(g: BushingDesc): float =
 proc width*(g: BushingDesc): float {.aliases: [height].} =
   g.H
 
+proc bevelRadius*(g: BushingDesc): float {.aliases: [bevel].} =
+  0.6.mm
+
 
 proc hatching*(g: BushingDesc): Hatching =
   Hatching(period: g.d / 40, angle: (if g.reversedHatching: -Pi/4 else: Pi/4))
@@ -52,7 +55,7 @@ proc draw*(g: BushingDesc, sketch = doc, backLines = true, axialLines = true, ha
   let fgLine = (doc.foreground, mainLine)
   let haLine = (g.hatching, hatchingLine)
 
-  let bevel = 0.6.mm
+  let bevel = g.bevelRadius
   let fillet = bevel
 
   for ydir in [1.0, -1.0]:

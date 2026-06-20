@@ -4,12 +4,6 @@ import techDraw/[dimensions]
 import ./gears
 
 
-const useCustomFont = not defined(nimcheck)
-
-when useCustomFont:
-  import text
-
-
 type
   SectionShape* = enum
     Circle
@@ -56,12 +50,6 @@ type
 
   Shaft* = object
     segments*: seq[ShaftSegment]
-
-
-
-when useCustomFont:
-  let font = findSystemFont(@["firacode", "tinos", "timesnewroman", "dejavuserif"] & defaultSystemFonts)
-  doc.update globals: add font
 
 
 
