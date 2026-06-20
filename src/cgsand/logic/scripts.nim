@@ -28,6 +28,7 @@ type
   ProjectionMatrixCb* = proc(): Mat4 {.cdecl.}
   ViewportMatrixCb* = proc(): Mat4 {.cdecl.}
   ViewportWindowBoundsCb* = proc(): Rect {.cdecl.}
+  UnitsPerPixelCb* = proc(): float {.cdecl.}
   RerunScriptRequestCb* = proc() {.cdecl.}
 
   ScriptSystems* = object
@@ -77,6 +78,7 @@ var scriptWorldBounds*: WorldBoundsCb
 var scriptProjectionMatrix*: ProjectionMatrixCb
 var scriptViewportMatrix*: ViewportMatrixCb
 var scriptViewportWindowBounds*: ViewportWindowBoundsCb
+var scriptUnitsPerPixel*: UnitsPerPixelCb
 var scriptRerunScriptRequest*: RerunScriptRequestCb
 
 
@@ -177,6 +179,7 @@ proc scriptWorker(info: WorkerArgs) {.thread.} =
   setScriptCb("interactive_systems_projectionMatrix", scriptProjectionMatrix)
   setScriptCb("interactive_systems_viewportMatrix", scriptViewportMatrix)
   setScriptCb("interactive_systems_viewportWindowBounds", scriptViewportWindowBounds)
+  setScriptCb("interactive_systems_unitsPerPixel", scriptUnitsPerPixel)
   setScriptCb("interactive_systems_rerunScript", scriptRerunScriptRequest)
 
   template resolveEventProc(fld: untyped, sym: string) =

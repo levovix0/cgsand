@@ -46,9 +46,9 @@ proc fillHatchingRect(
   )
 
 
-proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4): Vec2 =
+proc widgetToViewportPoint(widgetPos: Vec2, widgetSize: Vec2, toGl: Mat4): Vec2 =
   let glPos = combine(
-    scale(vec3(2 / width, -2 / height, 1)),
+    scale(vec3(2 / widgetSize.x, -2 / widgetSize.y, 1)),
     translate(vec3(-1, 1, 0)),
   ) * vec4(widgetPos.x, widgetPos.y, 0, 1)
   (inverse(toGl) * glPos).vec2
@@ -57,13 +57,13 @@ proc widgetToViewportPoint(widgetPos: Vec2, width, height: float32, toGl: Mat4):
 proc projection*(this: DocumentView): Mat4 =
   let globals = this.script[].world[].documentGlobals
   let layout = this.script[].world[].documentLayout(globals)
-  projectionMatrix(layout.pageBounds, this.w[], this.h[], globals.axisYDirection)
+  projectionMatrix(layout.pageBounds, this.wh, globals.axisYDirection)
 
 proc viewportToGlMatrix*(this: DocumentView): Mat4 =
   combine(this.viewport, this.projection)
 
 proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
-  widgetToViewportPoint(pos, this.w[], this.h[], this.viewportToGlMatrix)
+  widgetToViewportPoint(pos, this.wh, this.viewportToGlMatrix)
 
 
 
@@ -100,6 +100,12 @@ proc viewportWindowBoundsCallback(): Rect {.cdecl.} =
   if activeDocumentView == nil: return rect(vec2(0, 0), vec2(0, 0))
   rect(vec2(activeDocumentView.globalX[], activeDocumentView.globalY[]), vec2(activeDocumentView.w[], activeDocumentView.h[]))
 
+proc unitsPerPixelCallback(): float {.cdecl.} =
+  if activeDocumentView == nil or activeDocumentView.script[].hasWorldToDraw.not: return 0
+  let globals = activeDocumentView.script[].world[].documentGlobals
+  let layout = activeDocumentView.script[].world[].documentLayout(globals)
+  unitsPerPixel(layout.pageBounds.size.vec2, activeDocumentView.wh, activeDocumentView.viewport[])
+
 proc rerunScriptCallback() {.cdecl.} =
   if activeDocumentView != nil and activeDocumentView.script[] != nil:
     rerunScript(activeDocumentView.script[])
@@ -107,6 +113,7 @@ proc rerunScriptCallback() {.cdecl.} =
 scriptProjectionMatrix = projectionMatrixCallback
 scriptViewportMatrix = viewportMatrixCallback
 scriptViewportWindowBounds = viewportWindowBoundsCallback
+scriptUnitsPerPixel = unitsPerPixelCallback
 scriptRerunScriptRequest = rerunScriptCallback
 
 
@@ -132,13 +139,8 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
       let w = this.script[].world[]
       let globals = w.documentGlobals
       let layout = w.documentLayout(globals)
-      let proj = projectionMatrix(layout.pageBounds, this.w[], this.h[], globals.axisYDirection)
-      let toGl = combine(this.viewport[], proj)
-      let pixelsPerUnit = block:
-        let sX = sqrt(toGl[0][0]*toGl[0][0] + toGl[0][1]*toGl[0][1])
-        let sY = sqrt(toGl[1][0]*toGl[1][0] + toGl[1][1]*toGl[1][1])
-        let sZ = sqrt(toGl[2][0]*toGl[2][0] + toGl[2][1]*toGl[2][1])
-        max(sX, max(sY, sZ)) * this.w[] / 2
+      let proj = projectionMatrix(layout.pageBounds, this.wh, globals.axisYDirection)
+      let pixelsPerUnit = pixelsPerUnit(layout.pageBounds.size.vec2, this.wh, this.viewport[])
 
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)

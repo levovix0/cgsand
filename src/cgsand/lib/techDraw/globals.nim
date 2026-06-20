@@ -20,10 +20,18 @@ proc ceil*(x: float, step: float): float =
 
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
-let mainLine* = PixelThickness 3
-let hatchingLine* = PixelThickness 1
-let hiddenLine* = (PixelThickness 1, Dashing(pattern: @[1, 1]), Foreground (if darkTheme: "#8e93ff".parseHtmlHex else: "#000000".parseHtmlHex))
-let axialLine* = (PixelThickness 2, Dashing(pattern: @[1, 0.5, 0, 0.5]), Foreground (if darkTheme: "#ff9e49".parseHtmlHex else: "#000000".parseHtmlHex))
+let mainLine* = PixelThickness 2
+let hatchingLine* = PixelThickness 0.75
+let hiddenLine* = (
+  PixelThickness 0.75,
+  Dashing(pattern: @[1, 1]),
+  Foreground (if darkTheme: "#8e93ff".parseHtmlHex else: "#000000".parseHtmlHex)
+)
+let axialLine* = (
+  PixelThickness 1.5,
+  Dashing(pattern: @[1, 0.5, 0, 0.5]),
+  Foreground (if darkTheme: "#ff9e49".parseHtmlHex else: "#000000".parseHtmlHex)
+)
 let dimFontSize* = FontSize 0.5
 
 

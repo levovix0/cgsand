@@ -1,5 +1,4 @@
 {.used.}
-import std/[math]
 import ../[sandbox, geom2d, techDraw]
 import ../interactive
 import pkg/[vmath, bumpy]
@@ -104,18 +103,6 @@ proc screenToWorld(window: Window): tuple[ok: bool, p: Point2] =
   let clip = vec4(nx * 2 - 1, 1 - ny * 2, 0, 1)
   let world = inverse(toGl) * clip
   (true, point2(world.x.float, world.y.float))
-
-
-proc viewportWorldPerPixel(): float =
-  ## world units per screen pixel
-  let (ok, toGl, wb) = viewTransform()
-  if not ok:
-    return 0
-  let sX = sqrt(toGl[0][0]*toGl[0][0] + toGl[0][1]*toGl[0][1])
-  let sY = sqrt(toGl[1][0]*toGl[1][0] + toGl[1][1]*toGl[1][1])
-  let sZ = sqrt(toGl[2][0]*toGl[2][0] + toGl[2][1]*toGl[2][1])
-  let ppu = max(sX, max(sY, sZ)) * wb.w / 2
-  if ppu <= 0: 0.0 else: 1.0 / ppu
 
 
 
@@ -314,7 +301,7 @@ proc registerMeasurementSystems() =
     if not ok: return
 
     letCur s: mstate()
-    s.worldPerPixel = viewportWorldPerPixel()
+    s.worldPerPixel = unitsPerPixel()
 
     if e.button == MouseButton.left:
       let p = snap(raw, s.worldPerPixel)
@@ -348,7 +335,7 @@ proc registerMeasurementSystems() =
     if s.activeCreation < 0: return
     let (ok, raw) = screenToWorld(e.window)
     if not ok: return
-    s.worldPerPixel = viewportWorldPerPixel()
+    s.worldPerPixel = unitsPerPixel()
     s.items[s.activeCreation].b = snap(raw, s.worldPerPixel)
     rebuildMeasurements()
     redraw e.window
@@ -365,7 +352,7 @@ proc registerMeasurementSystems() =
   ecs_system viewportChanged():
     letCur s: mstate()
     if not s.anyMeasurement: return
-    s.worldPerPixel = viewportWorldPerPixel()
+    s.worldPerPixel = unitsPerPixel()
     rebuildMeasurements()
 
 

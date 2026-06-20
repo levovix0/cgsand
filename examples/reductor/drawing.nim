@@ -226,16 +226,6 @@ mainModule:
     Position2 slowShaft.pos
     Transform3 (rotateZ(-Pi/2) * translate(v3(-slowShaft.shaft.segmentX(slowShaft.gear) - slowShaft.gear.length/2, 0, 0)))
 
-  doc.add line(
-    fastShaft.pos + v2(0, fastShaft.shaft.segmentX(0, PositionAtLeft) - fastShaft.shaft.segmentX(3, PositionAtCenter) - 5.mm),
-    fastShaft.pos + v2(0, fastShaft.shaft.segmentX(5, PositionAtRight) - fastShaft.shaft.segmentX(3, PositionAtCenter) + 5.mm),
-  ), axialLine
-
-  doc.add line(
-    slowShaft.pos + v2(0, -(slowShaft.shaft.segmentX(4, PositionAtRight) - slowShaft.shaft.segmentX(3, PositionAtCenter)) - 5.mm),
-    slowShaft.pos + v2(0, -(slowShaft.shaft.segmentX(0, PositionAtLeft) - slowShaft.shaft.segmentX(3, PositionAtCenter)) + 5.mm),
-  ), axialLine
-
 
 
   # --- bearings ---
@@ -298,6 +288,17 @@ mainModule:
       - bearingOnShaftEndPadding +
     0)
     Transform3 rotateZ(-Pi/2)
+
+
+  doc.add line(
+    fastShaft.pos + v2(0, fastShaft.shaft.segmentX(0, PositionAtLeft) - fastShaft.shaft.segmentX(3, PositionAtCenter) - 5.mm),
+    p2(fastShaft.pos.x, doc.bounds(fastShaft.coverEnt[0]).max.y + 5.mm),
+  ), axialLine
+
+  doc.add line(
+    p2(slowShaft.pos.x, doc.bounds(slowShaft.coverEnt[0]).min.y - 5.mm),
+    slowShaft.pos + v2(0, -(slowShaft.shaft.segmentX(0, PositionAtLeft) - slowShaft.shaft.segmentX(3, PositionAtCenter)) + 5.mm),
+  ), axialLine
 
 
 

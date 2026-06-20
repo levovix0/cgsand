@@ -61,30 +61,44 @@ proc drawHatchedPath(
   )
 
 
-
-proc projectionMatrix*(pageBounds: Bounds2, width, height: float32, axisYDirection: AxisYDirection): Mat4 =
-  ## returns a matrix to convert document coordinates to GL space
-  ## if viewport is mat4(), the whole document fits into the widget
-  let pageSize = pageBounds.size
+proc unitsPerPixel*(pageSize: Vec2, widgetSize: Vec2): float =
+  ## returns unit/pixel that, if viewport is mat4(), whole document fits into widget area
   let cmin = min(pageSize.x, pageSize.y)
   let cmax = max(pageSize.x, pageSize.y)
+  let widthLimiting = widgetSize.x / pageSize.x < widgetSize.y / pageSize.y
   let canvasScale =
-    if (pageSize.x < pageSize.y) == (width / pageSize.x < height / pageSize.y):
+    if (pageSize.x < pageSize.y) == widthLimiting:
       cmax / cmin
     else:
-      1
+      1.0
+
+  let limitingDim = if widthLimiting: widgetSize.x else: widgetSize.y
+  cmax / (canvasScale * limitingDim)
+
+
+proc projectionMatrix*(pageBounds: Bounds2, widgetSize: Vec2, axisYDirection: AxisYDirection): Mat4 =
+  ## returns a matrix to convert document coordinates to GL space,
+  ## if viewport is mat4(), the whole document fits into the widget
+  let upp = unitsPerPixel(pageBounds.size.vec2, widgetSize)
 
   combine(
     translate(-pageBounds.center.V2.vec3(0)),
     scale(y = (if axisYDirection == AxisYDown: -1 else: 1)),
-    scale vec3(2/cmax, 2/cmax, 1),
-    (
-      if width / pageSize.x < height / pageSize.y:
-        scale vec3(canvasScale, width / height * canvasScale, 1/1000)
-      else:
-        scale vec3(height / width * canvasScale, canvasScale, 1/1000)
-    ),
+    scale vec3(2 / (upp * widgetSize.x), 2 / (upp * widgetSize.y), 1/1000),
   )
+
+
+proc scale*(viewport: Mat4): float =
+  let sX = sqrt(viewport[0][0] * viewport[0][0] + viewport[0][1] * viewport[0][1])
+  let sY = sqrt(viewport[1][0] * viewport[1][0] + viewport[1][1] * viewport[1][1])
+  let sZ = sqrt(viewport[2][0] * viewport[2][0] + viewport[2][1] * viewport[2][1])
+  max(sX, max(sY, sZ))
+
+proc unitsPerPixel*(pageSize: Vec2, widgetSize: Vec2, viewport: Mat4): float =
+  unitsPerPixel(pageSize, widgetSize) / viewport.scale
+
+proc pixelsPerUnit*(pageSize: Vec2, widgetSize: Vec2, viewport: Mat4): float =
+  1 / unitsPerPixel(pageSize, widgetSize, viewport)
 
 
 proc drawLineSection*(ctx: DrawContext, obj: LineSection2, color: Color, thickness = none Thickness, transform = mat4()) =

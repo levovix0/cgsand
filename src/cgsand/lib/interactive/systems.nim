@@ -35,6 +35,9 @@ var projectionMatrix* {.exportc: "interactive_systems_projectionMatrix", dynlib.
 var viewportMatrix* {.exportc: "interactive_systems_viewportMatrix", dynlib.}: proc(): Mat4 {.cdecl.}
 var viewportWindowBounds* {.exportc: "interactive_systems_viewportWindowBounds", dynlib.}: proc(): Rect {.cdecl.}
 
+## world units per screen pixel for the current viewport (zoom included)
+var unitsPerPixel* {.exportc: "interactive_systems_unitsPerPixel", dynlib.}: proc(): float {.cdecl.}
+
 var rerunScript* {.exportc: "interactive_systems_rerunScript", dynlib.}: proc() {.cdecl.}
 
 proc interactive_systems_windowEvent_CloseEvent(e: CloseEvent) {.exportc, dynlib.} = doc.windowEvent(e)
