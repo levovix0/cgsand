@@ -85,16 +85,6 @@ win.makeLayout:
       color = "#202020".color
 
 
-    - CodeEditor.new as codeEditor:
-      w = binding: round(parent.w[] * codeEditorPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
-      this.fillVertical(parent)
-      top = toolBar.bottom
-      bottom = parent.bottom
-      visibility = if currentConfig.codeEditorVisible: Visibility.visible else: Visibility.collapsed
-      on this.visibility.changed:
-        currentConfig.codeEditorVisible = this.visibility[] == visible
-        save(currentConfig)
-
     - DocumentView.new as documentView:
       this.left = binding:
         if codeEditor.visibility[] == collapsed: parent.left
@@ -104,6 +94,16 @@ win.makeLayout:
         else: terminal.left
       top = toolBar.bottom
       bottom = parent.bottom
+
+    - CodeEditor.new as codeEditor:
+      w = binding: round(parent.w[] * codeEditorPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
+      this.fillVertical(parent)
+      top = toolBar.bottom
+      bottom = parent.bottom
+      visibility = if currentConfig.codeEditorVisible: Visibility.visible else: Visibility.collapsed
+      on this.visibility.changed:
+        currentConfig.codeEditorVisible = this.visibility[] == visible
+        save(currentConfig)
 
     - Terminal.new as terminal:
       w = binding: round(parent.w[] * terminalPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))

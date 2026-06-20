@@ -28,7 +28,7 @@ type
 
   CoverGeomParams* = object of CoverDesc
     ## all dimensions are in meters
-    ## images/cover_geom.jpg  # todo: draw dimensions in the script
+    ## images/cap_geom.jpg  # todo: draw dimensions in the script
     D1*: float
     D2*: float
     D3*: float

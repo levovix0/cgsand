@@ -1,4 +1,4 @@
-import sandbox, geom2d, techDraw
+import sandbox, geom2d, techDraw, tabledef
 import pkg/[vmath]
 
 
@@ -81,6 +81,60 @@ converter autoComputeParams*(desc: BearingDesc): BearingParams =
 
   O.r = if desc.r != 0: desc.r else: (desc.D - desc.d - O.d_w) / 16
   #! note: O.r autocompute is visual-only, check bearing tables for the correct fillet radius values
+
+
+
+# todo: add the other series
+columnTable middleSeriesBearings, `const`:
+  # Средняя серия диаметров 3, узкая серия ширин 0 (ГОСТ 8338-75, табл. 6)
+  designation | d   | D   | B  | r
+  34          | 4   | 16  | 5  | 0.5
+  35          | 5   | 19  | 6  | 0.5
+  300         | 10  | 35  | 11 | 1.0
+  301         | 12  | 37  | 12 | 1.5
+  302         | 15  | 42  | 13 | 1.5
+  303         | 17  | 47  | 14 | 2.0
+  304         | 20  | 52  | 15 | 2.0
+  305         | 25  | 62  | 17 | 2.0
+  306         | 30  | 72  | 19 | 2.0
+  307         | 35  | 80  | 21 | 2.5
+  308         | 40  | 90  | 23 | 2.5
+  309         | 45  | 100 | 25 | 2.5
+  310         | 50  | 110 | 27 | 3.0
+  311         | 55  | 120 | 29 | 3.0
+  312         | 60  | 130 | 31 | 3.5
+  313         | 65  | 140 | 33 | 3.5
+  314         | 70  | 150 | 35 | 4.0
+  315         | 75  | 160 | 37 | 4.0
+  316         | 80  | 170 | 39 | 4.0
+  317         | 85  | 180 | 41 | 4.0
+  318         | 90  | 190 | 43 | 4.0
+  319         | 95  | 200 | 45 | 4.0
+  320         | 100 | 215 | 47 | 4.0
+  321         | 105 | 225 | 49 | 5.0
+  322         | 110 | 240 | 50 | 5.0
+  324         | 120 | 260 | 55 | 5.0
+  326         | 130 | 280 | 58 | 5.0
+  328         | 140 | 300 | 62 | 5.0
+  330         | 150 | 320 | 65 | 5.0
+
+
+proc selectBearing[T](table: T, d: float): BearingDesc =
+  template rowAt(i: int): BearingDesc =
+    BearingDesc(
+      d: table.d[i].float.mm,
+      D: table.D[i].float.mm,
+      B: table.B[i].float.mm,
+      r: table.r[i].float.mm
+    )
+  for i in 0 ..< table.d.len:
+    if table.d[i].float.mm >= d - 1e-9:
+      return rowAt(i)
+  rowAt(table.d.high)
+
+
+proc selectMiddleSeriesBearing*(d: float): BearingDesc =
+  selectBearing(middleSeriesBearings, d)
 
 
 

@@ -30,6 +30,8 @@ proc bevelRadius*(g: GearDesc): float {.aliases: [m].} =
 proc width*(g: GearDesc): float {.aliases: [b].} =
   g.height
 
+proc key*(g: GearDesc): bool = g.holes  # for now
+
 
 
 proc bounds*(g: GearDesc): Bounds2 =

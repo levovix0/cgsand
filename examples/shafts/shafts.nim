@@ -68,6 +68,8 @@ proc cylindricSegment*(
 
 
 
+let keyedGearMargin* = 2.mm  # ! 2.mm .. 3.mm
+
 proc gearSegment*(
   l: float,
   z: int, modulo: float,
@@ -164,7 +166,7 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 1, dimensi
   let dimlineY = maxH/2 + 5/scale
 
   var x = 0.0
-  for segment in shaft.segments:
+  for segmentI, segment in shaft.segments:
     let h = segment.height
 
     let leftOffset = case segment.left.kind
@@ -181,19 +183,33 @@ proc draw*(shaft: Shaft, origin: Position2 = point2(), scale: float = 1, dimensi
           Position2 v2(x, 0).pt, Transform3 scale(v3(scale))
 
       if h != 0:
+        let segL =
+          if segment.section.shape == Gear and segment.section.gear.key:
+            segment.length - keyedGearMargin
+          elif segmentI > 0 and shaft.segments[segmentI-1].section.shape == Gear and shaft.segments[segmentI-1].section.gear.key:
+            segment.length + keyedGearMargin
+          else:
+            segment.length
+        
+        let x =
+          if segmentI > 0 and shaft.segments[segmentI-1].section.shape == Gear and shaft.segments[segmentI-1].section.gear.key:
+            x - keyedGearMargin
+          else:
+            x
+
         sketch.drawConjunction(v2(x, 0).pt, v2(1, 0), segment.left, h, scale=scale)
-        sketch.drawConjunction(v2(x + segment.length, 0).pt, v2(-1, 0), segment.right, h, scale=scale)
+        sketch.drawConjunction(v2(x + segL, 0).pt, v2(-1, 0), segment.right, h, scale=scale)
 
         sketch.add line(
           v2(x + leftOffset, -h/2).pt,
-          v2(x + segment.length - rightOffset, -h/2).pt
+          v2(x + segL - rightOffset, -h/2).pt
         ), mainLine
         sketch.add line(
           v2(x + leftOffset, h/2).pt,
-          v2(x + segment.length - rightOffset, h/2).pt
+          v2(x + segL - rightOffset, h/2).pt
         ), mainLine
 
-        for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segment.length, segment.right, -1.0)]:
+        for (xc, conjunction, dir) in [(x, segment.left, 1.0), (x + segL, segment.right, -1.0)]:
           if conjunction.kind != Fillet:
             sketch.add line(
               v2(xc + conjunction.radius * dir, -h/2).pt,

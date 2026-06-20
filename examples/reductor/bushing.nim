@@ -17,10 +17,17 @@ type
 
 
 proc outerDiameter*(g: BushingDesc): float {.aliases: [D].} =
-  g.d + 6.mm
+  if g.d <= 20.mm: g.d + 6.mm
+  elif g.d <= 25.mm: g.d + 7.mm
+  elif g.d <= 32.mm: g.d + 8.mm
+  elif g.d <= 36.mm: g.d + 9.mm
+  elif g.d <= 40.mm: g.d + 10.mm
+  elif g.d <= 60.mm: g.d + 10.mm
+  else: g.d + 13.mm
 
 proc stopDiameter*(g: BushingDesc): float {.aliases: [D2].} =
-  g.outerDiameter + 4.mm
+  if g.d <= 40.mm: g.d + 4.mm
+  else: g.outerDiameter + 8.mm
 
 proc stopWidth*(g: BushingDesc): float {.aliases: [h].} =
   if g.outerDiameter < 10.5.mm: 2.mm

@@ -1,29 +1,95 @@
-import sandbox, geom2d, techDraw
+import sandbox, geom2d, techDraw, tabledef
 import pkg/[bumpy]
 import ../shafts/[shafts, gears]
 import ./[bearings {.all.}, covers, seal, bushing]
+import ./compute/[reductor]
 when isMainModule: import tools/measurement
 
 
 type
-  ShaftEx* = object
-    shaft*: Shaft
-    sketch*: World
-    gear*: ShaftSegment
-    pos*: Point2
+  ReductorShaftDesc* = object
     exitDiameter*: float
+      ## diameter of the exit stage of the shaft, m
+    exitLength*: float
+      ## length of the exit stage (the one with exitDiameter), m
+    gear_l*: float
+      ## gear height (length of the shaft stage with the gear), m
+    gear_z*: int
+      ## gear teeth count
+  
+  ReductorDesc* = object
+    gearModulo*: float
+      ## modulo for all gears
 
-    entity*: EntityId
-    bearing*: BearingParams
-    seal*: SealGeomParams
-    covers*: array[2, CoverGeomParams]
-    bearingEnt*: array[2, EntityId]
-    coverEnt*: array[2, EntityId]
-    sealEnt*: EntityId
+    fast*: ReductorShaftDesc
+    slow*: ReductorShaftDesc
+
+  ShaftEx = object
+    shaft: Shaft
+    sketch: World
+    gear: ShaftSegment
+    pos: Point2
+    exitDiameter: float
+
+    entity: EntityId
+    bearing: BearingParams
+    seal: SealGeomParams
+    covers: array[2, CoverGeomParams]
+    bearingEnt: array[2, EntityId]
+    coverEnt: array[2, EntityId]
+    sealEnt: EntityId
 
 
-var mmScale = 1e-3
-proc mm*(m: float): float = m * mmScale
+
+columnTable corpusBolts, `const`:
+  #    (>=)              (=)            (=M)        (=M)     (=M)
+  axial_distance | wall_thickness | fundamental | bearing | flange
+  0              | 6              | 12          | 10      | 8
+  90             | 8              | 16          | 12      | 10
+  200            | 10             | 20          | 16      | 12
+  315            | 12             | 24          | 20      | 14
+  400            | 14             | 27          | 24      | 16
+  500            | 16             | 30          | 27      | 16
+
+proc corpusBoltsAt(i: int): tuple[wall_thickness: float, fundamental_M, bearing_M, flange_M: int] =
+  return (
+    corpusBolts.wall_thickness[i].float.mm,
+    corpusBolts.fundamental[i],
+    corpusBolts.bearing[i],
+    corpusBolts.flange[i],
+  )
+
+proc selectCorpusBolts(axial_distance: float): tuple[wall_thickness: float, fundamental_M, bearing_M, flange_M: int] =
+  for i in countdown(corpusBolts.axial_distance.high, 0):
+    if axial_distance >= corpusBolts.axial_distance[i].float.mm:
+      return corpusBoltsAt(i)
+
+
+
+columnTable boltParams, `const`:
+  M   | S    | d   | D    | C   | K
+  6   | 10.0 | 7.0 | 13.5 | 9.0 | 18.0
+  8   | 13   | 10  | 18   | 11  | 22
+  10  | 17   | 12  | 22   | 15  | 29
+  12  | 19   | 15  | 26   | 16  | 32
+  14  | 22   | 17  | 30   | 17  | 34
+  16  | 24   | 19  | 33   | 19  | 37
+  20  | 30   | 24  | 40   | 23  | 45
+  24  | 36   | 28  | 48   | 28  | 54
+  27  | 41   | 32  | 52   | 30  | 58
+  30  | 46   | 35  | 61   | 34  | 66
+
+proc selectBoltParams(M: int): tuple[S, d, D, C, K: float] =
+  for i in 0 ..< boltParams.M.len:
+    if boltParams.M[i] == M:
+      return (
+        boltParams.S[i].mm,
+        boltParams.d[i].mm,
+        boltParams.D[i].mm,
+        boltParams.C[i].mm,
+        boltParams.K[i].mm,
+      )
+
 
 
 proc drawRects(doc: World) =
@@ -38,7 +104,7 @@ proc drawRects(doc: World) =
     doc.add line(point2(x1, y2), point2(x1, y1))
 
 
-proc segmentX*(shaft: Shaft, segmentI: int, p = PositionAtLeft): float =
+proc segmentX(shaft: Shaft, segmentI: int, p = PositionAtLeft): float =
   result = 0
   for i, seg in shaft.segments:
     if i == segmentI:
@@ -49,7 +115,7 @@ proc segmentX*(shaft: Shaft, segmentI: int, p = PositionAtLeft): float =
       else: return result
     result += seg.length
 
-proc segmentX*(shaft: Shaft, segment: ShaftSegment): float =
+proc segmentX(shaft: Shaft, segment: ShaftSegment): float =
   result = 0
   for seg in shaft.segments:
     if seg == segment:
@@ -57,47 +123,51 @@ proc segmentX*(shaft: Shaft, segment: ShaftSegment): float =
     result += seg.length
 
 
-proc gearPitchDiameter*(x: ShaftEx): float =
+proc gearPitchDiameter(x: ShaftEx): float =
   x.gear.section.gear.pitchDiameter
 
 
-proc secondDiameter*(shaft: ShaftEx): float =
+proc secondDiameter(shaft: ShaftEx): float =
   (shaft.exitDiameter + 5.mm).ceil(5.mm)
   
-proc thirdDiameter*(shaft: ShaftEx): float =
+proc thirdDiameter(shaft: ShaftEx): float =
   (shaft.secondDiameter + 5.mm).ceil(5.mm)
 
 
-mainModule:
-  var fastShaft = ShaftEx(exitDiameter: 40.mm)
-  var slowShaft = ShaftEx(exitDiameter: 48.mm)
+proc draw*(doc: World, desc: ReductorDesc) =
+  var fastShaft = ShaftEx(exitDiameter: desc.fast.exitDiameter)
+  var slowShaft = ShaftEx(exitDiameter: desc.slow.exitDiameter)
 
-  doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
-
-  fastShaft.gear = gearSegment(l = 44.875.mm, z = 23, modulo = 2.75.mm, reverseHatching = true)
-  slowShaft.gear = gearSegment(l = 39.875.mm, z = 93, modulo = 2.75.mm, shaft_d = slowShaft.thirdDiameter)
-
-  # parameters choosen for the middle series  # todo: autocompute
-  fastShaft.bearing = BearingDesc(d: 45.mm, D: 100.mm, B: 25.mm, r: 2.5.mm)
-  slowShaft.bearing = BearingDesc(d: 55.mm, D: 120.mm, B: 29.mm, r: 3.mm)
+  fastShaft.gear = gearSegment(
+    l = desc.fast.gear_l, z = desc.fast.gear_z, modulo = desc.gearModulo,
+    reverseHatching = true,
+  )
+  slowShaft.gear = gearSegment(
+    l = desc.slow.gear_l, z = desc.slow.gear_z, modulo = desc.gearModulo,
+    shaft_d = slowShaft.thirdDiameter,
+  )
+  slowShaft.gear.left = ShaftConjunction(kind: Fillet, radius: (slowShaft.gear.section.gear.bevelRadius * 0.5).ceil(0.1.mm))
 
 
   let axial_distance = fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
-  var wall_thickness: float =
-    if axial_distance <= 80.mm: 6.mm
-    elif axial_distance <= 180.mm: 8.mm
-    elif axial_distance <= 280.mm: 10.mm
-    elif axial_distance <= 355.mm: 12.mm
-    elif axial_distance <= 450.mm: 14.mm
-    else: 16.mm
+  var (wall_thickness, fundamental_M, bearing_M, flange_M) = selectCorpusBolts(axial_distance)
   
+  # var (wall_thickness, fundamental_M, bearing_M, flange_M) = corpusBoltsAt(2)  # ! was extended because covers are too big
   wall_thickness += 2.mm  # ! was extended because covers are too big
+
+  # let fundamental = fundamental_M.selectBoltParams()  # todo
+  let bearingBolts = bearing_M.selectBoltParams()
+  let flange = flange_M.selectBoltParams()
   
   let padding = (wall_thickness * 1.5).ceil(5.mm)
   let bead = padding
   let slowShaftBead = (fastShaft.gear.length - slowShaft.gear.length)/2 + bead
 
   let bearingOnShaftEndPadding = 5.mm
+
+
+  fastShaft.bearing = selectMiddleSeriesBearing(fastShaft.secondDiameter)
+  slowShaft.bearing = selectMiddleSeriesBearing(slowShaft.secondDiameter)
 
   
   fastShaft.seal = SealDesc(d: fastShaft.secondDiameter)
@@ -107,16 +177,15 @@ mainModule:
   let bushing = BushingDesc(d: slowShaft.secondDiameter, H: slowShaftBead, reversedHatching: true)
 
 
-  # height choosen from table  # todo: autocompute
   fastShaft.covers[0] = CoverDesc(
     D: fastShaft.bearing.D,
-    h: 20.mm,
+    h: (bearingBolts.K + wall_thickness - fastShaft.bearing.B).ceil(1.mm),
     shaft_d: fastShaft.secondDiameter,
     reverseHatching: true,
   )
   fastShaft.covers[1] = CoverDesc(
     D: fastShaft.bearing.D,
-    h: 20.mm,
+    h: (bearingBolts.K + wall_thickness - fastShaft.bearing.B).ceil(1.mm),
     # shaft_d: fastShaft.secondDiameter,
     hole: true, seal: fastShaft.seal,
     reverseHatching: true,
@@ -124,13 +193,13 @@ mainModule:
 
   slowShaft.covers[0] = CoverDesc(
     D: slowShaft.bearing.D,
-    h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
+    h: (bearingBolts.K + wall_thickness - slowShaft.bearing.B).ceil(1.mm),
     shaft_d: slowShaft.secondDiameter,
     reverseHatching: true,
   )
   slowShaft.covers[1] = CoverDesc(
     D: slowShaft.bearing.D,
-    h: 20.mm - (slowShaft.bearing.B - fastShaft.bearing.B).ceil(1.mm),
+    h: (bearingBolts.K + wall_thickness - slowShaft.bearing.B).ceil(1.mm),
     # shaft_d: slowShaft.secondDiameter,
     hole: true, seal: slowShaft.seal,
     reverseHatching: true,
@@ -146,7 +215,7 @@ mainModule:
     segments: @[
       cylindricSegment(
         d = fastShaft.exitDiameter,
-        l = 82.mm,  # legth choosen form table # todo: autocomplete
+        l = desc.fast.exitLength,
         left = bevel, right = fillet,
       ),
       
@@ -174,7 +243,7 @@ mainModule:
     segments: @[
       cylindricSegment(
         d = slowShaft.exitDiameter,
-        l = 82.mm,  # legth choosen form table # todo: autocomplete
+        l = desc.slow.exitLength,
         left = bevel, right = fillet
       ),
       
@@ -194,7 +263,7 @@ mainModule:
       cylindricSegment(
         d = slowShaft.bearing.d,
         l = slowShaftBead + slowShaft.bearing.B + bearingOnShaftEndPadding,
-        right = bevel, left = ShaftConjunction(kind: Fillet, radius: bushing.bevelRadius * 2/3),
+        right = bevel, left = fillet,
       ),
     ]
   )
@@ -331,40 +400,41 @@ mainModule:
     Position2 slowShaft.pos + v2(0,
       - slowShaft.shaft.segmentX(4, PositionAtLeft) +
       + slowShaft.shaft.segmentX(3, PositionAtCenter) +
-      - bushing.H +
     0)
-    Transform3 rotateZ(Pi/2)
+    Transform3 rotateZ(-Pi/2)
 
 
 
 
   # --- box ---
 
+  
   let innerBox = roundRect2geom(
     point2(shaftsBounds.center.x, 0), v2(shaftsBounds.size.x + padding*2, fastShaft.gear.length + padding*2),
     radius = (0.5*wall_thickness).ceil(1.mm),
   )
   
-  # todo: automatically clip
-  for i, line in innerBox.lines:
-    if i notin {RoundRect2Geom_LineIndex.top, bottom}:
-      doc.add line, mainLine
-  for arc in innerBox.arcs:
-    doc.add arc, mainLine
+  block:
+    # todo: automatically clip
+    for i, line in innerBox.lines:
+      if i notin {RoundRect2Geom_LineIndex.top, bottom}:
+        doc.add line, mainLine
+    for arc in innerBox.arcs:
+      doc.add arc, mainLine
 
-  for line in [innerBox.lines[top], innerBox.lines[bottom]]:
-    doc.add line.cut(
-      0,
-      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x + slowShaft.bearing.r, 0)),
-    ), mainLine
-    doc.add line.cut(
-      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).max.x - slowShaft.bearing.r, 0)),
-      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).min.x + fastShaft.bearing.r, 0)),
-    ), mainLine
-    doc.add line.cut(
-      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).max.x - fastShaft.bearing.r, 0)),
-      1,
-    ), mainLine
+    for line in [innerBox.lines[top], innerBox.lines[bottom]]:
+      doc.add line.cut(
+        0,
+        line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x + slowShaft.bearing.r, 0)),
+      ), mainLine
+      doc.add line.cut(
+        line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).max.x - slowShaft.bearing.r, 0)),
+        line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).min.x + fastShaft.bearing.r, 0)),
+      ), mainLine
+      doc.add line.cut(
+        line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).max.x - fastShaft.bearing.r, 0)),
+        1,
+      ), mainLine
 
   let outerBox = roundRect2geom(
     point2(shaftsBounds.center.x, 0),
@@ -372,26 +442,27 @@ mainModule:
     radius = (0.5*wall_thickness).ceil(1.mm) + wall_thickness,
   )
 
-  # todo: automatically clip
-  for i, line in outerBox.lines:
-    if i notin {RoundRect2Geom_LineIndex.top, bottom}:
-      doc.add line, hiddenLine
-  for arc in outerBox.arcs:
-    doc.add arc, hiddenLine
+  block:
+    # todo: automatically clip
+    for i, line in outerBox.lines:
+      if i notin {RoundRect2Geom_LineIndex.top, bottom}:
+        doc.add line, hiddenLine
+    for arc in outerBox.arcs:
+      doc.add arc, hiddenLine
 
-  for line in [outerBox.lines[top], outerBox.lines[bottom]]:
-    doc.add line.cut(
-      0,
-      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x, 0)),
-    ), hiddenLine
-    doc.add line.cut(
-      line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).max.x, 0)),
-      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).min.x, 0)),
-    ), hiddenLine
-    doc.add line.cut(
-      line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).max.x, 0)),
-      1,
-    ), hiddenLine
+    for line in [outerBox.lines[top], outerBox.lines[bottom]]:
+      doc.add line.cut(
+        0,
+        line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x, 0)),
+      ), hiddenLine
+      doc.add line.cut(
+        line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).max.x, 0)),
+        line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).min.x, 0)),
+      ), hiddenLine
+      doc.add line.cut(
+        line.paramAtPoint(p2(doc.bounds(fastShaft.bearingEnt[0]).max.x, 0)),
+        1,
+      ), hiddenLine
     
 
   # --- corpus ---
@@ -405,16 +476,13 @@ mainModule:
       doc.add line(circle.center - v2(circle.radius * 1.1, 0), circle.center + v2(circle.radius * 1.1, 0)), axialLine
       doc.add line(circle.center - v2(0, circle.radius * 1.1), circle.center + v2(0, circle.radius * 1.1)), axialLine
 
-
-    let K2 = 32.mm  # selected from table # todo: autocomplete
-    # todo: use to calculate the cover height
     
-    let C2 = 16.mm  # selected from table # todo: autocomplete
-    let d2 = 15.mm  # selected from table # todo: autocomplete
+    let C2 = bearingBolts.C
+    let d2 = bearingBolts.d
 
-    let K3 = 29.mm  # selected from table # todo: autocomplete
-    let C3 = 15.mm  # selected from table # todo: autocomplete
-    let d3 = 12.mm  # selected from table # todo: autocomplete
+    let K3 = flange.K
+    let C3 = flange.C
+    let d3 = flange.d
 
     let owH = (fastShaft.gear.length/2 + padding + wall_thickness) * 2  # = 0.094875
     let H = owH + K3 * 2  # = 0.152875
@@ -551,5 +619,48 @@ mainModule:
 
 
   doc.drawRects()
+
+defineSketch draw
+
+
+
+mainModule:
+  doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
+
+  when true:
+    let I = computeReductor ReductorInput(env: 0.0, D: 0.5, F: 3.2, V: 1.5)
+
+    doc.add SubWorld ReductorDesc(
+      gearModulo: I.closedTransmission.teeth_modulo.mm,
+      fast: ReductorShaftDesc(
+        exitDiameter: I.shafts.geom.B.d.mm,
+        exitLength: I.shafts.geom.B.l.mm,
+        gear_l: I.closedTransmission.geom.b1.mm,
+        gear_z: I.closedTransmission.z1,
+      ),
+      slow: ReductorShaftDesc(
+        exitDiameter: I.shafts.geom.T.d.mm,
+        exitLength: I.shafts.geom.T.l.mm,
+        gear_l: I.closedTransmission.geom.b2.mm,
+        gear_z: I.closedTransmission.z2,
+      ),
+    ).sketch()
+
+  else:
+    doc.add SubWorld ReductorDesc(
+      gearModulo: 2.75.mm,
+      fast: ReductorShaftDesc(
+        exitDiameter: 40.mm,
+        exitLength: 82.mm,
+        gear_l: 44.875.mm,
+        gear_z: 23,
+      ),
+      slow: ReductorShaftDesc(
+        exitDiameter: 48.mm,
+        exitLength: 82.mm,
+        gear_l: 39.875.mm,
+        gear_z: 93,
+      ),
+    ).sketch()
 
 
