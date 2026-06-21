@@ -1,7 +1,7 @@
 import sandbox, geom2d, techDraw, tabledef
 import pkg/[bumpy]
 import ../shafts/[shafts, gears]
-import ./[bearings {.all.}, covers, seal, bushing]
+import ./[bearings {.all.}, covers, seal, bushing, scheme]
 import ./compute/[reductor, shafts]
 when isMainModule: import tools/measurement
 
@@ -473,12 +473,12 @@ proc draw*(doc: World, desc: ReductorDesc) =
   block:
     # todo: automatically clip
     for i, line in innerBox.lines:
-      if i notin {RoundRect2Geom_LineIndex.top, bottom}:
+      if i notin {RoundRect2Geom_LineIndex.top, RoundRect2Geom_LineIndex.bottom}:
         doc.add line, mainLine
     for arc in innerBox.arcs:
       doc.add arc, mainLine
 
-    for line in [innerBox.lines[top], innerBox.lines[bottom]]:
+    for line in [innerBox.lines[RoundRect2Geom_LineIndex.top], innerBox.lines[RoundRect2Geom_LineIndex.bottom]]:
       doc.add line.cut(
         0,
         line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x + slowShaft.bearing.r, 0)),
@@ -501,12 +501,12 @@ proc draw*(doc: World, desc: ReductorDesc) =
   block:
     # todo: automatically clip
     for i, line in outerBox.lines:
-      if i notin {RoundRect2Geom_LineIndex.top, bottom}:
+      if i notin {RoundRect2Geom_LineIndex.top, RoundRect2Geom_LineIndex.bottom}:
         doc.add line, hiddenLine
     for arc in outerBox.arcs:
       doc.add arc, hiddenLine
 
-    for line in [outerBox.lines[top], outerBox.lines[bottom]]:
+    for line in [outerBox.lines[RoundRect2Geom_LineIndex.top], outerBox.lines[RoundRect2Geom_LineIndex.bottom]]:
       doc.add line.cut(
         0,
         line.paramAtPoint(p2(doc.bounds(slowShaft.bearingEnt[0]).min.x, 0)),
@@ -683,10 +683,12 @@ defineSketch draw
 mainModule:
   doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
 
+  var reductor: EntityId
+
   when true:
     let I = computeReductor ReductorInput(env: 0.0, D: 0.5, F: 3.2, V: 1.5)
 
-    doc.add SubWorld ReductorDesc(
+    reductor = doc.spawn SubWorld ReductorDesc(
       gearModulo: I.closedTransmission.teeth_modulo.mm,
       fast: ReductorShaftDesc(
         exitDiameter: I.shafts.geom.B.d.mm,
@@ -705,8 +707,15 @@ mainModule:
       bearingDetentDiameterExtend: 3.mm,
     ).sketch()
 
+
+    # --- kinematic scheme ---
+    block:
+      let ent = doc.spawn(SubWorld sketchScheme(), Transform3 scale v3(0.5))
+      doc[ent, Transform3] = translate((doc.bounds(reductor).topLeft - doc.bounds(ent).topLeft).v3(0)) * doc[ent, Transform3]
+
+
   else:
-    doc.add SubWorld ReductorDesc(
+    reductor = doc.spawn SubWorld ReductorDesc(
       gearModulo: 2.75.mm,
       fast: ReductorShaftDesc(
         exitDiameter: 40.mm,

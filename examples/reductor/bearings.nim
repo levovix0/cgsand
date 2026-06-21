@@ -3,10 +3,10 @@ import pkg/[vmath]
 
 
 type
-  RoundRect2Geom_LineIndex = enum
+  RoundRect2Geom_LineIndex {.pure.} = enum
     top, left, bottom, right
 
-  RoundRect2Geom_ArcIndex = enum
+  RoundRect2Geom_ArcIndex {.pure.} = enum
     topLeft, bottomLeft, bottomRight, topRight
 
   RoundRect2Geom* = object
@@ -151,16 +151,16 @@ proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
 
   if hideBackLines:
     # todo: cutContour
-    sketch.add line(r_t.lines[left].endPoint, p2(-B/2, -d/2)), mainLine
-    sketch.add line(r_b.lines[left].endPoint, p2(-B/2, d/2)), mainLine
-    sketch.add line(r_t.lines[right].endPoint, p2(B/2, -d/2)), mainLine
-    sketch.add line(r_b.lines[right].endPoint, p2(B/2, d/2)), mainLine
+    sketch.add line(r_t.lines[RoundRect2Geom_LineIndex.left].endPoint, p2(-B/2, -d/2)), mainLine
+    sketch.add line(r_b.lines[RoundRect2Geom_LineIndex.left].endPoint, p2(-B/2, d/2)), mainLine
+    sketch.add line(r_t.lines[RoundRect2Geom_LineIndex.right].endPoint, p2(B/2, -d/2)), mainLine
+    sketch.add line(r_b.lines[RoundRect2Geom_LineIndex.right].endPoint, p2(B/2, d/2)), mainLine
     
   else:
-    sketch.add line(r_t.lines[left].endPoint, r_b.lines[left].startPoint), mainLine
-    sketch.add line(r_t.lines[bottom].startPoint, r_b.lines[top].startPoint), mainLine
-    sketch.add line(r_t.lines[bottom].endPoint, r_b.lines[top].endPoint), mainLine
-    sketch.add line(r_t.lines[right].endPoint, r_b.lines[right].startPoint), mainLine
+    sketch.add line(r_t.lines[RoundRect2Geom_LineIndex.left].endPoint, r_b.lines[RoundRect2Geom_LineIndex.left].startPoint), mainLine
+    sketch.add line(r_t.lines[RoundRect2Geom_LineIndex.bottom].startPoint, r_b.lines[RoundRect2Geom_LineIndex.top].startPoint), mainLine
+    sketch.add line(r_t.lines[RoundRect2Geom_LineIndex.bottom].endPoint, r_b.lines[RoundRect2Geom_LineIndex.top].endPoint), mainLine
+    sketch.add line(r_t.lines[RoundRect2Geom_LineIndex.right].endPoint, r_b.lines[RoundRect2Geom_LineIndex.right].startPoint), mainLine
 
   let circles = [
     circle(p2(0, -d_cp/2), d_w/2),
@@ -190,16 +190,16 @@ proc draw*(g: BearingParams, sketch = doc, hideBackLines = false) =
         if j == 0:
           p.add l.pointAt(0)
           p.add l; p.add arc; p.add r
-          p.add rr.arcs[topRight]
-          p.add rr.lines[top].reverse
-          p.add rr.arcs[topLeft]
+          p.add rr.arcs[RoundRect2Geom_ArcIndex.topRight]
+          p.add rr.lines[RoundRect2Geom_LineIndex.top].reverse
+          p.add rr.arcs[RoundRect2Geom_ArcIndex.topLeft]
           close p
         else:
           p.add l.pointAt(0)
           p.add l; p.add arc; p.add r
-          p.add rr.arcs[bottomRight].reverse
-          p.add rr.lines[bottom].reverse
-          p.add rr.arcs[bottomLeft].reverse
+          p.add rr.arcs[RoundRect2Geom_ArcIndex.bottomRight].reverse
+          p.add rr.lines[RoundRect2Geom_LineIndex.bottom].reverse
+          p.add rr.arcs[RoundRect2Geom_ArcIndex.bottomLeft].reverse
           close p
         doc.add p, Hatching(), hatchingLine
 

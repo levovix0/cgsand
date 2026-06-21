@@ -432,7 +432,8 @@ proc draw2dWorld*(
       let points = curve.points(pointCount)
       drawStroke(points, the Color, thk, t3)
     elif not(has Background) and not(has Hatching):
-      ctx.fill2dMeshFlat(curve.toMesh(pointCount).cache(curve2Fill), color = globals.foreground, transform = t3)
+      let points = curve.points(pointCount)
+      drawStroke(points, globals.foreground, thk, t3)
 
 
   w.forEach (
@@ -472,7 +473,9 @@ proc draw2dWorld*(
         strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
       ).cache(pathStroke), color = the Color, transform = t3)
     elif not(has Background) and not(has Hatching):
-      ctx.fill2dMeshFlat(path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill), color = globals.foreground, transform = t3)
+      ctx.fill2dMeshFlat(path.toStrokeMesh(
+        strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
+      ).cache(pathStroke), color = globals.foreground, transform = t3)
 
 
   w.forEach (
@@ -491,11 +494,26 @@ proc draw2dWorld*(
     drawDocText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform))
 
 
-  w.forEach (sub: SubWorld, pos: Position2||p2(), transform: Transform3||dmat4()):
+  w.forEach (sub: SubWorld, pos: Position2||p2(), opt PositionAt, transform: Transform3||dmat4()):
     if sub == nil: continue
+
+    # todo: documentLayout is recomputed every frame here; cache it
+    var anchor = v2(0, 0)
+    if has PositionAt:
+      let subGlobals = sub.documentGlobals
+      let b = sub.documentLayout(subGlobals).contentBounds
+      if not b.empty:
+        let f = (the PositionAt).factor()
+        let sz = b.size
+        let axisYUp = subGlobals.axisYDirection == AxisYUp
+        anchor = v2(
+          b.min.x + f.x * sz.x,
+          (if axisYUp: b.max.y - f.y * sz.y else: b.min.y + f.y * sz.y),
+        )
+
     let innerViewport = combine(
       mat4(transform),
-      translate(vec3(pos.x, pos.y, 0)),
+      translate(vec3(pos.x - anchor.x, pos.y - anchor.y, 0)),
       viewport,
     )
     let outerToGl = combine(viewport, projection)

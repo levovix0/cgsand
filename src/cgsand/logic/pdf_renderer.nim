@@ -133,8 +133,8 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
 
     w.forEach (path: Path, opt Foreground|Color, thickness: Thickness||1, pixThick: opt PixelThickness, opt Background, t3: Transform3||dmat4()):
       let ct = extraT * t3
-      let doFill   = Background.has or (Foreground.has.not and Color.has.not)
-      let doStroke = Foreground.has or Color.has
+      let doFill   = Background.has
+      let doStroke = Foreground.has or Color.has or Background.has.not
       let fg =
         if has Foreground: the Foreground
         elif has Color: the Color

@@ -249,6 +249,24 @@ proc factor*(posAt: PositionAt): V2 =
   of PositionAtCenter: v2(1/2, 1/2)
 
 
+proc at*(bounds: Bounds2, posAt: PositionAt): Point2 =
+  let f = posAt.factor()
+  let x = bounds.min.x + f.x * (bounds.max.x - bounds.min.x)
+  let y =
+    if doc[globals, AxisYDirection] == AxisYUp: bounds.max.y - f.y * (bounds.max.y - bounds.min.y)
+    else: bounds.min.y + f.y * (bounds.max.y - bounds.min.y)
+  p2(x, y)
+
+proc left*(bounds: Bounds2): Point2 = bounds.at(PositionAtLeft)
+proc right*(bounds: Bounds2): Point2 = bounds.at(PositionAtRight)
+proc top*(bounds: Bounds2): Point2 = bounds.at(PositionAtTop)
+proc bottom*(bounds: Bounds2): Point2 = bounds.at(PositionAtBottom)
+proc topLeft*(bounds: Bounds2): Point2 = bounds.at(PositionAtTopLeft)
+proc topRight*(bounds: Bounds2): Point2 = bounds.at(PositionAtTopRight)
+proc bottomLeft*(bounds: Bounds2): Point2 = bounds.at(PositionAtBottomLeft)
+proc bottomRight*(bounds: Bounds2): Point2 = bounds.at(PositionAtBottomRight)
+
+
 
 proc background*(doc: World): Background =
   result = color(0, 0, 0, 0)

@@ -21,6 +21,7 @@ proc ceil*(x: float, step: float): float =
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
 let mainLine* = PixelThickness 2
+let thinLine* = PixelThickness 0.75
 let hatchingLine* = PixelThickness 0.75
 let hiddenLine* = (
   PixelThickness 0.75,

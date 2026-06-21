@@ -17,5 +17,5 @@ mainModule:
     ]
   )
 
-  draw(shaft, hatching = false)
+  draw(shaft, hatching = false, scale = 100)
   

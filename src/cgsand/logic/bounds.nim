@@ -123,10 +123,25 @@ proc worldBoundsAlongAxis*(
     if not filter(the EntityId): continue
     addBounds2(textBounds(text, pos, posAt, font, size, globals.axisYDirection))
 
-  w.forEach (EntityId, sub: SubWorld, pos: Position2||p2(), transform3: Transform3||m4(), not NoBounds):
+  w.forEach (EntityId, sub: SubWorld, pos: Position2||p2(), opt PositionAt, transform3: Transform3||m4(), not NoBounds):
     if not filter(the EntityId): continue
     if sub == nil: continue
-    let m = translate(v3(pos.x, pos.y, 0)) * transform3
+    let innerGlobals = sub.documentGlobals
+
+    # todo: this recomputes the inner content bounds; cache it
+    var anchor = v2(0, 0)
+    if has PositionAt:
+      let (axMin, axMax) = sub.worldBoundsAlongAxis(v3(1, 0, 0), innerGlobals)
+      let (ayMin, ayMax) = sub.worldBoundsAlongAxis(v3(0, 1, 0), innerGlobals)
+      if axMin <= axMax and ayMin <= ayMax:
+        let f = (the PositionAt).factor()
+        let axisYUp = innerGlobals.axisYDirection == AxisYUp
+        anchor = v2(
+          axMin + f.x * (axMax - axMin),
+          (if axisYUp: ayMax - f.y * (ayMax - ayMin) else: ayMin + f.y * (ayMax - ayMin)),
+        )
+
+    let m = translate(v3(pos.x - anchor.x, pos.y - anchor.y, 0)) * transform3
     # Transform outer axis to inner space: inner_axis[j] = dot(column j of m, outer axis)
     let innerAxis = v3(
       m[0].x*axis.x + m[0].y*axis.y + m[0].z*axis.z,
@@ -134,7 +149,6 @@ proc worldBoundsAlongAxis*(
       m[2].x*axis.x + m[2].y*axis.y + m[2].z*axis.z,
     )
     let offset = m[3].x*axis.x + m[3].y*axis.y + m[3].z*axis.z
-    let innerGlobals = sub.documentGlobals
     let (innerMin, innerMax) = sub.worldBoundsAlongAxis(innerAxis, innerGlobals)
     if innerMin <= innerMax:
       update(innerMin + offset)
