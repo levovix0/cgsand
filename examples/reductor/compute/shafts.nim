@@ -164,7 +164,7 @@ proc selectStandardDiam(d_min: float, lengthKind: ShaftLengthKind): tuple[d, l, 
   raise ValueError.newException("d_min too large for gear_series_data")
 
 
-proc selectKeyDims(d: float): tuple[b, h, t1, t2: float] =
+proc selectKeyDims*(d: float): tuple[b, h, t1, t2: float] =
   ## Selects key dimensions from table 4.2.
   for i in 0..<key_data.d.len:
     if d > key_data.d[i].a.float and d <= key_data.d[i].b.float:
@@ -172,7 +172,7 @@ proc selectKeyDims(d: float): tuple[b, h, t1, t2: float] =
   raise ValueError.newException("d out of range for key_data")
 
 
-proc findClosestKeyL(l: float): float =
+proc findClosestKeyL*(l: float): float =
   for i, x in key_l_gost[0]:
     if l <= x: return key_l_gost[0][max(i-1, 0)]
 

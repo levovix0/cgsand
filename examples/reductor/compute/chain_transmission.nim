@@ -1,6 +1,6 @@
-import std/[math, algorithm]
+import std/[math]
 import pkg/[vmath]
-import ./[utils, common]
+import ./[utils]
 
 
 type
@@ -255,7 +255,8 @@ proc avgPressure_for_n(
 proc computeChainTransmission*(I: ChainTransmissionInput): ChainTransmissionOutput =
   template O: var ChainTransmissionOutput = result
 
-  O.geom.z1 = (31 - 2 * I.u).round.int    - 5  # ! reduced tooth count due to a 20% underload; reducing it to 20 (-5) makes the power nearly match (with a microscopic overload)
+  O.geom.z1 = (31 - 2 * I.u).round.int
+  #! on the mainModule test parameters this gives a 20% underload; reducing it to 20 (-5) makes the power nearly match (with a microscopic verload)
   O.geom.z2 = (O.geom.z1.float * I.u).round.int
   O.u = O.geom.z2 / O.geom.z1
 

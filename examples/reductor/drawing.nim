@@ -2,7 +2,7 @@ import sandbox, geom2d, techDraw, tabledef
 import pkg/[bumpy]
 import ../shafts/[shafts, gears]
 import ./[bearings {.all.}, covers, seal, bushing]
-import ./compute/[reductor]
+import ./compute/[reductor, shafts]
 when isMainModule: import tools/measurement
 
 
@@ -17,12 +17,23 @@ type
     gear_z*: int
       ## gear teeth count
   
+
   ReductorDesc* = object
     gearModulo*: float
       ## modulo for all gears
 
     fast*: ReductorShaftDesc
     slow*: ReductorShaftDesc
+
+
+    # --- corrections ---
+
+    wallThicknessExtend*: float
+      ## extension of the corpus wall thickness, m
+
+    bearingDetentDiameterExtend*: float
+      ## extension of the diameter of the shaft beads next to the fast shaft gear, m
+
 
   ShaftEx = object
     shaft: Shaft
@@ -152,9 +163,9 @@ proc draw*(doc: World, desc: ReductorDesc) =
   let axial_distance = fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
   var (wall_thickness, fundamental_M, bearing_M, flange_M) = selectCorpusBolts(axial_distance)
   
-  # var (wall_thickness, fundamental_M, bearing_M, flange_M) = corpusBoltsAt(2)  # ! was extended because covers are too big
-  wall_thickness += 2.mm  # ! was extended because covers are too big
+  wall_thickness += desc.wallThicknessExtend
 
+  discard fundamental_M  # todo
   # let fundamental = fundamental_M.selectBoltParams()  # todo
   let bearingBolts = bearing_M.selectBoltParams()
   let flange = flange_M.selectBoltParams()
@@ -225,11 +236,11 @@ proc draw*(doc: World, desc: ReductorDesc) =
         right = fillet,
       ),
       
-      cylindricSegment(d = 53.mm, l = bead, right = fillet),  # ! diameter was extended so bearings has a detent
-      
+      cylindricSegment(d = fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend, l = bead, right = fillet),
+
       fastShaft.gear,
-      
-      cylindricSegment(d = 53.mm, l = bead, left = fillet),  # ! diameter was extended so bearings has a detent
+
+      cylindricSegment(d = fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend, l = bead, left = fillet),
       
       cylindricSegment(
         d = fastShaft.bearing.d,
@@ -295,6 +306,51 @@ proc draw*(doc: World, desc: ReductorDesc) =
     Position2 slowShaft.pos
     Transform3 (rotateZ(-Pi/2) * translate(v3(-slowShaft.shaft.segmentX(slowShaft.gear) - slowShaft.gear.length/2, 0, 0)))
 
+
+  # --- keys ---
+  block:
+    block:
+      let (d, l) = (
+        selectKeyDims(fastShaft.exitDiameter / drawingMmScale).b.mm,
+        ((desc.fast.exitLength - 2.mm) / drawingMmScale).findClosestKeyL.mm,
+      )
+      draw roundRect2geom(
+        fastShaft.pos + v2(0,
+          + fastShaft.shaft.segmentX(0, PositionAtCenter) +
+          - fastShaft.shaft.segmentX(3, PositionAtCenter) +
+        0),
+        v2(d, l),
+        radius = d/2,
+      )
+
+    block:
+      let (d, l) = (
+        selectKeyDims(slowShaft.exitDiameter / drawingMmScale).b.mm,
+        ((desc.slow.exitLength - 2.mm) / drawingMmScale).findClosestKeyL.mm,
+      )
+      draw roundRect2geom(
+        slowShaft.pos + v2(0,
+          - slowShaft.shaft.segmentX(0, PositionAtCenter) +
+          + slowShaft.shaft.segmentX(3, PositionAtCenter) +
+        0),
+        v2(d, l),
+        radius = d/2,
+      )
+
+    block:
+      let (d, l) = (
+        selectKeyDims(slowShaft.gear.section.gear.shaft_d / drawingMmScale).b.mm,
+        ((slowShaft.gear.length - 2.mm - keyedGearMargin) / drawingMmScale).findClosestKeyL.mm,
+      )
+      draw roundRect2geom(
+        slowShaft.pos + v2(0,
+          - slowShaft.shaft.segmentX(3, PositionAtCenter) +
+          + slowShaft.shaft.segmentX(3, PositionAtCenter) +
+          + keyedGearMargin/2 +
+        0),
+        v2(d, l),
+        radius = d/2,
+      )
 
 
   # --- bearings ---
@@ -644,6 +700,9 @@ mainModule:
         gear_l: I.closedTransmission.geom.b2.mm,
         gear_z: I.closedTransmission.z2,
       ),
+
+      wallThicknessExtend: 2.mm,
+      bearingDetentDiameterExtend: 3.mm,
     ).sketch()
 
   else:
@@ -661,6 +720,9 @@ mainModule:
         gear_l: 39.875.mm,
         gear_z: 93,
       ),
+
+      wallThicknessExtend: 2.mm,
+      bearingDetentDiameterExtend: 3.mm,
     ).sketch()
 
 

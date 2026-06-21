@@ -68,14 +68,14 @@ proc draw*(g: BushingDesc, sketch = doc, backLines = true, axialLines = true, ha
   for ydir in [1.0, -1.0]:
     var p = Path2()
     
-    p.add p2(g.H, g.d/2 * ydir); p.fillet(fillet)
+    p.add p2(g.H, g.d/2 * ydir); p.bevel(fillet)
     p.y = g.D/2 * ydir; p.bevel(bevel)
     p.add p2(g.h + g.b1 + bevel, g.D/2 * ydir)
     p.add p2(g.h + g.b1, (g.D/2 - bevel) * ydir)
     p.x = g.h
     p.y = g.D2/2 * ydir
-    p.x = 0; p.bevel(bevel)
-    p.y = g.d/2 * ydir; p.fillet(fillet)
+    p.x = 0#; p.bevel(bevel)
+    p.y = g.d/2 * ydir; p.bevel(fillet)
     close p
 
     doc.add p, fgLine
