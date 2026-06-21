@@ -252,8 +252,9 @@ proc factor*(posAt: PositionAt): V2 =
 proc at*(bounds: Bounds2, posAt: PositionAt): Point2 =
   let f = posAt.factor()
   let x = bounds.min.x + f.x * (bounds.max.x - bounds.min.x)
+  let axisYDir = when defined(script): doc[globals, AxisYDirection] else: AxisYDown
   let y =
-    if doc[globals, AxisYDirection] == AxisYUp: bounds.max.y - f.y * (bounds.max.y - bounds.min.y)
+    if axisYDir == AxisYUp: bounds.max.y - f.y * (bounds.max.y - bounds.min.y)
     else: bounds.min.y + f.y * (bounds.max.y - bounds.min.y)
   p2(x, y)
 
