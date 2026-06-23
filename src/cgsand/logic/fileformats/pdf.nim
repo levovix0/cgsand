@@ -141,6 +141,29 @@ proc fillRect*(p: var PdfPage; x, y, w, h: float32; color: Color) =
   p.content.add pdfNum(x) & " " & pdfNum(y) & " " & pdfNum(w) & " " & pdfNum(h) & " re\nf\n"
 
 
+proc saveState*(p: var PdfPage) =
+  ## pushes the graphics state (`q`); pair with restoreState.
+  ## resets the cached pen state so the next draw re-emits color/width/cap.
+  p.content.add "q\n"
+  p.colorSet = false; p.fillColorSet = false; p.lwSet = false; p.lineCapSet = false
+  p.lastA = -1
+
+proc restoreState*(p: var PdfPage) =
+  ## pops the graphics state (`Q`); pair with saveState.
+  p.content.add "Q\n"
+  p.colorSet = false; p.fillColorSet = false; p.lwSet = false; p.lineCapSet = false
+  p.lastA = -1
+
+proc clipPolygon*(p: var PdfPage; points: openArray[Vec2]) =
+  ## intersects the current clip region with the given polygon (no painting).
+  if points.len < 3: return
+  p.moveTo(points[0])
+  for i in 1 ..< points.len:
+    p.lineTo(points[i])
+  p.closePath()
+  p.content.add "W n\n"
+
+
 proc drawPolyline*(p: var PdfPage; points: openArray[Vec2]; color: Color; lw: float32) =
   if points.len < 2: return
   p.setStrokeColor(color)
@@ -266,21 +289,9 @@ proc svgArcToBeziers(p1: Vec2; rx0, ry0, phi, fA, fS: float32; p2: Vec2): seq[(V
   arcSegmentToBeziers(cx, cy, rx, ry, phi, theta1, dtheta)
 
 
-proc drawPath*(
-  p:           var PdfPage;
-  path:        pixiePaths.Path;
-  transform:   proc(v: Vec2): Vec2;
-  doStroke:    bool;
-  doFill:      bool;
-  strokeColor: Color;
-  fillColor:   Color;
-  lw:          float32
-) =
-  if not doStroke and not doFill: return
-  if doStroke: p.setStrokeColor(strokeColor)
-  if doFill:   p.setFillColor(fillColor)
-  if doStroke: p.setLineWidth(lw)
-
+proc emitPathCommands*(p: var PdfPage; path: pixiePaths.Path; transform: proc(v: Vec2): Vec2) =
+  ## emits the path-construction operators (m/l/c/h) for the given pixie path,
+  ## transformed to page space. Does not paint; caller appends f/S/B or W n.
   var cur    = vec2(0'f32, 0'f32)
   var start  = vec2(0'f32, 0'f32)
   var lastC2 = vec2(0'f32, 0'f32)
@@ -388,9 +399,31 @@ proc drawPath*(
     if cmd notin {5, 6, 14, 15}: lastC2 = cur
     if cmd notin {7, 8, 16, 17}: lastQ1 = cur
 
+
+proc drawPath*(
+  p:           var PdfPage;
+  path:        pixiePaths.Path;
+  transform:   proc(v: Vec2): Vec2;
+  doStroke:    bool;
+  doFill:      bool;
+  strokeColor: Color;
+  fillColor:   Color;
+  lw:          float32
+) =
+  if not doStroke and not doFill: return
+  if doStroke: p.setStrokeColor(strokeColor)
+  if doFill:   p.setFillColor(fillColor)
+  if doStroke: p.setLineWidth(lw)
+  p.emitPathCommands(path, transform)
   if doFill and doStroke: p.fillStroke()
   elif doFill:            p.fill()
   elif doStroke:          p.stroke()
+
+
+proc clipPath*(p: var PdfPage; path: pixiePaths.Path; transform: proc(v: Vec2): Vec2) =
+  ## intersects the current clip region with the given pixie path (no painting).
+  p.emitPathCommands(path, transform)
+  p.content.add "W n\n"
 
 
 proc drawText*(p: var PdfPage; w: var PdfWriter;

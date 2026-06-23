@@ -23,3 +23,5 @@ local-*
 
 /out.pdf
 /out.svg
+/examples/**/*.pdf
+/examples/**/*.svg

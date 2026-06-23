@@ -5,8 +5,8 @@ import pkg/pixie/[fonts]
 import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl, hatching]
 import pkg/sigeo/grids/[extrusions, smoothshading]
-import ./[bounds, doclayout, scripts, document_globals]
 import ../lib/[sandbox, geom2d]
+import ./[bounds, doclayout, scripts, document_globals, dashing]
 
 
 type
@@ -146,83 +146,9 @@ proc drawDashedPolyline*(
   ## the pattern is automatically scaled so that:
   ##   a dash is always drawn at the very start and (for open curves) the very end of the curve
   ##   the number of pattern repetitions stays close to the unscaled one, but always >= minRepeats
-  const minRepeats = 2
-  
-  if points.len < 2:
-    return
-  if dashing.pattern.len == 0:
-    for i in 0 ..< points.len - 1:
-      drawLineSection(ctx, line(points[i], points[i + 1]), color, thickness, transform = transform)
-    return
-
-  # total length of the polyline, and whether it forms a closed loop
-  var total = 0.0
-  for i in 0 ..< points.len - 1:
-    total += points[i].distanceTo(points[i + 1])
-  let closed = points[0] ~== points[^1]
-
-  var pat = dashing.pattern
-  if scale != 1:
-    for i in 0 ..< pat.len:
-      pat[i] *= scale
-
-  let cycleLen = pat.sum
-  if cycleLen > 0 and total > 0:
-    ## for an open curve, drop the tail of the last cycle that comes after its last positive-length dash,
-    ## so the curve always ends on a drawn line (not a gap or a dot).
-    ## e.g. for [dash, gap, dot, gap] this drops [gap, dot, gap].
-    var trailingGap = 0.0
-    if not closed:
-      var lastDash = -1
-      for i in 0 ..< pat.len:
-        if (i mod 2) == 0 and pat[i] > 0:
-          lastDash = i
-      if lastDash >= 0:
-        for i in lastDash + 1 ..< pat.len:
-          trailingGap += pat[i]
-    
-    let reps = max(minRepeats, round(total / cycleLen).int)
-    let target = reps.float * cycleLen - trailingGap
-    if target > 0:
-      let s = total / target
-      for i in 0 ..< pat.len:
-        pat[i] *= s
-
-  template isDash(idx: int): bool = (idx mod 2) == 0
-  template drawDot(p: Point2) =
-    # a zero-length capsule renders as a round dot (when thickness is given)
-    drawLineSection(ctx, line(p, p), color, thickness, transform = transform)
-
-  var patIdx = 0
-  var patRemaining = pat[0]
-
-  # emit a leading dot if the pattern starts with a zero-length dash
-  if isDash(patIdx) and pat[patIdx] == 0:
-    drawDot(points[0])
-    patIdx = (patIdx + 1) mod pat.len
-    patRemaining = pat[patIdx]
-
-  for i in 0 ..< points.len - 1:
-    let a = points[i]
-    let b = points[i + 1]
-    let segLen = a.distanceTo(b)
-    if segLen <= 0: continue
-    let dir = (b - a) / segLen
-    var pos = 0.0
-    while pos < segLen - 1e-9:
-      if patRemaining <= 0:
-        patIdx = (patIdx + 1) mod pat.len
-        patRemaining = pat[patIdx]
-        if isDash(patIdx) and pat[patIdx] == 0:
-          drawDot(a + dir * pos)
-          patIdx = (patIdx + 1) mod pat.len
-          patRemaining = pat[patIdx]
-        continue
-      let step = min(patRemaining, segLen - pos)
-      if isDash(patIdx):
-        drawLineSection(ctx, line(a + dir * pos, a + dir * (pos + step)), color, thickness, transform = transform)
-      pos += step
-      patRemaining -= step
+  # a zero-length capsule renders as a round dot (when thickness is given)
+  for (a, b) in dashedSegments(points, dashing, scale):
+    drawLineSection(ctx, line(a, b), color, thickness, transform = transform)
 
 
 proc toMesh*(

@@ -120,7 +120,7 @@ columnTable middleSeriesBearings, `const`:
 
 
 proc selectBearing[T](table: T, d: float): BearingDesc =
-  template rowAt(i: int): BearingDesc =
+  proc rowAt(table: T, i: int): BearingDesc =
     BearingDesc(
       d: table.d[i].float.mm,
       D: table.D[i].float.mm,
@@ -129,8 +129,8 @@ proc selectBearing[T](table: T, d: float): BearingDesc =
     )
   for i in 0 ..< table.d.len:
     if table.d[i].float.mm >= d - 1e-9:
-      return rowAt(i)
-  rowAt(table.d.high)
+      return table.rowAt(i)
+  table.rowAt(table.d.high)
 
 
 proc selectMiddleSeriesBearing*(d: float): BearingDesc =

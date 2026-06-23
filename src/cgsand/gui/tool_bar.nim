@@ -153,29 +153,20 @@ method init*(this: ToolBar) =
               break
           
           if foundItem.isDir:
-            # Changing directory
             root.currentPath = foundItem.path
             
-            # Updating file list for new folder
             this.options[] = root.updateFileBrowser(root.currentPath)
             this.selectedOption[] = -1
             this.dropdownOpened[] = true
 
-            # Changing accent color to default (folder)
             this.lineEdit.border.color[] = color_border_lineEdit
-            
-            # Display new relative path in ComboBox text field.
             this.text[] = root.getCurrentRelativePath()
             
           else:
             # If file is selected - we write its path to the config
             config.currentScript[] = startDirName / relativePath(foundItem.path, root.rootPath)
             
-            # Changing border color to accent (valid file)
             this.lineEdit.border.color[] = color_border_accent_lineEdit
-
-            # Optional: You can leave the file name in the text field,
-            # so the user can see which file is currently selected
             this.text[] = startDirName / relativePath(foundItem.path, root.rootPath)
 
         this.onSignal.connectTo this, signal:
@@ -260,29 +251,29 @@ method init*(this: ToolBar) =
               - Label.new as fullpath:
                 left = parent.left
                 centerY = file_type.bottom + 32
-                text = binding: 
+                text = binding:
                   root.getCurrentRelativePath() & "/" & filename.text[] & ".pdf"
                 color = "#8c8c8c".color
                 fontSize = 14
               
               - Button.new as save_button:
-                right = parent.right 
+                right = parent.right
                 centerY = file_type.bottom + 32
                 text = "Сохранить"
                 accent = true
 
                 on this.activated:
-                  if root.doc[] == nil: return
-                  let r = PdfRenerer(doc: root.doc[][])
+                  if root.doc[] == nil or root.doc[][] == nil: return
+                  let r = PdfRenerer(doc: root.doc[])
                   # let filters = ["*.pdf".cstring, "*".cstring]
                   let filename = fullpath.text[]
                   if filename != "":
                     writePdf filename, r
-                  root.saveFileDialogOpened[] = false
+                    root.saveFileDialogOpened[] = false
 
               
               - Button.new as cancel_button:
-                right = save_button.left - 10 
+                right = save_button.left - 10
                 centerY = file_type.bottom + 32
                 text = "Отмена"
 
@@ -291,7 +282,7 @@ method init*(this: ToolBar) =
     
     # --- Window header buttons ---
 
-    - TitleButton.new: # Close
+    - TitleButton.new:  # Close
       this.fillVertical(parent)
       right = parent.right
       w = 60
@@ -303,7 +294,7 @@ method init*(this: ToolBar) =
       on this.activated:
         close this.parentWindow
 
-    - TitleButton.new: # Minimize
+    - TitleButton.new:  # Minimize
       this.fillVertical(parent)
       right = parent.right - 120
       w = 60
@@ -315,7 +306,7 @@ method init*(this: ToolBar) =
       on this.activated:
         this.parentWindow.minimized = true
 
-    - TitleButton.new: # Maximize
+    - TitleButton.new:  # Maximize
       this.fillVertical(parent)
       right = parent.right - 60
       w = 60

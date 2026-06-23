@@ -1,3 +1,4 @@
+import std/strformat
 import sandbox, geom2d, techDraw, tabledef
 import pkg/[bumpy]
 import ../shafts/[shafts, gears]
@@ -143,6 +144,9 @@ proc secondDiameter(shaft: ShaftEx): float =
   
 proc thirdDiameter(shaft: ShaftEx): float =
   (shaft.secondDiameter + 5.mm).ceil(5.mm)
+  
+proc slowShaftBeadDiameter(shaft: ShaftEx): float =
+  (shaft.thirdDiameter + 10.mm).ceil(5.mm)
 
 
 proc draw*(doc: World, desc: ReductorDesc) =
@@ -174,7 +178,8 @@ proc draw*(doc: World, desc: ReductorDesc) =
   let bead = padding
   let slowShaftBead = (fastShaft.gear.length - slowShaft.gear.length)/2 + bead
 
-  let bearingOnShaftEndPadding = 5.mm
+  let fastBearingOnShaftEndPadding = 5.mm
+  let slowBearingOnShaftEndPadding = 3.mm
 
 
   fastShaft.bearing = selectMiddleSeriesBearing(fastShaft.secondDiameter)
@@ -216,7 +221,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
     reverseHatching: true,
   )
 
-  let boltHeadHeight = 7.mm  # choosen from table # todo: autocomplete
+  let boltHeadHeight = 7.mm + 2.mm  # choosen from table # todo: autocomplete
   let distanceFromBoltHeight = 4.mm  # 3.mm .. 5.mm
 
 
@@ -244,7 +249,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
       
       cylindricSegment(
         d = fastShaft.bearing.d,
-        l = fastShaft.bearing.B + 5.mm,
+        l = fastShaft.bearing.B + fastBearingOnShaftEndPadding,
         right = bevel, left = fillet,
       ),
     ]
@@ -265,7 +270,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
       ),
       
       cylindricSegment(
-        d = 70.mm,
+        d = slowShaft.slowShaftBeadDiameter,
         l = slowShaftBead,
       ),
       
@@ -273,7 +278,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
       
       cylindricSegment(
         d = slowShaft.bearing.d,
-        l = slowShaftBead + slowShaft.bearing.B + bearingOnShaftEndPadding,
+        l = slowShaftBead + slowShaft.bearing.B + slowBearingOnShaftEndPadding,
         right = bevel, left = fillet,
       ),
     ]
@@ -382,7 +387,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
       + fastShaft.shaft.segmentX(5, PositionAtRight) +
       - fastShaft.shaft.segmentX(3, PositionAtCenter) +
       + fastShaft.covers[0].bounds.size.x +
-      - bearingOnShaftEndPadding +
+      - fastBearingOnShaftEndPadding +
     0)
     Transform3 rotateZ(-Pi/2)
 
@@ -410,7 +415,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
       + slowShaft.shaft.segmentX(4, PositionAtRight) +
       - slowShaft.shaft.segmentX(3, PositionAtCenter) +
       + slowShaft.covers[1].bounds.size.x +
-      - bearingOnShaftEndPadding +
+      - slowBearingOnShaftEndPadding +
     0)
     Transform3 rotateZ(-Pi/2)
 
@@ -686,7 +691,8 @@ mainModule:
   var reductor: EntityId
 
   when true:
-    let I = computeReductor ReductorInput(env: 0.0, D: 0.5, F: 3.2, V: 1.5)
+    let input = ReductorInput(env: 0.0, D: 0.5, F: 3.2, V: 1.5)
+    let I = computeReductor input
 
     reductor = doc.spawn SubWorld ReductorDesc(
       gearModulo: I.closedTransmission.teeth_modulo.mm,
@@ -712,6 +718,46 @@ mainModule:
     block:
       let ent = doc.spawn(SubWorld sketchScheme(), Transform3 scale v3(0.5))
       doc[ent, Transform3] = translate((doc.bounds(reductor).topLeft - doc.bounds(ent).topLeft).v3(0)) * doc[ent, Transform3]
+
+      # --- annotations to the right of the kinematic scheme ---
+      let schemeB = doc.bounds(ent)
+      let fs = abs(schemeB.size.y) * 0.1
+      let columnGap = fs * 2
+      let rowGap = fs * 1.5
+      let topY = schemeB.topLeft.y + 10.mm
+
+      var x = schemeB.max.x + columnGap
+
+      proc addColumn(doc: World, lines: openArray[string]) =
+        var y = topY
+        var mx = float.low
+        for line in lines:
+          let ent = doc.spawn(Text line, Position2 p2(x, y), PositionAtTopLeft, FontSize fs)
+          mx = max(mx, doc.bounds(ent).max.x)
+          y = doc.bounds(ent).max.y + rowGap
+        x = mx + columnGap
+
+      doc.addColumn [
+        "Исходные данные:",
+        &"D = {input.D * 1e3:.1f} мм",
+        &"F = {input.F:g} кН",
+        &"V = {input.V:g} м/с",
+      ]
+
+      doc.addColumn [
+        "Двигатель:",
+        I.engine.name,
+        &"n = {I.engine.n:.1f} об/мин",
+        &"P = {I.engine.P:g} кВт",
+      ]
+
+      doc.addColumn [
+        "Зубчатая передача:",
+        &"z₁ = {I.closedTransmission.z1}",
+        &"z₂ = {I.closedTransmission.z2}",
+        &"u = {I.closedTransmission.u:.2f}",
+        &"модуль = {I.closedTransmission.teeth_modulo:.2f} мм",
+      ]
 
 
   else:

@@ -136,9 +136,8 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
 
     let psh = ctx.push(this.documentPixels)
     try:
-      let w = this.script[].world[]
-      let globals = w.documentGlobals
-      let layout = w.documentLayout(globals)
+      let globals = this.script[].world[].documentGlobals
+      let layout = this.script[].world[].documentLayout(globals)
       let proj = projectionMatrix(layout.pageBounds, this.wh, globals.axisYDirection)
       let pixelsPerUnit = pixelsPerUnit(layout.pageBounds.size.vec2, this.wh, this.viewport[])
 
@@ -183,10 +182,10 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
       
       glEnable(GL_DEPTH_TEST)
-      draw3dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.meshCache)
+      draw3dWorld(ctx, this.script[].world[], this.viewport[], proj, pixelsPerUnit, this.meshCache)
       glDisable(GL_DEPTH_TEST)
 
-      draw2dWorld(ctx, w, this.viewport[], proj, pixelsPerUnit, this.meshCache)
+      draw2dWorld(ctx, this.script[].world[], this.viewport[], proj, pixelsPerUnit, this.meshCache)
 
       glDisable(GlBlend)
     finally:

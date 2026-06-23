@@ -121,6 +121,7 @@ win.makeLayout:
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
       h = 60
+
       doc = binding:
         if documentView.scriptStage[] == Idle and documentView.script[] != nil:
           documentView.script[].world

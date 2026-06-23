@@ -42,6 +42,7 @@ proc setTechDrawGlobals*(globals: EntityId) =
     add CanvasSettings(
       autoSize: true,
       margin: v2(2, 2),
+      mmScale: 2/1.mm,
     )
     add AxisYDown
     add (if darkTheme: Foreground color(0.75, 0.75, 0.8) else: Foreground color(0, 0, 0))
