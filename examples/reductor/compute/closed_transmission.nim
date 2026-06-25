@@ -393,11 +393,10 @@ proc computeClosedTransmission*(I: ClosedTransmissionInput): ClosedTransmissionO
       (I.T2 * K_H / Ψ_ba_w[Ψ_ba_w_i])
     ).pow(1/3)
 
-  ## Computed center distance from contact strength conditions
   O.axial_distance = selectClosestAxialDistance(min_axial_distance)
 
   let
-    teeth_modulo_k = 0.01
+    teeth_modulo_k = 0.01  # 0.01..0.02
 
     ## Gear modulo
     teeth_modulo_req = case I.gearingKind
@@ -439,9 +438,10 @@ proc computeClosedTransmission*(I: ClosedTransmissionInput): ClosedTransmissionO
   O.geom.d1 = O.teeth_modulo * O.z1.float / O.cos_teeth_angle
   O.geom.d2 = O.teeth_modulo * O.z2.float / O.cos_teeth_angle
 
-  O.geom.a_w = case I.gearingKind
-    of Outer: (O.geom.d2 + O.geom.d1) / 2
-    of Inner: (O.geom.d2 - O.geom.d1) / 2
+  # O.geom.a_w = case I.gearingKind
+  #   of Outer: (O.geom.d2 + O.geom.d1) / 2
+  #   of Inner: (O.geom.d2 - O.geom.d1) / 2
+  O.geom.a_w = O.axial_distance
 
   O.geom.d_a1 = O.geom.d1 + 2 * O.teeth_modulo
   O.geom.d_a2 = case I.gearingKind

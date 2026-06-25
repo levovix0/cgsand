@@ -16,6 +16,9 @@ proc m*(v: float): float = v * 1e3 * drawingMmScale
 
 proc ceil*(x: float, step: float): float =
   ceil(x / step) * step
+  
+proc floor*(x: float, step: float): float =
+  floor(x / step) * step
 
 
 let darkTheme* = cache[].mgetOrPut(DarkTheme, true)

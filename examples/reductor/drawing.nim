@@ -34,6 +34,9 @@ type
 
     bearingDetentDiameterExtend*: float
       ## extension of the diameter of the shaft beads next to the fast shaft gear, m
+    
+    axialDistance*: float
+      ## m
 
 
   ShaftEx = object
@@ -149,6 +152,32 @@ proc slowShaftBeadDiameter(shaft: ShaftEx): float =
   (shaft.thirdDiameter + 10.mm).ceil(5.mm)
 
 
+proc selectCorpusBolts*(desc: ReductorDesc): tuple[wall_thickness: float, fundamental_M, bearing_M, flange_M: int] =
+  ## todo
+  var fastShaft = ShaftEx(exitDiameter: desc.fast.exitDiameter)
+  var slowShaft = ShaftEx(exitDiameter: desc.slow.exitDiameter)
+
+  fastShaft.gear = gearSegment(
+    l = desc.fast.gear_l, z = desc.fast.gear_z, modulo = desc.gearModulo,
+    reverseHatching = true,
+  )
+  slowShaft.gear = gearSegment(
+    l = desc.slow.gear_l, z = desc.slow.gear_z, modulo = desc.gearModulo,
+    shaft_d = slowShaft.thirdDiameter,
+  )
+  slowShaft.gear.left = ShaftConjunction(
+    kind: Fillet, radius: (slowShaft.gear.section.gear.bevelRadius * 0.5).floor(0.1.mm)
+  )  # todo: select a radius from GOST 10948-64
+
+
+  let axial_distance =
+    if desc.axialDistance == 0:
+      fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
+    else: desc.axialDistance
+  result = selectCorpusBolts(axial_distance)
+  result.wall_thickness += desc.wallThicknessExtend
+
+
 proc draw*(doc: World, desc: ReductorDesc) =
   var fastShaft = ShaftEx(exitDiameter: desc.fast.exitDiameter)
   var slowShaft = ShaftEx(exitDiameter: desc.slow.exitDiameter)
@@ -161,10 +190,15 @@ proc draw*(doc: World, desc: ReductorDesc) =
     l = desc.slow.gear_l, z = desc.slow.gear_z, modulo = desc.gearModulo,
     shaft_d = slowShaft.thirdDiameter,
   )
-  slowShaft.gear.left = ShaftConjunction(kind: Fillet, radius: (slowShaft.gear.section.gear.bevelRadius * 0.5).ceil(0.1.mm))
+  slowShaft.gear.left = ShaftConjunction(
+    kind: Fillet, radius: (slowShaft.gear.section.gear.bevelRadius * 0.5).floor(0.1.mm)
+  )  # todo: select a radius from GOST 10948-64
 
 
-  let axial_distance = fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
+  let axial_distance =
+    if desc.axialDistance == 0:
+      fastShaft.gearPitchDiameter/2 + slowShaft.gearPitchDiameter/2
+    else: desc.axialDistance
   var (wall_thickness, fundamental_M, bearing_M, flange_M) = selectCorpusBolts(axial_distance)
   
   wall_thickness += desc.wallThicknessExtend
@@ -227,6 +261,15 @@ proc draw*(doc: World, desc: ReductorDesc) =
 
   let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)  # choosen from table # todo: autocomplete
   let fillet = ShaftConjunction(kind: Fillet, radius: 2.mm)  # choosen from table # todo: autocomplete
+  let fastShaftBeforeGearFillet = ShaftConjunction(
+    kind: (
+      if fastShaft.gear.section.gear.rootDiameter > fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend: Fillet
+      else: None
+    ),
+    radius: max(0, min(fillet.radius, (
+      (fastShaft.gear.section.gear.rootDiameter - (fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend))/2
+    ).floor(1.mm)))
+  )
   fastShaft.shaft = Shaft(
     segments: @[
       cylindricSegment(
@@ -241,11 +284,17 @@ proc draw*(doc: World, desc: ReductorDesc) =
         right = fillet,
       ),
       
-      cylindricSegment(d = fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend, l = bead, right = fillet),
+      cylindricSegment(
+        d = fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend, l = bead,
+        right = fastShaftBeforeGearFillet
+      ),
 
       fastShaft.gear,
 
-      cylindricSegment(d = fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend, l = bead, left = fillet),
+      cylindricSegment(
+        d = fastShaft.thirdDiameter + desc.bearingDetentDiameterExtend, l = bead,
+        left = fastShaftBeforeGearFillet
+      ),
       
       cylindricSegment(
         d = fastShaft.bearing.d,
@@ -343,6 +392,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
       )
 
     block:
+      echo selectKeyDims(slowShaft.gear.section.gear.shaft_d / drawingMmScale)
       let (d, l) = (
         selectKeyDims(slowShaft.gear.section.gear.shaft_d / drawingMmScale).b.mm,
         ((slowShaft.gear.length - 2.mm - keyedGearMargin) / drawingMmScale).findClosestKeyL.mm,
@@ -694,7 +744,7 @@ mainModule:
     let input = ReductorInput(env: 0.0, D: 0.5, F: 3.2, V: 1.5)
     let I = computeReductor input
 
-    reductor = doc.spawn SubWorld ReductorDesc(
+    let reductorDesc = ReductorDesc(
       gearModulo: I.closedTransmission.teeth_modulo.mm,
       fast: ReductorShaftDesc(
         exitDiameter: I.shafts.geom.B.d.mm,
@@ -709,9 +759,11 @@ mainModule:
         gear_z: I.closedTransmission.z2,
       ),
 
-      wallThicknessExtend: 2.mm,
+      # wallThicknessExtend: 2.mm,
       bearingDetentDiameterExtend: 3.mm,
-    ).sketch()
+      axialDistance: I.closedTransmission.axial_distance.mm,
+    )
+    reductor = doc.spawn SubWorld reductorDesc.sketch()
 
 
     # --- kinematic scheme ---
@@ -757,6 +809,11 @@ mainModule:
         &"z₂ = {I.closedTransmission.z2}",
         &"u = {I.closedTransmission.u:.2f}",
         &"модуль = {I.closedTransmission.teeth_modulo:.2f} мм",
+      ]
+
+      doc.addColumn [
+        "Корпус:",
+        &"Толщина стенки = {reductorDesc.selectCorpusBolts().wall_thickness / drawingMmScale:.1f} мм",
       ]
 
 
