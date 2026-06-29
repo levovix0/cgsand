@@ -26,5 +26,6 @@ Color
 PixelThickness
 Dashing
 Hatching
+Layer
 DarkTheme
 bool

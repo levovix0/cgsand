@@ -1,4 +1,4 @@
-import std/[options, math, tables]
+import std/[options, math, tables,algorithm]
 import pkg/[ecs, vmath, bumpy]
 import pkg/pixie/paths
 import pkg/pixie/[fonts]
@@ -419,17 +419,26 @@ proc draw2dWorld*(
       else: globals.foreground
     drawDocText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform))
 
+  var world_layers: seq[(Layer, Subworld, Position2, Option[PositionAt], Transform3)]
 
-  w.forEach (sub: SubWorld, pos: Position2||p2(), opt PositionAt, transform: Transform3||dmat4()):
+  w.forEach (layer: Layer || 0, sub: SubWorld, pos: Position2||p2(), opt PositionAt, transform: Transform3||dmat4()):
+    if has PositionAt:
+      world_layers.add((layer, sub, pos, some the PositionAt, transform))
+    else:
+      world_layers.add((layer, sub, pos, none PositionAt, transform))
+  
+  sort(world_layers, proc (a, b: auto): int = cmp(a[0], b[0]), order = SortOrder.Ascending)
+  
+  for (_, sub, pos, pos_at, transform) in world_layers:
     if sub == nil: continue
 
     # todo: documentLayout is recomputed every frame here; cache it
     var anchor = v2(0, 0)
-    if has PositionAt:
+    if isSome(pos_at):
       let subGlobals = sub.documentGlobals
       let b = sub.documentLayout(subGlobals).contentBounds
       if not b.empty:
-        let f = (the PositionAt).factor()
+        let f = get(pos_at).factor()
         let sz = b.size
         let axisYUp = subGlobals.axisYDirection == AxisYUp
         anchor = v2(

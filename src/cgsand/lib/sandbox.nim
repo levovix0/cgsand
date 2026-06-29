@@ -105,7 +105,9 @@ type
 
   NoBounds* = object
     ## ignore this entity when calculating bounds
-
+  
+  Layer* = int
+    ##The order in which worlds are drawn, 0 by default 
 
 
 converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
