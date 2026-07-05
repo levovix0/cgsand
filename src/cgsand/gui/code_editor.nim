@@ -54,125 +54,120 @@ proc updateHeight(this: CodeEditorContent) =
   this.h[] = this.arrangement.visibleHeight()
 
 
-method draw*(this: CodeEditorContent, ctx: DrawContext) =
-  this.drawBefore(ctx)
-
+method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   let winRect = rect(vec2(), this.parentUiRoot.wh)
   let textOffsetX = this.textOffsetX
   let lineNumberBarOffsetX_r = this.lineNumberBarOffsetX + this.lineNumberBarWidth[]
   let arrowBarCenterX = this.arrowBarOffsetX + this.arrowBarWidth[] / 2
 
-  if this.visibility[] == visible:
-    let spaceW = typeset(this.font, " ").layoutBounds.x
-    for i, line in this.arrangement.lines:
-      if line.isHidden: continue
+  let spaceW = typeset(this.font, " ").layoutBounds.x
+  for i, line in this.arrangement.lines:
+    if line.isHidden: continue
 
-      if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
-      if this.globalY + line.rect.y > winRect.y + winRect.h: continue
+    if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
+    if this.globalY + line.rect.y > winRect.y + winRect.h: continue
 
-      # line number
-      ctx.drawRasterText(
-        (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
-        typeset(this.font, $(i + 1)),
-        colorTheme.sLineNumber.vec4,
-        origin=vec2(1, 0),
-      )
+    # line number
+    ctx.drawRasterText(
+      (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
+      typeset(this.font, $(i + 1)),
+      colorTheme.sLineNumber.vec4,
+      origin=vec2(1, 0),
+    )
 
-      if line.foldable:
-        let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
-        if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
-          # fold arrow
-          ctx.drawRasterText(
-            (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
-            typeset(this.font, arrowChar),
-            colorTheme.sLineNumber.vec4,
-            origin=vec2(0.5, 0),
-          )
-
-      for offset in line.indentOffsets:
-        let guideX = textOffsetX + offset.float32 * spaceW
-        ctx.fillRect(
-          rect(
-            this.globalXy + ctx.offset + vec2(guideX, line.rect.y),
-            vec2(1'f32, line.rect.h),
-          ),
-          color(0.3'f32, 0.3'f32, 0.3'f32),
+    if line.foldable:
+      let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
+      if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
+        # fold arrow
+        ctx.drawRasterText(
+          (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
+          typeset(this.font, arrowChar),
+          colorTheme.sLineNumber.vec4,
+          origin=vec2(0.5, 0),
         )
 
-      let lineH = this.font[].lineHeightPixels
-      for c_idx in 0..<this.arrangement.cursors.len:
-        if this.arrangement.cursors[c_idx].isDuplicate: continue
-        let sel = this.arrangement.selectionRangeForLine(c_idx, i)
-        if sel.len <= 0: continue
-        let arr = line.arrangement
+    for offset in line.indentOffsets:
+      let guideX = textOffsetX + offset.float32 * spaceW
+      ctx.fillRect(
+        rect(
+          this.globalXy + ctx.offset + vec2(guideX, line.rect.y),
+          vec2(1'f32, line.rect.h),
+        ),
+        color(0.3'f32, 0.3'f32, 0.3'f32),
+      )
 
-        if arr.runes.len == 0:
-          # selection rect for empty line
+    let lineH = this.font[].lineHeightPixels
+    for c_idx in 0..<this.arrangement.cursors.len:
+      if this.arrangement.cursors[c_idx].isDuplicate: continue
+      let sel = this.arrangement.selectionRangeForLine(c_idx, i)
+      if sel.len <= 0: continue
+      let arr = line.arrangement
+
+      if arr.runes.len == 0:
+        # selection rect for empty line
+        ctx.fillRect(
+          rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+          color(0.2'f32, 0.4'f32, 0.7'f32),
+        )
+
+      else:
+        for subRowIdx, span in arr.lines:
+          let rowFirst = span[0]
+          let rowLast = span[1]
+          if rowFirst > rowLast: continue
+          if sel.a > rowLast: continue
+          if sel.b <= rowFirst: continue
+          let subRowY = line.rect.y + arr.selectionRects[rowFirst].y
+          let leftRune = max(sel.a, rowFirst)
+          let startX = arr.selectionRects[leftRune].x
+          let rightRune = min(sel.b - 1, rowLast)
+          let endX = arr.selectionRects[rightRune].x + arr.selectionRects[rightRune].w
+          let extraW: float32 =
+            if sel.b >= arr.runes.len and subRowIdx == arr.lines.high: MinSelectionWidth
+            else: 0.0'f32
+          let selW = max(endX - startX, 0.0'f32) + extraW
+          if selW <= 0: continue
+
+          # selection rect
           ctx.fillRect(
-            rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+            rect(
+              this.globalXy + ctx.offset + vec2(textOffsetX + startX, subRowY),
+              vec2(selW, lineH),
+            ),
             color(0.2'f32, 0.4'f32, 0.7'f32),
           )
 
-        else:
-          for subRowIdx, span in arr.lines:
-            let rowFirst = span[0]
-            let rowLast = span[1]
-            if rowFirst > rowLast: continue
-            if sel.a > rowLast: continue
-            if sel.b <= rowFirst: continue
-            let subRowY = line.rect.y + arr.selectionRects[rowFirst].y
-            let leftRune = max(sel.a, rowFirst)
-            let startX = arr.selectionRects[leftRune].x
-            let rightRune = min(sel.b - 1, rowLast)
-            let endX = arr.selectionRects[rightRune].x + arr.selectionRects[rightRune].w
-            let extraW: float32 =
-              if sel.b >= arr.runes.len and subRowIdx == arr.lines.high: MinSelectionWidth
-              else: 0.0'f32
-            let selW = max(endX - startX, 0.0'f32) + extraW
-            if selW <= 0: continue
+    # the code
+    drawHighlightedText(
+      ctx,
+      (this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y)).vec3(0),
+      line.arrangement,
+      line.kinds,
+    )
 
-            # selection rect
-            ctx.fillRect(
-              rect(
-                this.globalXy + ctx.offset + vec2(textOffsetX + startX, subRowY),
-                vec2(selW, lineH),
-              ),
-              color(0.2'f32, 0.4'f32, 0.7'f32),
-            )
+    if currentFocus[] == this:
+      for cursor in this.arrangement.cursors:
+        if cursor.line == i:
+          const cursorW = 1.5'f32
+          let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
+          # text cursor
+          ctx.fillRect(
+            rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
+            color(1'f32, 1'f32, 1'f32),
+          )
 
-      # the code
-      drawHighlightedText(
-        ctx,
-        (this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y)).vec3(0),
-        line.arrangement,
-        line.kinds,
+    if line.foldable and i in this.arrangement.foldedLines:
+      const lineH = 1'f32
+      let rect = line.visibleRect
+
+      # line for folded line
+      ctx.fillRect(
+        rect(
+          this.globalXy + ctx.offset + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
+          vec2(rect.w, lineH),
+        ),
+        color(0.3'f32, 0.6'f32, 1.0'f32),
       )
-
-      if currentFocus[] == this:
-        for cursor in this.arrangement.cursors:
-          if cursor.line == i:
-            const cursorW = 1.5'f32
-            let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
-            # text cursor
-            ctx.fillRect(
-              rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
-              color(1'f32, 1'f32, 1'f32),
-            )
-
-      if line.foldable and i in this.arrangement.foldedLines:
-        const lineH = 1'f32
-        let rect = line.visibleRect
-
-        # line for folded line
-        ctx.fillRect(
-          rect(
-            this.globalXy + ctx.offset + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
-            vec2(rect.w, lineH),
-          ),
-          color(0.3'f32, 0.6'f32, 1.0'f32),
-        )
-
-  this.drawAfter(ctx)
 
 
 proc saveFile(this: CodeEditorContent) =
