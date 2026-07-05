@@ -22,17 +22,13 @@ let textMargin* = 0.2
 
 
 
-proc addArrow*(to: Point2, dir: NormalVec2, size: float, color = doc.foreground, noBounds = false) =
-  # todo: proc arrow(to: Point2, dir: NormalVec2, size: float, color = doc.foreground): (Path, Background)
+proc arrow*(to: Point2, dir: NormalVec2, size: float): (Path2, Fill) =
   var p = Path2()
   p.add to
   p.add to - (dir * size).rotate(Pi / 16)
   p.add to - (dir * size).rotate(-Pi / 16)
   close p
-  if noBounds:
-    doc.add p, Background color, NoBounds()
-  else:
-    doc.add p, Background color
+  (p, Fill())
 
 
 
@@ -74,8 +70,13 @@ proc drawDimensions*(doc: World) =
           Transform3 (rotateZ(if abs(angle) < Pi/2: angle else: Pi + angle) * translate(v3(0, fontSize * -textMargin, 0)))
           fontSize
 
-    addArrow(dimline_a, dimline_a - dimline_b, arrowSize, noBounds = has NoBounds)
-    addArrow(dimline_b, dimline_b - dimline_a, arrowSize, noBounds = has NoBounds)
+    if has NoBounds:
+      # todo: doc.add arrow(dimline_a, dimline_a - dimline_b, arrowSize), theOpt NoBounds
+      doc.add arrow(dimline_a, dimline_a - dimline_b, arrowSize), NoBounds()
+      doc.add arrow(dimline_b, dimline_b - dimline_a, arrowSize), NoBounds()
+    else:
+      doc.add arrow(dimline_a, dimline_a - dimline_b, arrowSize)
+      doc.add arrow(dimline_b, dimline_b - dimline_a, arrowSize)
 
     if has NoBounds:
       for x in drawnIds:

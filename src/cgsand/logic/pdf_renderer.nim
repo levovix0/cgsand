@@ -22,7 +22,7 @@ let transparent = color(0, 0, 0, 0)
 
 
 proc recommendedPointCount(curve: Curve2, typicalCount = 32): int =
-  # mirrors world_view.recommendedPointCount
+  # todo: dynamic, per-curve-param point count
   if curve.isOf(Path2):
     for c in curve.castTo(Path2).curves.view:
       result += recommendedPointCount(c, typicalCount)
@@ -114,9 +114,11 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
         o.pages[ctx.pi].restoreState()
 
 
+  # todo: update pdf_renderer to match world_view
+
   w.forEach (
     line: LineSection2,
-    color: (Foreground|Color)||wGlobals.foreground,
+    color: Color||wGlobals.foreground,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,
     t: Transform3||dmat4()
@@ -129,15 +131,15 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
   w.forEach (
     curve: CircleArc2,
     opt PointCount,
-    opt Color|Background|Foreground|Hatching,
+    opt Color|Hatching,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,
     t3: Transform3||dmat4()
   ):
     let ct = extraT * t3
     let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
+      # if has Foreground: the Foreground
+      if has Color: the Color
       else: wGlobals.foreground
     let lw = lwOf(0.1 / ctx.scale)
     let smooth = not (has PointCount)
@@ -147,23 +149,23 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
     let points = curve.points(count)
     let transf = proc(v: Vec2): Vec2 = ctx.toPagePos(ct * v)
 
-    let doStroke =
-      if curve.closed:
-        (Background.has.not and Hatching.has.not) or (Color.has and Hatching.has.not) or Foreground.has
-      else:
-        Foreground.has or Color.has or Background.has.not
+    let doStroke = true
+      # if curve.closed:
+      #   (Background.has.not and Hatching.has.not) or (Color.has and Hatching.has.not) or Foreground.has
+      # else:
+      #   Foreground.has or Color.has or Background.has.not
 
-    if curve.closed and (has Background):
-      if smooth:
-        o.pages[ctx.pi].drawBezierEllipseArc(
-          float32(curve.center.x), float32(curve.center.y), float32(curve.radius), float32(curve.radius),
-          float32(curve.startAngle), float32(curve.angularLength),
-          transf, false, true, true, transparent, the Background, lw,
-        )
-      else:
-        var pagePts: seq[Vec2]
-        for p in points: pagePts.add ctx.toPagePos(ct * vec2(p.x.float32, p.y.float32))
-        o.pages[ctx.pi].fillPolygon(pagePts, the Background)
+    # if curve.closed and (has Background):
+    #   if smooth:
+    #     o.pages[ctx.pi].drawBezierEllipseArc(
+    #       float32(curve.center.x), float32(curve.center.y), float32(curve.radius), float32(curve.radius),
+    #       float32(curve.startAngle), float32(curve.angularLength),
+    #       transf, false, true, true, transparent, the Background, lw,
+    #     )
+    #   else:
+    #     var pagePts: seq[Vec2]
+    #     for p in points: pagePts.add ctx.toPagePos(ct * vec2(p.x.float32, p.y.float32))
+    #     o.pages[ctx.pi].fillPolygon(pagePts, the Background)
 
     if doStroke:
       if smooth and not (has Dashing):
@@ -188,7 +190,7 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
 
   w.forEach (
     arc: EllipseArc2,
-    color: (Foreground|Color)||wGlobals.foreground,
+    color: Color||wGlobals.foreground,
     opt PointCount,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,
@@ -212,7 +214,7 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
 
   w.forEach (
     curve: Curve2|OwnedCurve2|Path2,
-    opt Foreground|Color|Background|Hatching,
+    opt Color|Hatching,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,
     pointCount: PointCount||curve.recommendedPointCount,
@@ -225,49 +227,24 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
     for q in points: pagePts.add ctx.toPagePos(ct * q.V2.vec2)
 
     if has Hatching:
-      if has Background:
-        o.pages[ctx.pi].fillPolygon(pagePts, the Background)
+      # if has Background:
+      #   o.pages[ctx.pi].fillPolygon(pagePts, the Background)
       let hatFg = if has Color: the Color else: wGlobals.foreground
       hatchFill(
         curve.bounds.min.V2.vec2, curve.bounds.max.V2.vec2, ct, the Hatching, hatFg,
         (if has Thickness: the Thickness else: 0.0)
       ):
         o.pages[ctx.pi].clipPolygon(pagePts)
-    elif has Background:
-      o.pages[ctx.pi].fillPolygon(pagePts, the Background)
+    # elif has Background:
+    #   o.pages[ctx.pi].fillPolygon(pagePts, the Background)
 
-    if has Foreground:
-      drawStrokeW(points, the Foreground, lw, ct)
-    elif (has Color) and not (has Hatching):
+    # if has Foreground:
+    #   drawStrokeW(points, the Foreground, lw, ct)
+    if (has Color) and not (has Hatching):
       drawStrokeW(points, the Color, lw, ct)
-    elif not (has Background) and not (has Hatching):
+    # elif not (has Background) and not (has Hatching):
+    elif not (has Hatching):
       drawStrokeW(points, wGlobals.foreground, lw, ct)
-
-
-  w.forEach (path: Path, opt Foreground|Color|Background|Hatching, opt Thickness|PixelThickness, t3: Transform3||dmat4()):
-    let ct = extraT * t3
-    let lw = lwOf(1.0)
-    let transf = proc(v: Vec2): Vec2 = ctx.toPagePos(ct * v)
-
-    if has Hatching:
-      if has Background:
-        o.pages[ctx.pi].drawPath(path, transf, false, true, transparent, the Background, lw)
-      let hatFg = if has Color: the Color else: wGlobals.foreground
-      let b = path.computeBounds()
-      hatchFill(
-        vec2(b.x, b.y), vec2(b.x + b.w, b.y + b.h), ct, the Hatching, hatFg,
-        (if has Thickness: the Thickness else: 0.0)
-      ):
-        o.pages[ctx.pi].clipPath(path, transf)
-    else:
-      let doFill   = has Background
-      let doStroke = Foreground.has or Color.has or Background.has.not
-      let fg =
-        if has Foreground: the Foreground
-        elif has Color: the Color
-        else: wGlobals.foreground
-      let bg = if has Background: the Background else: transparent
-      o.pages[ctx.pi].drawPath(path, transf, doStroke, doFill, fg, bg, lw)
 
 
   w.forEach (
@@ -276,12 +253,11 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
     posAt: PositionAt || PositionAtTopLeft,
     font: Typeface || wGlobals.font,
     fontSize: FontSize || wGlobals.fontSize,
-    opt Foreground, opt Color,
+    opt Color,
     t3: Transform3||dmat4(),
   ):
     let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
+      if has Color: the Color
       else: wGlobals.foreground
 
     let ct     = extraT * t3

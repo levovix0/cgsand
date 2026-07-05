@@ -186,6 +186,7 @@ proc drawDocText*(
   ctx.drawText(vec3(pos.x, pos.y, 0), ts, color.vec4, origin=origin, transform=transform, exactBoundaries=true, axisYUp=axisYUp)
 
 
+
 proc draw2dWorld*(
   ctx: DrawContext,
   w: World,
@@ -211,211 +212,136 @@ proc draw2dWorld*(
   glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
 
 
-  template selectThickness: Option[Thickness] {.dirty.} =
-    if has PixelThickness: some(the(PixelThickness) / pixelsPerUnit)
-    elif has Thickness: some the Thickness
-    else: none Thickness
-  
-  template dashScale: float {.dirty.} =
-    if has DashingScale: the DashingScale
-    else: globals.dashingScale
-
   template cache(mesh: Mesh, to: untyped): Mesh =
     meshCache.to.cache(w, the EntityId, mesh)
 
-  template drawStroke(pts: openArray[Point2], col: Color, thk: Option[Thickness], t: Mat4) {.dirty.} =
-    # draws a polyline stroke, dashed if the entity has a Dashing component
-    if has Dashing:
-      drawDashedPolyline(ctx, pts, the Dashing, col, thk, transform = t, scale = dashScale)
-    else:
-      for i in 0 ..< pts.len - 1:
-        drawLineSection(ctx, line(pts[i], pts[i + 1]), col, thk, transform = t)
-
-
-  # todo: instead of all of this, draw in three layers: Background, Hatching, Foreground
-  # todo: and unify color selection boilerplate
-  # todo: and unify efficiently castable to Curve2 curve rendering
-  # todo: and fix the broken OwnedCurve2 and Path2 rendering
-  # todo: and add the convinient RefCurve2
-
-
-  w.forEach (
-    line: LineSection2,
-    color: (Foreground|Color)||globals.foreground,
-    opt Thickness|PixelThickness,
-    opt Dashing|DashingScale,
-    transform: Transform3||dmat4()
-  ):
-    let thk = selectThickness()
-    drawStroke([line.startPoint, line.endPoint], color, thk, mat4(transform))
-
-
-  w.forEach (
-    curve: CircleArc2,
-    opt PointCount,
-    opt Color|Background|Foreground|Hatching,
-    opt Thickness|PixelThickness,
-    opt Dashing|DashingScale,
-    transform: Transform3||dmat4()
-  ):
-    let screenRadius = float32(curve.radius) * pixelsPerUnit
-    let pointCount =
-      if has PointCount: the PointCount
-      else: clamp(int(screenRadius * abs(float32(curve.angularLength)) / 4.0), 8, 256)
-    let points = curve.points(pointCount)
-    let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
-      else: globals.foreground
-    let thk = selectThickness()
-    let t3 = mat4(transform)
-
-    if curve.closed:
-      if has Background:
-        ctx.fillCircle(
-          color = the Background,
-          radius = curve.radius,
-          center = curve.center.DVec2.vec2.vec3(0),
-          pointCount = pointCount,
-          transform = t3,
-        )
-
-      if (Background.has.not and Hatching.has.not) or (Color.has and Hatching.has.not) or Foreground.has:
-        drawStroke(points, fg, thk, t3)
-    else:
-      if Foreground.has or Color.has or Background.has.not:
-        drawStroke(points, fg, thk, t3)
-
-    if has Hatching:
-      var hatching = the Hatching
-      if hatching.period == 0:
-        hatching.period = curve.bounds.size.length / 20
-      let hthk = thk.get(otherwise = hatching.period/4)
-      
-      ctx.drawHatchedPath(
-        curve.toMesh(pointCount).cache(curve2Fill),
-        hatching = hatching,
-        fg = (if has Color: the Color else: globals.foreground),
-        bg = (if has Background: the Background else: color(0, 0, 0, 0)),
-        thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
-        transform = t3,
-      )
-
-
-  w.forEach (
-    arc: EllipseArc2,
-    color: (Foreground|Color)||globals.foreground,
-    opt PointCount,
-    opt Thickness|PixelThickness,
-    opt Dashing|DashingScale,
-    transform: Transform3||dmat4()
-  ):
-    let screenRadius = float32(max(arc.size.x, arc.size.y) / 2) * pixelsPerUnit
-    let count =
-      if has PointCount: the PointCount
-      else: clamp(int(screenRadius * abs(float32(arc.angularLength)) / 4.0), 12, 256)
-    let points = arc.points(count)
-    let thk = selectThickness()
-    let t3 = mat4(transform)
-
-    # todo: Background support (fill ellipse)
-
-    drawStroke(points, color, thk, t3)
   
   w.forEach (
-    curve: Curve2|OwnedCurve2|Path2,
-    opt Foreground|Color|Background|Hatching,
+    curve: Curve2|(OwnedCurve2|CircleArc2|EllipseArc2|Path2),
+    Fill,
+    opt Color,
+    opt PointCount,
+    transform: Transform3||dmat4(),
+  ):
+    let transform = transform.mat4
+
+    let color =
+      if has Color: the Color
+      else: globals.foreground
+    
+    let pointCount =
+      if has PointCount: the PointCount
+      else: int(pixelsPerUnit * curve.bounds.size.length).clamp(8, 256)
+
+    ctx.fill2dMeshFlat(curve.toMesh(pointCount).cache(curve2Fill), color = color, transform = transform)
+
+  
+  w.forEach (
+    curve: Curve2|(OwnedCurve2|CircleArc2|EllipseArc2|Path2),
+    Hatching,
+    opt Color,
+    opt Thickness|PixelThickness,
+    opt PointCount,
+    transform: Transform3||dmat4(),
+  ):
+    let transform = transform.mat4
+
+    let color =
+      if has Color: the Color
+      else: globals.foreground
+    
+    let pointCount =
+      if has PointCount: the PointCount
+      else: int(pixelsPerUnit * curve.bounds.size.length).clamp(8, 256)
+    
+    let thickness =
+      if has PixelThickness: some(the(PixelThickness) / pixelsPerUnit)
+      elif has Thickness: some the Thickness
+      else: none Thickness
+
+    var hatching = the Hatching
+    if hatching.period == 0:
+      hatching.period = curve.bounds.size.length / 20
+    let hthk = thickness.get(otherwise = hatching.period/4)
+    
+    ctx.drawHatchedPath(
+      curve.toMesh(pointCount).cache(curve2Fill),
+      hatching = hatching,
+      fg = color,
+      bg = color(0, 0, 0, 0),
+      thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
+      transform = transform,
+    )
+
+  
+  template prepareStroke {.dirty.} =
+    let transform = transform.mat4
+
+    let color =
+      if has Color: the Color
+      else: globals.foreground
+    
+    let thickness =
+      if has PixelThickness: some(the(PixelThickness) / pixelsPerUnit)
+      elif has Thickness: some the Thickness
+      else: none Thickness
+
+  template drawStroke {.dirty.} =
+    if has Dashing:
+      let dashingScale =
+        if has DashingScale: the DashingScale
+        else: globals.dashingScale
+      
+      ctx.drawDashedPolyline(pts, the Dashing, color, thickness, transform = transform, scale = dashingScale)
+    
+    else:
+      for i in 0 ..< pts.len - 1:
+        ctx.drawLineSection(line(pts[i], pts[i + 1]), color, thickness, transform = transform)
+  
+  w.forEach (
+    curve: LineSection2,
+    Stroke | not(Stroke|Fill|Hatching),
+    opt Color,
     opt Thickness|PixelThickness,
     opt Dashing|DashingScale,
-    pointCount: PointCount||curve.recommendedPointCount,
-    transform: Transform3||dmat4()
+    transform: Transform3||dmat4(),
   ):
-    # todo: split into Background and Foreground renderer
-    let t3 = mat4(transform)
-    let thk = selectThickness()
-
-    if has Hatching:
-      var hatching = the Hatching
-      if hatching.period == 0:
-        hatching.period = curve.bounds.size.length / 20
-      let hthk = thk.get(otherwise = hatching.period/4)
-      
-      ctx.drawHatchedPath(
-        curve.toMesh(pointCount).cache(curve2Fill),
-        hatching = hatching,
-        fg = (if has Color: the Color else: globals.foreground),
-        bg = (if has Background: the Background else: color(0, 0, 0, 0)),
-        thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
-        transform = t3,
-      )
-    elif has Background:
-      ctx.fill2dMeshFlat(curve.toMesh(pointCount).cache(curve2Fill), color = the Background, transform = t3)
-    
-    if (has Foreground):
-      let points = curve.points(pointCount)
-      drawStroke(points, the Foreground, thk, t3)
-    elif (has Color) and not(has Hatching):
-      let points = curve.points(pointCount)
-      drawStroke(points, the Color, thk, t3)
-    elif not(has Background) and not(has Hatching):
-      let points = curve.points(pointCount)
-      drawStroke(points, globals.foreground, thk, t3)
-
-
+    prepareStroke()
+    let pts = [curve.startPoint, curve.endPoint]
+    drawStroke()
+  
   w.forEach (
-    path: Path,
-    opt Foreground|Color|Background|Hatching,
+    curve: Curve2|(OwnedCurve2|LineSection2|CircleArc2|EllipseArc2|Path2),
+    Stroke | not(Stroke|Fill|Hatching),
+    opt Color,
     opt Thickness|PixelThickness,
-    transform: Transform3||dmat4()
+    opt Dashing|DashingScale,
+    opt PointCount,
+    transform: Transform3||dmat4(),
   ):
-    let t3 = mat4(transform)
-    let thk = selectThickness()
-    # todo: wrong pixelScale
-    # todo: line thickness is wrongly cached into mesh
-
-    if has Hatching:
-      var hatching = the Hatching
-      if hatching.period == 0:
-        hatching.period = path.computeBounds().wh.length / 20
-      let hthk = thk.get(otherwise = hatching.period/4)
-      
-      ctx.drawHatchedPath(
-        path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill),
-        hatching = hatching,
-        fg = (if has Color: the Color else: globals.foreground),
-        bg = (if has Background: the Background else: color(0, 0, 0, 0)),
-        thickness = (if has(PixelThickness): min(hthk, hatching.period/4) else: hthk),
-        transform = t3,
-      )
-    elif has Background:
-      ctx.fill2dMeshFlat(path.toMesh(pixelScale = pixelsPerUnit).cache(pathFill), color = the Background, transform = t3)
-    
-    if (has Foreground):
-      ctx.fill2dMeshFlat(path.toStrokeMesh(
-        strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
-      ).cache(pathStroke), color = the Foreground, transform = t3)
-    elif (has Color) and not(has Hatching):
-      ctx.fill2dMeshFlat(path.toStrokeMesh(
-        strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
-      ).cache(pathStroke), color = the Color, transform = t3)
-    elif not(has Background) and not(has Hatching):
-      ctx.fill2dMeshFlat(path.toStrokeMesh(
-        strokeWidth = thk.get(otherwise = 1), pixelScale = pixelsPerUnit, lineCap = RoundCap, lineJoin = RoundJoin
-      ).cache(pathStroke), color = globals.foreground, transform = t3)
+    prepareStroke()
+    let pts =
+      if curve.isOf(LineSection2):
+        @[curve.castTo(LineSection2).startPoint, curve.castTo(LineSection2).endPoint]
+      else:
+        let pointCount =
+          if has PointCount: the PointCount
+          else: int(pixelsPerUnit * curve.bounds.size.length).clamp(8, 256)
+        curve.points(pointCount)
+    drawStroke()
 
 
   w.forEach (
     text: Text,
     pos: Position2||p2(),
-    opt Foreground, opt Color,
+    opt Color,
     posAt: PositionAt||PositionAtTopLeft,
     font: Typeface||globals.font,
     size: FontSize||globals.fontSize,
     transform: Transform3||dmat4(),
   ):
     let fg =
-      if has Foreground: the Foreground
-      elif has Color: the Color
+      if has Color: the Color
       else: globals.foreground
     drawDocText(ctx, text, pos, fg, posAt, font, size, axisYUp = globals.axisYDirection == AxisYUp, transform = mat4(transform))
 
@@ -481,7 +407,7 @@ proc draw3dWorld*(
     meshCache.to.cache(w, the EntityId, mesh)
 
 
-  w.forEach (EntityId, surface: PolygonalSurface3, color: (Foreground|Color)||globals.foreground, transform: Transform3||dmat4()):
+  w.forEach (EntityId, surface: PolygonalSurface3, color: Color||globals.foreground, transform: Transform3||dmat4()):
     if surface == nil: continue
     ctx.fill3dMeshShadedByNormalsSingleSide(
       grid3ToMesh(surface[]).cache(polygonalSurface3),

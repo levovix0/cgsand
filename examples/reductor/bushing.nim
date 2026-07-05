@@ -59,7 +59,7 @@ proc transformToCenter*(g: BushingDesc): M4 =
 proc draw*(g: BushingDesc, sketch = doc, backLines = true, axialLines = true, hatching = true) =
   if sketch == nil: return
 
-  let fgLine = (doc.foreground, mainLine)
+  let fgLine = (mainLine, doc.fgColor)
   let haLine = (g.hatching, hatchingLine)
 
   let bevel = g.bevelRadius

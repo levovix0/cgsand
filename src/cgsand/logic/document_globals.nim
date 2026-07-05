@@ -17,10 +17,10 @@ type
 proc documentGlobals*(w: World): DocumentGlobals =
   result = DocumentGlobals(settings: CanvasSettings(autoSize: true))
   result.font = font_default
-  w.forEach (v: CanvasSettings, opt Foreground, opt Background, opt FontSize, opt AxisYDirection, opt PositionAt, opt Typeface, opt DashingScale):
+  w.forEach (v: CanvasSettings, opt FontSize, opt AxisYDirection, opt PositionAt, opt Typeface, opt DashingScale):
     result.settings = v
-    if has Foreground: result.foreground = the Foreground
-    if has Background: result.background = the Background
+    result.foreground = v.foreground
+    result.background = v.background
     if has FontSize: result.fontSize = the FontSize
     if has AxisYDirection: result.axisYDirection = the AxisYDirection
     if has PositionAt: result.originAt = the PositionAt

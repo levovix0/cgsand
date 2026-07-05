@@ -559,15 +559,15 @@ proc draw*(doc: World, desc: ReductorDesc) =
       let coverPoint = doc.bounds(fastShaft.coverEnt[0]).max - v2(0, fastShaft.covers[0].H)
       
       let boltHole = circle(p2(coverPoint.x, owH/2 + C2), d2/2)
-      doc.addSymmetric boltHole, (doc.foreground, mainLine)
-      doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
+      doc.addSymmetric boltHole, (doc.fgColor, mainLine)
+      doc.addSymmetric boltHole, (Hatching(), color doc.fgColor, hatchingLine)
       doc.addAxial boltHole
       doc.addAxial boltHole.transform(scale v3(1, -1, 1))
 
       let boltCorpus = circle(boltHole.center, C2, Pi/2, -Pi/2)
       # doc.add boltCorpus, mainLine
       
-      doc.addSymmetric line(boltCorpus.pointAt(0), coverPoint), (doc.foreground, mainLine)
+      doc.addSymmetric line(boltCorpus.pointAt(0), coverPoint), (doc.fgColor, mainLine)
       doc.addSymmetric line(boltCorpus.pointAt(1), outerBox.lines[RoundRect2Geom_LineIndex.right].pointAt(1)), hiddenLine
 
 
@@ -578,18 +578,18 @@ proc draw*(doc: World, desc: ReductorDesc) =
         p.y = H/2; p.fillet(K3)
         p.x -= 50.mm
 
-        # doc.add p.Curve2, doc.foreground, mainLine
+        # doc.add p.Curve2, doc.fgColor, mainLine
         
         var ig = buildIntersectionGraph(@[p.toOwnedCurve2, boltCorpus.toOwnedCurve2])
 
         for x in ig.edges:
           if x.curve == 0 and x.startParam < (1/3 + 0.01):
-            doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+            doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.fgColor, mainLine)
 
           elif x.curve == 1:
             if x.startParam ~== 0:
               # todo: allow conditionals in ecs spawn macro
-              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.fgColor, mainLine)
             else:
               # note: components in conditionals should owerride components already added
               doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), hiddenLine
@@ -602,7 +602,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
           let bolt3Hole = circle(p2(wallX + C3, y), d3/2)
           # CircleArc drawing should be unified with Curve2 drawing (by default - drawn as contour line)
           doc.add bolt3Hole, mainLine
-          doc.add bolt3Hole, Hatching(), color doc.foreground, hatchingLine
+          doc.add bolt3Hole, Hatching(), color doc.fgColor, hatchingLine
           doc.addAxial bolt3Hole
 
 
@@ -613,15 +613,15 @@ proc draw*(doc: World, desc: ReductorDesc) =
       let coverPoint = doc.bounds(slowShaft.coverEnt[1]).min + v2(0, fastShaft.covers[0].h)
 
       let boltHole = circle(p2(coverPoint.x, owH/2 + C2), d2/2)
-      doc.addSymmetric boltHole, (doc.foreground, mainLine)
-      doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
+      doc.addSymmetric boltHole, (doc.fgColor, mainLine)
+      doc.addSymmetric boltHole, (Hatching(), color doc.fgColor, hatchingLine)
       doc.addAxial boltHole
       doc.addAxial boltHole.transform(scale v3(1, -1, 1))
 
       let boltCorpus = circle(boltHole.center, C2, Pi/2, Pi, clockwise)
       # doc.add boltCorpus, mainLine
 
-      doc.addSymmetric line(boltCorpus.pointAt(0), coverPoint), (doc.foreground, mainLine)
+      doc.addSymmetric line(boltCorpus.pointAt(0), coverPoint), (doc.fgColor, mainLine)
 
       block:
         let pt = p2(boltCorpus.pointAt(1).x, outerBox.lines[RoundRect2Geom_LineIndex.bottom].pointAt(0).y)
@@ -637,18 +637,18 @@ proc draw*(doc: World, desc: ReductorDesc) =
         p.y = H/2; p.fillet(K3)
         p.x = slowShaft.pos.x
 
-        # doc.add p.Curve2, doc.foreground, mainLine
+        # doc.add p.Curve2, doc.fgColor, mainLine
         
         var ig = buildIntersectionGraph(@[p.toOwnedCurve2, boltCorpus.toOwnedCurve2])
 
         for x in ig.edges:
           if x.curve == 0 and x.startParam < (1/3 + 0.01):
-            doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+            doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.fgColor, mainLine)
 
           elif x.curve == 1:
             if x.startParam ~== 0:
               # todo: allow conditionals in ecs spawn macro
-              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.foreground, mainLine)
+              doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), (doc.fgColor, mainLine)
             else:
               # note: components in conditionals should owerride components already added
               doc.addSymmetric ig.curves[x.curve].cut(x.startParam, x.endParam), hiddenLine
@@ -661,7 +661,7 @@ proc draw*(doc: World, desc: ReductorDesc) =
           let bolt3Hole = circle(p2(wallX - C3, y), d3/2)
           # CircleArc drawing should be unified with Curve2 drawing (by default - drawn as contour line)
           doc.add bolt3Hole, mainLine
-          doc.add bolt3Hole, Hatching(), color doc.foreground, hatchingLine
+          doc.add bolt3Hole, Hatching(), color doc.fgColor, hatchingLine
           doc.addAxial bolt3Hole
     
 
@@ -670,11 +670,11 @@ proc draw*(doc: World, desc: ReductorDesc) =
       let coverA = doc.bounds(fastShaft.coverEnt[0]).min + v2(0, fastShaft.covers[0].h)
       let coverB = doc.bounds(slowShaft.coverEnt[1]).max - v2(0, slowShaft.covers[1].H)
 
-      doc.addSymmetric line(coverA, coverB), (doc.foreground, mainLine)
+      doc.addSymmetric line(coverA, coverB), (doc.fgColor, mainLine)
 
       let boltHole = circle(p2(line(coverA, coverB).center.x, owH/2 + C2), d2/2)
-      doc.addSymmetric boltHole, (doc.foreground, mainLine)
-      doc.addSymmetric boltHole, (Hatching(), color doc.foreground, hatchingLine)
+      doc.addSymmetric boltHole, (doc.fgColor, mainLine)
+      doc.addSymmetric boltHole, (Hatching(), color doc.fgColor, hatchingLine)
       doc.addAxial boltHole
       doc.addAxial boltHole.transform(scale v3(1, -1, 1))
 

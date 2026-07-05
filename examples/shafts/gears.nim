@@ -53,7 +53,7 @@ proc drawSection*(g: GearDesc, sketch = doc, backLines = true, axialLines = true
   let dou1 = g.d_t - dhol
   let dou2 = dhol - g.shaft_d
 
-  let contour = (sketch.foreground, mainLine)
+  let contour = (sketch.fgColor, mainLine)
   let hatch = (Hatching(
     period: g.modulo,
     angle: (if g.reverseHatching: -Pi/4 else: Pi/4),

@@ -18,6 +18,8 @@ type
     mmScale*: float32 = 10  ## (paper page) millimeters per abstract unit
     autoSize*: bool = true  ## if true, `size` is ignored and calculated from document content bounds insted
     margin*: V2 = v2(0, 0)  ## extra page space around auto-sized content
+    foreground*: Color = color(1, 1, 1)
+    background*: Color = color(0, 0, 0, 0)
 
 
   PositionAt* = enum
@@ -53,12 +55,11 @@ type
     ## defines height of a line of text
 
 
-  Foreground* = Color
-    ## color of lines of shape, text
-    ## can be added onto entity with CanvasSettings to define a default foreground color (it is color(1, 1, 1) by default)
+  Stroke* = object
+    ## stroke curves
   
-  Background* = Color
-    ## color of background of shape or document (can be added onto entity with CanvasSettings)
+  Fill* = object
+    ## fill closed curves
 
 
   Thickness* = float
@@ -164,11 +165,7 @@ when defined(script) or defined(nimcheck):
       discard cache[].spawn(cv, v)
   
 
-  var globals* = doc.spawn(
-    CanvasSettings(),
-    Foreground color(1, 1, 1),
-    Background color(0, 0, 0, 0)
-  )
+  var globals* = doc.spawn CanvasSettings()
 
 
 
@@ -269,13 +266,13 @@ proc bottomRight*(bounds: Bounds2): Point2 = bounds.at(PositionAtBottomRight)
 
 
 
-proc background*(doc: World): Background =
+proc bgColor*(doc: World): Color =
   result = color(0, 0, 0, 0)
-  doc.forEach (CanvasSettings, Background): return the Background
+  doc.forEach (c: CanvasSettings): return c.background
 
-proc foreground*(doc: World): Foreground =
+proc fgColor*(doc: World): Color =
   result = color(1, 1, 1)
-  doc.forEach (CanvasSettings, Foreground): return the Foreground
+  doc.forEach (c: CanvasSettings): return c.foreground
 
 proc fontSize*(doc: World): FontSize =
   result = 1

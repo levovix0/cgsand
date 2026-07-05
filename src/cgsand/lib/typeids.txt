@@ -1,7 +1,5 @@
 EntityId
 CanvasSettings
-Background
-Foreground
 FontSize
 AxisYDirection
 PositionAt
@@ -22,9 +20,11 @@ PolygonalSurface3
 Text
 Position2
 SubWorld
+Fill
 Color
-PixelThickness
-Dashing
 Hatching
+PixelThickness
+Stroke
+Dashing
 DarkTheme
 bool
