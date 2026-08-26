@@ -4,7 +4,7 @@ import pkg/pixie/paths
 import pkg/pixie/[fonts]
 import pkg/toscel/fonts as toscelFonts
 import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl, hatching]
-import pkg/sigeo/grids/[extrusions, smoothshading]
+import pkg/sigeo/surfaces/[grids]
 import ../lib/[sandbox, geom2d]
 import ./[bounds, doclayout, scripts, document_globals, dashing]
 

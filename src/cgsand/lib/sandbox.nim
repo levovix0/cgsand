@@ -1,6 +1,6 @@
 {.used.}
 import pkg/[ecs, sigeo/core, chroma]
-import pkg/sigeo/grids/extrusions
+import pkg/sigeo/surfaces/[grids]
 export ecs, core, chroma
 
 when defined(script):
