@@ -56,6 +56,14 @@ type
     savedCursor*: TerminalCursor
     savedCursorFlags*: CellFlags
 
+    ## replies to terminal queries from the program (DA1, background color, cursor position, ...).
+    ## The caller drains this after `handleInput` and forwards it to the backend
+    pendingResponses*: string
+
+    ## colors reported to the program in OSC 10/11 (text foreground/background) queries
+    queryForegroundColor*: Color = ColorDimWhite
+    queryBackgroundColor*: Color = ColorDimBlack
+
 
 const MaxTerminalSize = ivec2(10000)  # in characters
 const TabWidth = 8
@@ -289,7 +297,24 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
     of 'h', 'l':
       if m(0) == 25: this.cursorVisible = final == 'h'
       # 2004 bracketed paste, 1000..1006 mouse reporting, ...: ignored
+    of 'u':
+      if paramsStr == "?":  # kitty keyboard protocol query -> not supported
+        this.pendingResponses.add "\x1b[?0u"
     else: discard
+    return
+
+  if paramsStr.len > 0 and paramsStr[0] == '>':
+    case final
+    of 'c':  # DA2, identify as a generic xterm-like terminal
+      this.pendingResponses.add "\x1b[>0;276;0c"
+    of 'q':  # XTVERSION
+      this.pendingResponses.add "\x1bP>|cgsand\x1b\\"
+    else: discard
+    return
+
+  if paramsStr.len > 0 and paramsStr[0] in {'=', '<'}:
+    # kitty keyboard protocol set (CSI = flags ; mode u) / pop (CSI < u), DA3 (CSI = c): not supported
+    discard
     return
 
   case final
@@ -313,6 +338,12 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
   of 'S': this.scrollDown(n(0, 1))
   of 'T': this.scrollUp(n(0, 1))
   of 'm': this.applySgr(params)
+  of 'c':  # DA1, Primary Device Attributes -> plain VT102
+    this.pendingResponses.add "\x1b[?6c"
+  of 'n':  # DSR, Cursor Position Report
+    if m(0) == 6:
+      let x = min(this.cursor.x, this.size.x - 1)
+      this.pendingResponses.add "\x1b[" & $(this.cursor.y + 1) & ";" & $(x + 1) & "R"
   of 's':
     this.savedCursor = this.cursor
     this.savedCursorFlags = this.cursorFlags
@@ -321,6 +352,27 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
     this.clampCursor()
     this.cursorFlags = this.savedCursorFlags
   else: discard  # unsupported sequences are ignored
+
+
+proc rgbQueryColor(c: Color): string =
+  ## "rr/gg/bb" color as used in OSC color responses
+  proc h(v: float32): string = (v * 255).round.int.toHex(2).toLowerAscii
+  h(c.r) & "/" & h(c.g) & "/" & h(c.b)
+
+
+proc handleStringSequence(this: TerminalArrangement, kind: char, payload: string) =
+  ## handles terminated string escape sequences (OSC / DCS / ...) we respond to
+  if kind == ']':
+    # OSC color queries: fish uses the background color to pick light/dark syntax colors
+    if payload.startsWith "10;?":
+      this.pendingResponses.add "\x1b]10;rgb:" & this.queryForegroundColor.rgbQueryColor & "\x1b\\"
+    elif payload.startsWith "11;?":
+      this.pendingResponses.add "\x1b]11;rgb:" & this.queryBackgroundColor.rgbQueryColor & "\x1b\\"
+
+  elif kind == 'P':
+    # XTGETTCAP: report every queried terminfo capability as not found
+    if payload.startsWith "+q":
+      this.pendingResponses.add "\x1bP0+r\x1b\\"
 
 
 proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
@@ -353,10 +405,12 @@ proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
         while true:
           if j >= s.len: return
           if s[j] == '\7':
+            this.handleStringSequence(s[i + 1], s[i + 2 ..< j])
             inc j
             break
           if s[j] == '\27':
             if j + 1 >= s.len: return
+            this.handleStringSequence(s[i + 1], s[i + 2 ..< j])
             inc j, 2
             break
           inc j
@@ -419,7 +473,8 @@ when defined(linux):
   # pty support, imported from libc directly since std/posix does not export these
   const
     TIOCSCTTY = 0x540E
-    TIOCSWINSZ = 0x5413
+    TIOCGWINSZ = 0x5413
+    TIOCSWINSZ = 0x5414
 
   type WinSize = object
     row, col, xpixel, ypixel: cushort
@@ -508,9 +563,11 @@ when defined(linux):
     var argv = allocCStringArray(@[path] & @args)
     defer: deallocCStringArray(argv)
 
-    let needTerm = getEnv("TERM").len == 0
+    let term = getEnv("TERM")
     var termEnv: cstring = nil
-    if needTerm: termEnv = "TERM=xterm-256color"
+    # the shell needs a real TERM, otherwise it degrades (fish skips its terminal handshake for dumb)
+    if term.len == 0 or term == "dumb":
+      termEnv = "TERM=xterm-256color"
 
     let pid = fork()
     if pid < 0:

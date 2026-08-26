@@ -114,10 +114,6 @@ win.makeLayout:
 
     documentView.outputChannel[] = terminal.outputChannel
 
-    on documentView.scriptStage.changed:
-      if documentView.scriptStage[] == Compiling:
-        terminal.clear()
-
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
       h = 60

@@ -70,6 +70,12 @@ proc feed*(this: TerminalContent, text: string) =
   if i > 0:
     this.pendingOutput = this.pendingOutput[i .. ^1]
 
+  # forward replies to terminal queries (DA1, cursor position, ...) back to the backend
+  if this.arrangement.pendingResponses.len > 0:
+    if this.terminal != nil:
+      this.terminal.sendInput(this.arrangement.pendingResponses)
+    this.arrangement.pendingResponses = ""
+
   this.lastActivity = epochTime()
   redraw this
 
@@ -78,6 +84,8 @@ proc updateGridSize(this: TerminalContent) =
   if this.arrangement == nil: return
   let cell = this.cellSize
   if cell.x <= 0 or cell.y <= 0: return
+  # skip intermediate layouts where the widget has no sensible size yet
+  if this.w[] < cell.x * 2 or this.h[] < cell.y * 2: return
 
   let cols = max(1, (this.w[] / cell.x).int)
   let rows = max(1, (this.h[] / cell.y).int)
@@ -276,6 +284,10 @@ method init*(this: Terminal) =
       this.fill(parent, 4)
 
     root.content.terminal = root
+
+    # colors reported to the shell in OSC 10/11 queries (e.g. for fish light/dark syntax themes)
+    root.content.arrangement.queryForegroundColor = colorTheme.sText
+    root.content.arrangement.queryBackgroundColor = colorTheme.bgTextArea
 
     root.content.updateGridSize()
     on this.w.changed: root.content.updateGridSize()
