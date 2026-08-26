@@ -112,11 +112,11 @@ win.makeLayout:
       bottom = parent.bottom
 
 
-    documentView.outputChannel[] = terminal.outputChannel.addr
+    documentView.outputChannel[] = terminal.outputChannel
 
     on documentView.scriptStage.changed:
       if documentView.scriptStage[] == Compiling:
-        terminal.text[] = ""
+        terminal.clear()
 
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)

@@ -41,6 +41,11 @@
       "": "Сброс вида"
     }
   },
+  "src/cgsand/gui/terminal.nim": {
+    "[process exited]": {
+      "": "[процесс завершён]"
+    }
+  },
   "src/cgsand/gui/tool_bar.nim": {
     "Code": {
       "": "Код"

@@ -20,6 +20,9 @@ type
     previewPortion*: float = 1
     terminalPortion*: float = 0.5
 
+    ## terminal shell executable, empty = platform default (fish on linux, powershell on windows)
+    shellPath*: string = ""
+
   ColorTheme* = object
     cActive*: Color
     cInActive*: Color
@@ -80,6 +83,22 @@ proc save*(cfg: Config) =
 
 
 var currentConfig* = loadConfig()
+
+
+proc getShellCommand*(): string =
+  ## shell executable used by the terminal:
+  ## `shellPath` from the config, or a platform default
+  if currentConfig.shellPath.len > 0:
+    return currentConfig.shellPath
+
+  when defined(windows):
+    "powershell"
+  else:
+    let fish = findExe("fish")
+    if fish.len > 0: return fish
+
+    result = getEnv("SHELL")
+    if result.len == 0: result = "/bin/sh"
 
 var bindings_configAutosave: EventHandler
 

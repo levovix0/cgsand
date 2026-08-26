@@ -1,8 +1,11 @@
-import std/[unicode, terminal, strutils]
+import std/[unicode, terminal, strutils, os, osproc]
+import std/concurrency/atomics
 import pkg/[vmath, chroma]
+when defined(linux):
+  import std/posix
 
 const
-  ColorDimBlack      = parseHtmlHex("#202223")
+  ColorDimBlack*      = parseHtmlHex("#202223")
   ColorDimRed        = parseHtmlHex("#ED1515")
   ColorDimGreen      = parseHtmlHex("#11D116")
   ColorDimYellow     = parseHtmlHex("#F67400")
@@ -48,6 +51,10 @@ type
     data*: seq[TerminalCell]  # y * size.x + x  ->  character at row y, col x
     cursor*: TerminalCursor
     cursorFlags*: CellFlags
+    cursorVisible*: bool = true
+
+    savedCursor*: TerminalCursor
+    savedCursorFlags*: CellFlags
 
 
 const MaxTerminalSize = ivec2(10000)  # in characters
@@ -87,6 +94,11 @@ proc resize*(this: TerminalArrangement, v: IVec2) =
   this.cursor = ivec2(this.cursor.x.clamp(0, this.size.x - 1), this.cursor.y.clamp(0, this.size.y - 1))
 
 
+proc newTerminalArrangement*(size = ivec2(80, 24)): TerminalArrangement =
+  new result
+  result.resize size
+
+
 proc scrollDown*(this: TerminalArrangement, ammount = 1) =
   if ammount >= this.size.y:
     clear this
@@ -95,6 +107,27 @@ proc scrollDown*(this: TerminalArrangement, ammount = 1) =
   moveMem(this.data[0].addr, this.data[ammount * this.size.x].addr, sizeof(TerminalCell) * (this.size.y - ammount) * this.size.x)
   for i in ((this.size.y - ammount) * this.size.x)..<(this.size.y * this.size.x):
     this.data[i] = TerminalCell()
+
+
+proc scrollUp*(this: TerminalArrangement, ammount = 1) =
+  if ammount >= this.size.y:
+    clear this
+    return
+
+  moveMem(
+    addr this.data[ammount * this.size.x],
+    addr this.data[0],
+    sizeof(TerminalCell) * (this.size.y - ammount) * this.size.x,
+  )
+  for i in 0 ..< ammount * this.size.x:
+    this.data[i] = TerminalCell()
+
+
+proc clampCursor*(this: TerminalArrangement) =
+  this.cursor = ivec2(
+    this.cursor.x.clamp(0, this.size.x - 1),
+    this.cursor.y.clamp(0, this.size.y - 1),
+  )
 
 
 proc incCursorPos*(this: TerminalArrangement) =
@@ -203,6 +236,93 @@ proc applySgr(this: TerminalArrangement, params: openArray[int]) =
     inc i
 
 
+proc erasedCell(this: TerminalArrangement): TerminalCell =
+  ## erasing fills with the current background (background color erase)
+  TerminalCell(rune: " ".runeAt(0), flags: CellFlags(fg: ColorDimWhite, bg: this.cursorFlags.bg))
+
+
+proc eraseInLine*(this: TerminalArrangement, mode: int) =
+  case mode
+  of 0:  # cursor to end of line
+    for x in this.cursor.x.min(this.size.x - 1) ..< this.size.x:
+      this[x, this.cursor.y] = this.erasedCell()
+  of 1:  # start of line to cursor
+    for x in 0 .. this.cursor.x.min(this.size.x - 1):
+      this[x, this.cursor.y] = this.erasedCell()
+  of 2:  # whole line
+    for x in 0 ..< this.size.x:
+      this[x, this.cursor.y] = this.erasedCell()
+  else: discard
+
+
+proc eraseInDisplay*(this: TerminalArrangement, mode: int) =
+  template clearRows(a, b: int) =
+    for y in a ..< b:
+      for x in 0 ..< this.size.x:
+        this[x, y] = this.erasedCell()
+
+  case mode
+  of 0:  # cursor to end of screen
+    this.eraseInLine(0)
+    clearRows(this.cursor.y + 1, this.size.y)
+  of 1:  # start of screen to cursor
+    this.eraseInLine(1)
+    clearRows(0, this.cursor.y)
+  of 2, 3:  # whole screen
+    clearRows(0, this.size.y)
+  else: discard
+
+
+proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
+  let private = paramsStr.len > 0 and paramsStr[0] == '?'
+  # an empty parameter list means 0 (so a bare "CSI m" is a reset)
+  let params = parseSgrParams(paramsStr, if private: 1 else: 0, paramsStr.len)
+
+  template n(idx, def: int): int =
+    if params.len > idx and params[idx] > 0: params[idx] else: def
+
+  template m(idx: int): int =
+    if params.len > idx: params[idx] else: 0
+
+  if private:
+    case final
+    of 'h', 'l':
+      if m(0) == 25: this.cursorVisible = final == 'h'
+      # 2004 bracketed paste, 1000..1006 mouse reporting, ...: ignored
+    else: discard
+    return
+
+  case final
+  of 'A': this.cursor.y = max(this.cursor.y.int - n(0, 1), 0).int32
+  of 'B': this.cursor.y = min(this.cursor.y.int + n(0, 1), this.size.y - 1).int32
+  of 'C': this.cursor.x = min(this.cursor.x.int + n(0, 1), this.size.x - 1).int32
+  of 'D': this.cursor.x = max(this.cursor.x.int - n(0, 1), 0).int32
+  of 'E':
+    this.cursor.x = 0
+    this.cursor.y = min(this.cursor.y.int + n(0, 1), this.size.y - 1).int32
+  of 'F':
+    this.cursor.x = 0
+    this.cursor.y = max(this.cursor.y.int - n(0, 1), 0).int32
+  of 'G': this.cursor.x = (n(0, 1) - 1).clamp(0, this.size.x - 1).int32
+  of 'H', 'f':
+    this.cursor.y = (n(0, 1) - 1).clamp(0, this.size.y - 1).int32
+    this.cursor.x = (n(1, 1) - 1).clamp(0, this.size.x - 1).int32
+  of 'd': this.cursor.y = (n(0, 1) - 1).clamp(0, this.size.y - 1).int32
+  of 'J': this.eraseInDisplay(m(0))
+  of 'K': this.eraseInLine(m(0))
+  of 'S': this.scrollDown(n(0, 1))
+  of 'T': this.scrollUp(n(0, 1))
+  of 'm': this.applySgr(params)
+  of 's':
+    this.savedCursor = this.cursor
+    this.savedCursorFlags = this.cursorFlags
+  of 'u':
+    this.cursor = this.savedCursor
+    this.clampCursor()
+    this.cursorFlags = this.savedCursorFlags
+  else: discard  # unsupported sequences are ignored
+
+
 proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
   ## Consumes as much of `s` starting at ``i`` as possible.
   ## `i` is advanced past everything consumed.
@@ -214,14 +334,15 @@ proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
 
       case s[i + 1]
       of '[':
-        # CSI: parameter bytes (0x20..0x3F), then a final byte (0x40..0x7E)
+        # CSI: parameter bytes (0x30..0x3F), optional intermediate bytes (0x20..0x2F), final byte (0x40..0x7E)
         var j = i + 2
-        while j < s.len and s[j].byte in 0x20'u8..0x3F'u8: inc j
+        while j < s.len and s[j].byte in 0x30'u8..0x3F'u8: inc j
+        let paramsEnd = j
+        while j < s.len and s[j].byte in 0x20'u8..0x2F'u8: inc j
         if j >= s.len: return
 
         if s[j].byte in 0x40'u8..0x7E'u8:
-          if s[j] == 'm': this.applySgr(parseSgrParams(s, i + 2, j))
-          # other sequences (cursor movement, erasing, ...) are skipped
+          this.applyCsi(s[i + 2 ..< paramsEnd], s[j])
           i = j + 1
         else:
           inc i  # malformed, drop just the escape byte
@@ -245,6 +366,17 @@ proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
         # charset selection: ESC ( <char>
         if i + 2 >= s.len: return
         inc i, 3
+
+      of '7':  # DECSC save cursor
+        this.savedCursor = this.cursor
+        this.savedCursorFlags = this.cursorFlags
+        inc i, 2
+
+      of '8':  # DECRC restore cursor
+        this.cursor = this.savedCursor
+        this.clampCursor()
+        this.cursorFlags = this.savedCursorFlags
+        inc i, 2
 
       else:
         inc i, 2
@@ -274,3 +406,245 @@ proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
       i += rl
 
 
+
+
+# ] ---------------- terminal backends ---------------- [
+# A terminal backend is anything the terminal emulator is attached to:
+# an external shell process, a compiler, or (in the future) a built-in shell.
+# The backend sends what it wants to display to `outputChannel`
+# (thread-safe, from any thread) and receives user input via `sendInput`.
+
+
+when defined(linux):
+  # pty support, imported from libc directly since std/posix does not export these
+  const
+    TIOCSCTTY = 0x540E
+    TIOCSWINSZ = 0x5413
+
+  type WinSize = object
+    row, col, xpixel, ypixel: cushort
+
+  proc c_posix_openpt(flags: cint): cint {.importc: "posix_openpt", header: "<stdlib.h>".}
+  proc c_grantpt(fd: cint): cint {.importc: "grantpt", header: "<stdlib.h>".}
+  proc c_unlockpt(fd: cint): cint {.importc: "unlockpt", header: "<stdlib.h>".}
+  proc c_ptsname(fd: cint): cstring {.importc: "ptsname", header: "<stdlib.h>".}
+  proc c_putenv(s: cstring): cint {.importc: "putenv", header: "<stdlib.h>".}
+  proc c_exit(status: cint) {.importc: "_exit", header: "<unistd.h>".}
+
+
+type
+  TerminalBackendStatus* = enum
+    backendRunning
+    backendFinished
+
+  TerminalBackendObj* = object of RootObj
+    outputChannel*: ptr Channel[string]
+      ## everything the backend prints goes here, from any thread
+
+  TerminalBackend* = ref TerminalBackendObj
+
+  ExternalShellBackendObj* = object of TerminalBackendObj
+    ## an external shell process attached to a virtual terminal:
+    ## a pty on linux, plain pipes on windows (todo: ConPTY)
+    m_status: Atomic[TerminalBackendStatus]
+    m_readerThread: Thread[ShellReaderArgs]
+    m_closed: bool
+    when defined(linux):
+      m_masterFd: cint
+      m_pid: int
+    else:
+      m_process: Process
+
+  ExternalShellBackend* = ref ExternalShellBackendObj
+
+  ShellReaderArgs = object
+    fd: cint  # linux: pty master fd
+    pid: int  # linux
+    process: Process  # non-linux
+    channel: ptr Channel[string]
+    status: ptr Atomic[TerminalBackendStatus]
+
+
+method sendInput*(backend: TerminalBackend, s: string) {.base.} = discard
+method resize*(backend: TerminalBackend, cols, rows: int) {.base.} = discard
+method close*(backend: TerminalBackend) {.base.} = discard
+method status*(backend: TerminalBackend): TerminalBackendStatus {.base.} = backendFinished
+
+
+when defined(linux):
+  proc shellPtyReader(args: ShellReaderArgs) {.thread.} =
+    var buf: array[4096, char]
+    while true:
+      let n = posix.read(args.fd, addr buf[0], buf.len.cint)
+      if n <= 0: break  # EOF or EIO once the shell exits and the pty is closed
+      var chunk = newString(n.int)
+      copyMem(chunk[0].addr, buf.addr, n.int)
+      args.channel[].send(chunk)
+
+    discard posix.close(args.fd)
+    args.status[].store(backendFinished)
+
+
+  proc spawnShellOnPty(command: string, args: openArray[string]): tuple[masterFd: cint, pid: int] =
+    ## forks a new session running `command` with the slave side of a fresh pty
+    ## as its controlling terminal and as stdin/stdout/stderr
+    let masterFd = c_posix_openpt(O_RDWR or O_NOCTTY)
+    if masterFd < 0: raiseOSError(errno.OSErrorCode)
+    if c_grantpt(masterFd) != 0 or c_unlockpt(masterFd) != 0:
+      let err = errno.OSErrorCode
+      discard posix.close(masterFd)
+      raiseOSError(err)
+
+    let slaveName = $c_ptsname(masterFd)
+
+    let path =
+      if '/' in command: command
+      else:
+        let found = findExe(command)
+        if found.len == 0:
+          raise newException(OSError, "shell not found: " & command)
+        found
+
+    var argv = allocCStringArray(@[path] & @args)
+    defer: deallocCStringArray(argv)
+
+    let needTerm = getEnv("TERM").len == 0
+    var termEnv: cstring = nil
+    if needTerm: termEnv = "TERM=xterm-256color"
+
+    let pid = fork()
+    if pid < 0:
+      let err = errno.OSErrorCode
+      discard posix.close(masterFd)
+      raiseOSError(err)
+
+    if pid == 0:
+      # child, only async-signal-safe calls until exec
+      discard setsid()
+      let slaveFd = open(cstring(slaveName), O_RDWR)
+      if slaveFd < 0: c_exit(126)
+      discard ioctl(slaveFd, TIOCSCTTY, 0)
+      discard dup2(slaveFd, 0)
+      discard dup2(slaveFd, 1)
+      discard dup2(slaveFd, 2)
+      if slaveFd > 2: discard posix.close(slaveFd)
+      discard posix.close(masterFd)
+      if termEnv != nil: discard c_putenv(termEnv)
+      discard execv(cstring(path), argv)
+      discard write(2, cstring("cgsand: failed to start shell: "), 31)
+      discard write(2, path.cstring, path.len.cint)
+      discard write(2, cstring("\n"), 1)
+      c_exit(127)
+
+    result = (masterFd, pid.int)
+
+
+else:
+  proc shellPipeReader(args: ShellReaderArgs) {.thread.} =
+    let stream = args.process.outputStream
+    var buf = ""
+    try:
+      while not stream.atEnd:
+        buf.add stream.readChar()
+        if buf.len >= 4096:
+          args.channel[].send(buf)
+          buf = ""
+    except CatchableError: discard
+    if buf.len > 0: args.channel[].send(buf)
+    discard args.process.waitForExit()
+    args.status[].store(backendFinished)
+
+
+proc shutdown(b: var ExternalShellBackendObj) =
+  if b.m_closed: return
+  b.m_closed = true
+
+  when defined(linux):
+    if b.m_masterFd >= 0:
+      discard posix.kill(Pid(b.m_pid), SIGHUP)
+      discard posix.close(b.m_masterFd)  # unblocks the reader thread
+      b.m_masterFd = -1
+  else:
+    try: b.m_process.kill()
+    except CatchableError: discard
+
+  if b.m_readerThread.running:
+    joinThread b.m_readerThread
+
+  when defined(linux):
+    if b.m_pid != 0:
+      # make sure the shell did not survive the hangup
+      discard posix.kill(Pid(b.m_pid), SIGKILL)
+      var wstatus: cint
+      discard posix.waitpid(Pid(b.m_pid), wstatus, 0)  # no zombie
+      b.m_pid = 0
+
+
+proc `=destroy`(b: var ExternalShellBackendObj) =
+  shutdown b
+
+
+method sendInput*(b: ExternalShellBackend, s: string) =
+  if s.len == 0 or b.m_status.load != backendRunning: return
+
+  when defined(linux):
+    var i = 0
+    while i < s.len:
+      let n = posix.write(b.m_masterFd, s[i].unsafeAddr, (s.len - i).cint)
+      if n <= 0: break  # the shell is gone, drop the input
+      inc i, n.int
+  else:
+    try:
+      b.m_process.inputStream.write(s)
+      b.m_process.inputStream.flush()
+    except CatchableError: discard
+
+
+method resize*(b: ExternalShellBackend, cols, rows: int) =
+  when defined(linux):
+    if b.m_masterFd >= 0:
+      var ws = WinSize(row: rows.cushort, col: cols.cushort)
+      discard ioctl(b.m_masterFd, TIOCSWINSZ, addr ws)
+      # the kernel delivers SIGWINCH to the shell, it redraws its prompt
+
+
+method close*(b: ExternalShellBackend) =
+  shutdown b[]
+
+
+method status*(b: ExternalShellBackend): TerminalBackendStatus = b.m_status.load
+
+
+proc newExternalShellBackend*(
+  outputChannel: ptr Channel[string], command: string, args: openArray[string] = [],
+): ExternalShellBackend =
+  ## runs `command` as a terminal backend.
+  ## Its output is sent to `outputChannel` from a background thread,
+  ## user input is forwarded to the process with `sendInput`.
+  new result
+  result.outputChannel = outputChannel
+  result.m_status.store(backendRunning)
+
+  when defined(linux):
+    (result.m_masterFd, result.m_pid) = spawnShellOnPty(command, args)
+
+    var ws = WinSize(row: 24, col: 80)
+    discard ioctl(result.m_masterFd, TIOCSWINSZ, addr ws)
+
+    createThread(result.m_readerThread, shellPtyReader, ShellReaderArgs(
+      fd: result.m_masterFd, pid: result.m_pid,
+      channel: outputChannel, status: result.m_status.addr,
+    ))
+
+  else:
+    # todo: use ConPTY so the shell behaves fully interactive
+    let startArgs =
+      if "powershell" in command.toLowerAscii: @args & @["-NoLogo", "-NoExit", "-Command", "-"]
+      else: @args
+
+    result.m_process = startProcess(command, args = startArgs, options = {poUsePath, poStdErrToStdOut})
+
+    createThread(result.m_readerThread, shellPipeReader, ShellReaderArgs(
+      process: result.m_process,
+      channel: outputChannel, status: result.m_status.addr,
+    ))
