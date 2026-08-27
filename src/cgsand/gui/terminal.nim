@@ -5,7 +5,7 @@ import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, mouseArea]
 import pkg/sigui/window
-import ../logic/[config, terminal, terminal_external_shells]
+import ../logic/[config, terminal]
 
 
 const

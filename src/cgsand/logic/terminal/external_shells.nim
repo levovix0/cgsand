@@ -6,6 +6,7 @@
 
 import std/concurrency/atomics
 import std/[strutils, dynlib]
+import ./backend
 when defined(linux):
   import std/posix, os
 when defined(windows):
@@ -13,16 +14,6 @@ when defined(windows):
 
 
 type
-  TerminalBackendStatus* = enum
-    backendRunning
-    backendFinished
-
-  TerminalBackendObj* = object of RootObj
-    outputChannel*: ptr Channel[string]
-      ## everything the backend prints goes here, from any thread
-
-  TerminalBackend* = ref TerminalBackendObj
-
   ExternalShellBackendObj* = object of TerminalBackendObj
     ## an external shell process attached to a virtual terminal:
     ## a pty on linux, ConPTY on windows
@@ -48,12 +39,6 @@ type
       pid: int
     when defined(windows):
       pipeOut: Handle
-
-
-method sendInput*(backend: TerminalBackend, s: string) {.base.} = discard
-method resize*(backend: TerminalBackend, cols, rows: int) {.base.} = discard
-method close*(backend: TerminalBackend) {.base.} = discard
-method status*(backend: TerminalBackend): TerminalBackendStatus {.base.} = backendFinished
 
 
 when defined(linux):
