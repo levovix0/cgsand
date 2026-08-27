@@ -5,7 +5,7 @@ import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, mouseArea]
 import pkg/sigui/window
-import ../logic/[config, terminal]
+import ../logic/[config, terminal, terminal_external_shells]
 
 
 const
@@ -158,7 +158,7 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       let c = arr[x, y]
       if c.rune == spaceRune: continue
 
-      let (fg, bg) = c.effectiveColors
+      let (fg, _) = c.effectiveColors
       textCtx.color.uniform = fg.vec4
       let glPos = ctx.viewportToGlMatrix * (origin + vec2(x.float32 * cell.x, rowY)).vec3(0)
       ctx.fastRasterDrawRune(c.rune, rect(glPos.xy, cell), textCtx)
