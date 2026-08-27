@@ -172,5 +172,5 @@ proc parseColorTheme(json: string): ColorTheme =
 let colorTheme* = parseColorTheme(vscodeThemeJson)
 
 
-let font_monospace* = findSystemFont(@["firacode", "monospace"] & @["roboto", "ubuntu", "notosans", "arial", "adwaitasans"])
+let font_monospace* = findSystemFont(@["firacode", "monospace", "consola"] & @["roboto", "ubuntu", "notosans", "arial", "adwaitasans"])
 

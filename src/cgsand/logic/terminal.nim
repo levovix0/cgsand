@@ -1,8 +1,9 @@
-import std/[unicode, terminal, strutils, os, osproc]
+import std/[unicode, terminal, strutils, streams, osproc]
 import std/concurrency/atomics
 import pkg/[vmath, chroma]
 when defined(linux):
-  import std/posix
+  import std/posix, os
+
 
 const
   ColorDimBlack*      = parseHtmlHex("#202223")

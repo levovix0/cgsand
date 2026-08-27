@@ -4,6 +4,7 @@
 
 .*
 !.gitignore
+!.gitattributes
 !/.github
 /.vscode
 /build
@@ -25,3 +26,5 @@ local-*
 /out.svg
 /examples/**/*.pdf
 /examples/**/*.svg
+
+AGENTS.md
