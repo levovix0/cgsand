@@ -4,12 +4,14 @@
 # The backend sends what it wants to display to `outputChannel`
 # (thread-safe, from any thread) and receives user input via `sendInput`.
 
-import std/concurrency/atomics
-import std/[strutils, dynlib]
-import ./backend
+import std/concurrency/[atomics]
+import ./[backend]
+
 when defined(linux):
-  import std/posix, os
+  import std/[posix, os]
+
 when defined(windows):
+  import std/[strutils, dynlib]
   import std/[winlean, os]
 
 
@@ -45,7 +47,7 @@ when defined(linux):
   # pty support, imported from libc directly since std/posix does not export these
   const
     TIOCSCTTY = 0x540E
-    TIOCGWINSZ = 0x5413
+    # TIOCGWINSZ = 0x5413
     TIOCSWINSZ = 0x5414
 
   type WinSize = object

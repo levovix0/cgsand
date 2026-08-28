@@ -47,12 +47,10 @@ type
   TerminalArrangement* = ref object
     size*: IVec2
     data*: seq[TerminalCell]  # y * size.x + x  ->  character at row y, col x
+
     cursor*: TerminalCursor
     cursorFlags*: CellFlags
     cursorVisible*: bool = true
-
-    savedCursor*: TerminalCursor
-    savedCursorFlags*: CellFlags
 
     ## replies to terminal queries from the program (DA1, background color, cursor position, ...).
     ## The caller drains this after `handleInput` and forwards it to the backend
@@ -61,6 +59,21 @@ type
     ## colors reported to the program in OSC 10/11 (text foreground/background) queries
     queryForegroundColor*: Color = ColorDimWhite
     queryBackgroundColor*: Color = ColorDimBlack
+
+    ## the inactive screen buffer, swapped with `data` on a switch to/from
+    ## the alternate screen (CSI ?47/?1047/?1049, used by vim, nano, ...)
+    altData: seq[TerminalCell]
+    usingAltScreen: bool
+
+    savedCursor: tuple[main, alt: (TerminalCursor, CellFlags)]  # for saving cursor when switching berween main and alt screen buffers
+
+    ## the scrolling region [scrollTop, scrollBottom] rows, 0-based, inclusive.
+    ## scrollBottom < 0 means the last row of the screen (DECSTBM, CSI r)
+    scrollTop: int32 = 0
+    scrollBottom: int32 = -1
+
+    originMode: bool = false  # DECOM: cursor addressing is relative to the scrolling region
+    wrapAround: bool = true  # DECAWM: wrap to the next line at the right edge
 
 
 const MaxTerminalSize = ivec2(10000)  # in characters
@@ -85,19 +98,34 @@ proc `[]=`*(this: TerminalArrangement, x, y: int, v: TerminalCell) =
 proc clear*(this: TerminalArrangement, to = TerminalCell()) =
   for x in this.data.mitems: x = to
 
+
+proc resize(src: var seq[TerminalCell], oldSize, newSize: IVec2, skipTop: int32) =
+  var res = newSeq[TerminalCell](newSize.x * newSize.y)
+  for y in 0 ..< min(oldSize.y - skipTop, newSize.y):
+    for x in 0 ..< min(oldSize.x, newSize.x):
+      res[y * newSize.x + x] = src[(y + skipTop) * oldSize.x + x]
+  src = ensureMove res
+
+
 proc resize*(this: TerminalArrangement, v: IVec2) =
   let v = ivec2(v.x.clamp(1, MaxTerminalSize.x), v.y.clamp(1, MaxTerminalSize.y))
+  if v == this.size: return
 
-  let prevData = move this.data
-  this.data = newSeqUninit[TerminalCell](v.x * v.y)
-  clear this
+  let removedRows = max(0, this.size.y - v.y)
+  let skipTop = min(removedRows, this.cursor.y)
+  let skipTopInactive = removedRows
 
-  for y in 0..<min(this.size.y, v.y):
-    for x in 0..<min(this.size.x, v.x):
-      this.data[y * v.x + x] = prevData[y * this.size.x + x]
+  this.data.resize(this.size, v, skipTop)
+  this.altData.resize(this.size, v, skipTopInactive)
 
   this.size = v
-  this.cursor = ivec2(this.cursor.x.clamp(0, this.size.x - 1), this.cursor.y.clamp(0, this.size.y - 1))
+  this.cursor = ivec2(
+    this.cursor.x.clamp(0, v.x - 1),
+    (this.cursor.y - skipTop).clamp(0, v.y - 1),
+  )
+  # a scrolling region does not survive a resize
+  this.scrollTop = 0
+  this.scrollBottom = -1
 
 
 proc newTerminalArrangement*(size = ivec2(80, 24)): TerminalArrangement =
@@ -105,27 +133,51 @@ proc newTerminalArrangement*(size = ivec2(80, 24)): TerminalArrangement =
   result.resize size
 
 
+proc bottomMargin(this: TerminalArrangement): int32 =
+  if this.scrollBottom < 0: this.size.y - 1 else: this.scrollBottom
+
+
 proc scrollDown*(this: TerminalArrangement, ammount = 1) =
-  if ammount >= this.size.y:
-    clear this
+  ## scroll the scrolling region up by `ammount` lines:
+  ## the content moves up, blank lines appear at the bottom of the region
+  let top = this.scrollTop
+  let bottom = this.bottomMargin()
+  let w = this.size.x
+
+  if ammount >= bottom - top + 1:
+    for y in top .. bottom:
+      for x in 0 ..< w:
+        this[x, y] = TerminalCell()
     return
-  
-  moveMem(this.data[0].addr, this.data[ammount * this.size.x].addr, sizeof(TerminalCell) * (this.size.y - ammount) * this.size.x)
-  for i in ((this.size.y - ammount) * this.size.x)..<(this.size.y * this.size.x):
+
+  moveMem(
+    this.data[top * w].addr,
+    this.data[(top + ammount) * w].addr,
+    sizeof(TerminalCell) * (bottom - top + 1 - ammount) * w,
+  )
+  for i in (bottom + 1 - ammount) * w ..< (bottom + 1) * w:
     this.data[i] = TerminalCell()
 
 
 proc scrollUp*(this: TerminalArrangement, ammount = 1) =
-  if ammount >= this.size.y:
-    clear this
+  ## scroll the scrolling region down by `ammount` lines:
+  ## the content moves down, blank lines appear at the top of the region
+  let top = this.scrollTop
+  let bottom = this.bottomMargin()
+  let w = this.size.x
+
+  if ammount >= bottom - top + 1:
+    for y in top .. bottom:
+      for x in 0 ..< w:
+        this[x, y] = TerminalCell()
     return
 
   moveMem(
-    addr this.data[ammount * this.size.x],
-    addr this.data[0],
-    sizeof(TerminalCell) * (this.size.y - ammount) * this.size.x,
+    addr this.data[(top + ammount) * w],
+    addr this.data[top * w],
+    sizeof(TerminalCell) * (bottom - top + 1 - ammount) * w,
   )
-  for i in 0 ..< ammount * this.size.x:
+  for i in top * w ..< (top + ammount) * w:
     this.data[i] = TerminalCell()
 
 
@@ -136,23 +188,37 @@ proc clampCursor*(this: TerminalArrangement) =
   )
 
 
+proc newline*(this: TerminalArrangement) =
+  if this.cursor.y == this.bottomMargin():
+    this.scrollDown(1)
+  elif this.cursor.y < this.size.y - 1:
+    inc this.cursor.y
+
+
 proc incCursorPos*(this: TerminalArrangement) =
   inc this.cursor.x
 
   if this.cursor.x >= this.size.x:
     this.cursor.x = 0
-    inc this.cursor.y
-
-  if this.cursor.y >= this.size.y:
-    this.scrollDown(this.size.y - this.cursor.y + 1)
-    this.cursor.y = this.size.y - 1
+    this.newline()
 
 
-proc newline*(this: TerminalArrangement) =
-  inc this.cursor.y
-  if this.cursor.y >= this.size.y:
-    this.scrollDown(this.cursor.y - this.size.y + 1)
-    this.cursor.y = this.size.y - 1
+proc saveTo(this: TerminalArrangement, slot: var (TerminalCursor, CellFlags)) =
+  slot = (this.cursor, this.cursorFlags)
+
+proc restoreFrom(this: TerminalArrangement, slot: var (TerminalCursor, CellFlags)) =
+  this.cursor = slot[0]
+  this.clampCursor()
+  this.cursorFlags = slot[1]
+
+proc currentSavedCursor(this: TerminalArrangement): var (TerminalCursor, CellFlags) =
+  (if this.usingAltScreen: this.savedCursor.alt.addr else: this.savedCursor.main.addr)[]
+
+
+proc switchScreen(this: TerminalArrangement, alt: bool) =
+  if alt == this.usingAltScreen: return
+  this.usingAltScreen = alt
+  swap this.data, this.altData
 
 
 proc ansiColor256(n: int): Color =
@@ -293,8 +359,31 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
   if private:
     case final
     of 'h', 'l':
-      if m(0) == 25: this.cursorVisible = final == 'h'
-      # 2004 bracketed paste, 1000..1006 mouse reporting, ...: ignored
+      let isAlt = final == 'h'
+      for p in params:
+        case p
+        of 25: this.cursorVisible = isAlt
+        of 6:  # DECOM, origin mode
+          this.originMode = isAlt
+          this.cursor = ivec2(0, if isAlt: this.scrollTop else: 0)
+        of 7: this.wrapAround = isAlt  # DECAWM
+        of 47: this.switchScreen isAlt
+        of 1047:
+          # like 47, but the alternate screen is cleared when leaving it
+          if not isAlt and this.usingAltScreen: this.clear()
+          this.switchScreen isAlt
+        of 1048:
+          if isAlt: this.saveTo(this.savedCursor.main)
+          else: this.restoreFrom(this.savedCursor.main)
+        of 1049:
+          if isAlt:
+            this.saveTo(this.savedCursor.main)
+            this.switchScreen(alt=true)
+            this.clear()
+          else:
+            this.switchScreen(alt=false)
+            this.restoreFrom(this.savedCursor.main)
+        else: discard  # 2004 bracketed paste, 1000..1006 mouse reporting, ...: ignored
     of 'u':
       if paramsStr == "?":  # kitty keyboard protocol query -> not supported
         this.pendingResponses.add "\x1b[?0u"
@@ -316,8 +405,14 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
     return
 
   case final
-  of 'A': this.cursor.y = max(this.cursor.y.int - n(0, 1), 0).int32
-  of 'B': this.cursor.y = min(this.cursor.y.int + n(0, 1), this.size.y - 1).int32
+  of 'A':
+    # stops at the top margin when the cursor starts at or below it
+    let limit = if this.cursor.y >= this.scrollTop: this.scrollTop else: 0
+    this.cursor.y = max(this.cursor.y.int - n(0, 1), limit.int).int32
+  of 'B':
+    # stops at the bottom margin when the cursor starts at or above it
+    let limit = if this.cursor.y <= this.bottomMargin(): this.bottomMargin() else: this.size.y - 1
+    this.cursor.y = min(this.cursor.y.int + n(0, 1), limit.int).int32
   of 'C': this.cursor.x = min(this.cursor.x.int + n(0, 1), this.size.x - 1).int32
   of 'D': this.cursor.x = max(this.cursor.x.int - n(0, 1), 0).int32
   of 'E':
@@ -328,13 +423,28 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
     this.cursor.y = max(this.cursor.y.int - n(0, 1), 0).int32
   of 'G': this.cursor.x = (n(0, 1) - 1).clamp(0, this.size.x - 1).int32
   of 'H', 'f':
-    this.cursor.y = (n(0, 1) - 1).clamp(0, this.size.y - 1).int32
+    # in origin mode addressing is relative to the scrolling region
+    let top = if this.originMode: this.scrollTop else: 0
+    let bottom = if this.originMode: this.bottomMargin() else: this.size.y - 1
+    this.cursor.y = (top + n(0, 1) - 1).clamp(top.int, bottom.int).int32
     this.cursor.x = (n(1, 1) - 1).clamp(0, this.size.x - 1).int32
-  of 'd': this.cursor.y = (n(0, 1) - 1).clamp(0, this.size.y - 1).int32
+  of 'd':
+    let top = if this.originMode: this.scrollTop else: 0
+    let bottom = if this.originMode: this.bottomMargin() else: this.size.y - 1
+    this.cursor.y = (top + n(0, 1) - 1).clamp(top.int, bottom.int).int32
   of 'J': this.eraseInDisplay(m(0))
   of 'K': this.eraseInLine(m(0))
   of 'S': this.scrollDown(n(0, 1))
   of 'T': this.scrollUp(n(0, 1))
+  of 'r':
+    # DECSTBM: the scrolling region [top; bottom], 1-based inclusive
+    let top = n(0, 1) - 1
+    let bottom = n(1, this.size.y) - 1
+    if top in 0 ..< this.size.y.int and bottom in 0 ..< this.size.y.int and top < bottom:
+      this.scrollTop = top.int32
+      this.scrollBottom = bottom.int32
+      # the cursor homes, to the region top in origin mode
+      this.cursor = ivec2(0, if this.originMode: top.int32 else: 0'i32)
   of 'm': this.applySgr(params)
   of 'c':  # DA1, Primary Device Attributes -> plain VT102
     this.pendingResponses.add "\x1b[?6c"
@@ -342,13 +452,8 @@ proc applyCsi(this: TerminalArrangement, paramsStr: string, final: char) =
     if m(0) == 6:
       let x = min(this.cursor.x, this.size.x - 1)
       this.pendingResponses.add "\x1b[" & $(this.cursor.y + 1) & ";" & $(x + 1) & "R"
-  of 's':
-    this.savedCursor = this.cursor
-    this.savedCursorFlags = this.cursorFlags
-  of 'u':
-    this.cursor = this.savedCursor
-    this.clampCursor()
-    this.cursorFlags = this.savedCursorFlags
+  of 's': this.saveTo(this.currentSavedCursor)
+  of 'u': this.restoreFrom(this.currentSavedCursor)
   else: discard  # unsupported sequences are ignored
 
 
@@ -420,14 +525,27 @@ proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
         inc i, 3
 
       of '7':  # DECSC save cursor
-        this.savedCursor = this.cursor
-        this.savedCursorFlags = this.cursorFlags
+        this.saveTo(this.currentSavedCursor)
         inc i, 2
 
       of '8':  # DECRC restore cursor
-        this.cursor = this.savedCursor
-        this.clampCursor()
-        this.cursorFlags = this.savedCursorFlags
+        this.restoreFrom(this.currentSavedCursor)
+        inc i, 2
+
+      of 'D':  # IND, index: one line down, scrolls the region at its bottom
+        this.newline()
+        inc i, 2
+
+      of 'E':  # NEL, next line
+        this.cursor.x = 0
+        this.newline()
+        inc i, 2
+
+      of 'M':  # RI, reverse index: one line up, scrolls the region at its top
+        if this.cursor.y == this.scrollTop:
+          this.scrollUp(1)
+        elif this.cursor.y > 0:
+          dec this.cursor.y
         inc i, 2
 
       else:
@@ -450,8 +568,11 @@ proc handleInput*(this: TerminalArrangement, s: string, i: var int) =
 
       if this.cursor.x >= this.size.x:
         # deferred wrap: the line exactly filled the last column
-        this.cursor.x = 0
-        this.newline()
+        if this.wrapAround:
+          this.cursor.x = 0
+          this.newline()
+        else:
+          this.cursor.x = this.size.x - 1
 
       this[this.cursor] = TerminalCell(rune: s.runeAt(i), flags: this.cursorFlags)
       inc this.cursor.x  # may reach size.x, wrapped lazily by the next rune
