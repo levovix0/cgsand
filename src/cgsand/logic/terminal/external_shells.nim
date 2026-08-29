@@ -4,7 +4,7 @@
 # The backend sends what it wants to display to `outputChannel`
 # (thread-safe, from any thread) and receives user input via `sendInput`.
 
-import std/concurrency/[atomics]
+import std/concurrency/atomics
 import ./[backend]
 
 when defined(linux):
@@ -38,7 +38,6 @@ type
     status: ptr Atomic[TerminalBackendStatus]
     when defined(linux):
       fd: cint  # pty master fd
-      pid: int
     when defined(windows):
       pipeOut: Handle
 
@@ -97,10 +96,9 @@ when defined(linux):
     var argv = allocCStringArray(@[path] & @args)
     defer: deallocCStringArray(argv)
 
-    let term = getEnv("TERM")
-    var termEnv: cstring = nil
     # the shell needs a real TERM, otherwise it degrades (fish skips its terminal handshake for dumb)
-    if term.len == 0 or term == "dumb":
+    var termEnv: cstring = nil
+    if getEnv("TERM") in ["", "dumb"]:
       termEnv = "TERM=xterm-256color"
 
     let pid = fork()
@@ -128,7 +126,6 @@ when defined(linux):
       c_exit(127)
 
     result = (masterFd, pid.int)
-
 
 
 when defined(windows):
@@ -187,24 +184,21 @@ when defined(windows):
       createPseudoConsole: CreatePseudoConsoleProc
       resizePseudoConsole: ResizePseudoConsoleProc
       closePseudoConsole: ClosePseudoConsoleProc
-      releasePseudoConsole: ReleasePseudoConsoleProc  # conpty.dll only, noop otherwise
+      releasePseudoConsole: ReleasePseudoConsoleProc  # conpty.dll only, nil otherwise
 
   proc loadConptyApi(): ConptyApi =
     proc loadFrom(lib: LibHandle, names: tuple[create, resize, close, release: string]): ConptyApi =
-      if lib != nil:
-        let create = cast[CreatePseudoConsoleProc](symAddr(lib, names.create.cstring))
-        let resize = cast[ResizePseudoConsoleProc](symAddr(lib, names.resize.cstring))
-        let close = cast[ClosePseudoConsoleProc](symAddr(lib, names.close.cstring))
-        if create != nil and resize != nil and close != nil:
-          result.lib = lib
-          result.createPseudoConsole = create
-          result.resizePseudoConsole = resize
-          result.closePseudoConsole = close
-          let release = cast[ReleasePseudoConsoleProc](symAddr(lib, names.release.cstring))
-          if release != nil:
-            result.releasePseudoConsole = release
-          else:
-            result.releasePseudoConsole = proc(hpc: Handle) {.stdcall, gcsafe.} = discard
+      let create = cast[CreatePseudoConsoleProc](symAddr(lib, names.create.cstring))
+      let resize = cast[ResizePseudoConsoleProc](symAddr(lib, names.resize.cstring))
+      let close = cast[ClosePseudoConsoleProc](symAddr(lib, names.close.cstring))
+      if create != nil and resize != nil and close != nil:
+        result = ConptyApi(
+          lib: lib,
+          createPseudoConsole: create,
+          resizePseudoConsole: resize,
+          closePseudoConsole: close,
+          releasePseudoConsole: cast[ReleasePseudoConsoleProc](symAddr(lib, names.release.cstring)),
+        )
 
     # conpty.dll looks up OpenConsole.exe next to itself, both files must be shipped together
     let appDir = getAppDir()
@@ -226,8 +220,6 @@ when defined(windows):
     if conptyApi.createPseudoConsole == nil:
       conptyApi = loadConptyApi()
     conptyApi
-
-
 
 
   proc shellConPtyReader(args: ShellReaderArgs) {.thread.} =
@@ -268,6 +260,7 @@ when defined(windows):
     var attrSize: int = 0
     discard cInitializeProcThreadAttributeList(nil, 1, 0, attrSize)
     var attrBuf = newSeq[byte](attrSize)
+    defer: cDeleteProcThreadAttributeList(addr attrBuf[0])
     if cInitializeProcThreadAttributeList(addr attrBuf[0], 1, 0, attrSize) == 0 or
         cUpdateProcThreadAttribute(
           addr attrBuf[0], 0, ProcThreadAttributePseudoconsole,
@@ -275,7 +268,6 @@ when defined(windows):
           cast[pointer](hPty), sizeof(Handle), nil, nil,
         ) == 0:
       let err = osLastError()
-      cDeleteProcThreadAttributeList(addr attrBuf[0])
       api.closePseudoConsole(hPty)
       raiseOSError(err)
 
@@ -290,14 +282,13 @@ when defined(windows):
     var cmdlineW = newWideCString(quoteShellCommand(@[command] & @args))
     if cCreateProcessW(nil, cmdlineW, nil, nil, 0, ExtendedStartupinfoPresent, nil, nil, addr si, addr pi) == 0:
       let err = osLastError()
-      cDeleteProcThreadAttributeList(addr attrBuf[0])
       api.closePseudoConsole(hPty)
       raise newException(OSError, "failed to start shell: " & command & ", " & $err)
 
-    cDeleteProcThreadAttributeList(addr attrBuf[0])
     discard cCloseHandle(pi.thread)
     # conpty.dll: drop the setup keep-alive so the pty ends with the shell
-    api.releasePseudoConsole(hPty)
+    if api.releasePseudoConsole != nil:
+      api.releasePseudoConsole(hPty)
     result = (hPty, inWrite, outRead, pi.process)
 
 
@@ -345,7 +336,7 @@ proc `=destroy`(b: var ExternalShellBackendObj) =
 
 
 method sendInput*(b: ExternalShellBackend, s: string) =
-  if s.len == 0 or b.m_status.load != backendRunning: return
+  if b.m_status.load != backendRunning: return
 
   when defined(linux):
     var i = 0
@@ -397,7 +388,7 @@ proc newExternalShellBackend*(
     discard ioctl(result.m_masterFd, TIOCSWINSZ, addr ws)
 
     createThread(result.m_readerThread, shellPtyReader, ShellReaderArgs(
-      fd: result.m_masterFd, pid: result.m_pid,
+      fd: result.m_masterFd,
       channel: outputChannel, status: result.m_status.addr,
     ))
 

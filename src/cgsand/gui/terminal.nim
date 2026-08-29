@@ -12,6 +12,9 @@ const
   CursorBlinkPeriod = 1.2'f32
   CursorSolidAfterActivity = 0.8'f32  # the cursor does not blink right after output/input
 
+  WheelScrollLines = 3  # history lines / arrow keys per wheel notch
+
+
 type
   TerminalContent* = ref object of Uiobj
     ## the terminal "screen": renders a TerminalArrangement and forwards
@@ -51,6 +54,7 @@ proc sendInput*(this: Terminal, s: string) =
 
 proc clear*(this: Terminal) =
   this.content.arrangement.clear()
+  this.content.arrangement.clearScrollback()
   redraw this.content
 
 
@@ -120,7 +124,7 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
   for y in 0 ..< arr.size.y:
     let rowY = y.float32 * cell.y
     for x in 0 ..< arr.size.x:
-      let c = arr[x, y]
+      let c = arr.viewCell(x, y)
       let (fg, bg) = c.effectiveColors
 
       if bg != ColorDimBlack:
@@ -138,8 +142,8 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
           fg,
         )
 
-  # terminal cursor
-  if arr.cursorVisible and currentFocus[] == this:
+  # terminal cursor (it lives on the live screen, not in the scrolled-back view)
+  if arr.cursorVisible and not arr.scrolledBack and currentFocus[] == this:
     let idle = epochTime() - this.lastActivity
     let blinkOn = idle < CursorSolidAfterActivity or
       (idle - CursorSolidAfterActivity) mod CursorBlinkPeriod < CursorBlinkPeriod / 2
@@ -155,7 +159,7 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
   for y in 0 ..< arr.size.y:
     let rowY = y.float32 * cell.y
     for x in 0 ..< arr.size.x:
-      let c = arr[x, y]
+      let c = arr.viewCell(x, y)
       if c.rune == spaceRune: continue
 
       let (fg, _) = c.effectiveColors
@@ -169,9 +173,9 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
 proc keyToSequence(e: KeyEvent): string =
   ## what to send to the shell when a key is pressed
   let kb = e.window.keyboard
-  let ctrl = Key.lcontrol in kb.pressed or Key.rcontrol in kb.pressed
-  let alt = Key.lalt in kb.pressed or Key.ralt in kb.pressed
-  let shift = containsShift kb.pressed
+  let ctrl = kb.modifiers.contains(control)
+  let alt = kb.modifiers.contains(alt)
+  let shift = kb.modifiers.contains(shift)
 
   case e.key
   of Key.enter: "\r"
@@ -220,6 +224,7 @@ method recieve*(this: TerminalContent, signal: Signal) =
 
         if text.len > 0:
           this.terminal.sendInput(text)
+          this.arrangement.scrollToBottom()
           this.lastActivity = epochTime()
           we.handled = true
 
@@ -229,6 +234,7 @@ method recieve*(this: TerminalContent, signal: Signal) =
         let seq = keyToSequence(e[])
         if seq.len > 0:
           this.terminal.sendInput(seq)
+          this.arrangement.scrollToBottom()
           this.lastActivity = epochTime()
           we.handled = true
 
@@ -237,15 +243,39 @@ method init*(this: TerminalContent) =
   procCall this.super.init()
 
   this.font{} = font_monospace.withSize(11)
-  this.arrangement = newTerminalArrangement()
+  this.arrangement = newTerminalArrangement(scrollbackLines = currentConfig.terminalScrollbackLines)
 
   this.makeLayout:
     - MouseArea.new:
       this.fill(parent)
-      # allowEventFallthrough = true
 
       on this.pressed[] == true:
         setFocus root
+
+      this.scrolled.connectTo root, delta:
+        let arr = root.arrangement
+        if arr == nil: return
+        
+        let delta = if this.parentWindow.keyboard.modifiers.contains(shift): vec2(delta.y, delta.x) else: delta
+
+        if delta.x != 0 and root.terminal != nil:
+          # send left/right arrow keys
+          let cols = max(1, (WheelScrollLines.float32 * abs(delta.x)).round.int)
+          for i in 0 ..< cols:
+            root.terminal.sendInput(if delta.x < 0: "\x1b[D" else: "\x1b[C")
+
+        if delta.y != 0:
+          let lines = max(1, (WheelScrollLines.float32 * abs(delta.y)).round.int)
+
+          if arr.usingAltScreen:
+            # send up/down arrow keys
+            if root.terminal != nil:
+              for i in 0 ..< lines:
+                root.terminal.sendInput(if delta.y < 0: "\x1b[A" else: "\x1b[B")
+          else:
+            # scroll through the history
+            arr.scrollView(if delta.y < 0: lines else: -lines)
+            redraw root
 
 
 proc drainOutput(this: Terminal) =

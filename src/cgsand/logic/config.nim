@@ -23,6 +23,9 @@ type
     ## terminal shell executable, empty = platform default (fish on linux, powershell on windows)
     shellPath*: string = ""
 
+    ## how many lines of scrollback history the terminal main screen keeps (0 disables history)
+    terminalScrollbackLines*: int = 1000
+
   ColorTheme* = object
     cActive*: Color
     cInActive*: Color
