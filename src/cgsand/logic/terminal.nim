@@ -1,2 +1,2 @@
-import terminal/[emulator, backend, external_shells]
-export emulator, backend, external_shells
+import terminal/[emulator, backend, external_shells, file_links]
+export emulator, backend, external_shells, file_links

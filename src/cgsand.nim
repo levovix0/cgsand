@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea]
 import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
-import ./cgsand/logic/[config, scripts]
+import ./cgsand/logic/[config, scripts, file_openers]
 
 globalLocale[0] = systemLocale()
 
@@ -139,6 +139,8 @@ win.makeLayout:
       on this.resized:
         terminalPortion[] = max(-e, 0) / contentArea.w[]
         normalizePortions()
+
+    terminal.fileOpeners = @[FileOpener CodeEditorFileOpener(editor: codeEditor)]
 
 run win
 

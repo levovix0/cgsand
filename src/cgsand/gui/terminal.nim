@@ -5,7 +5,7 @@ import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, mouseArea]
 import pkg/sigui/window
-import ../logic/[config, terminal]
+import ../logic/[config, terminal, file_openers]
 
 
 const
@@ -48,8 +48,16 @@ type
     lastMousePos: Vec2    ## for autoscrolling a drag past the top/bottom edge
     lastAutoScroll: float
 
+    # clickable file paths: hovered ones are underlined, ctrl+click opens them
+    mouseArea: MouseArea
+    hoveredLink: TerminalLink
+    hoveredLinkValid: bool
+    linkCursorShown: bool  ## whether the mouse cursor is currently a hand
+
   Terminal* = ref object of Uiobj
     content*: TerminalContent
+
+    fileOpeners*: seq[FileOpener]
 
     backend: TerminalBackend
     m_outputChannel: Channel[string]
@@ -259,6 +267,44 @@ proc pasteClipboard*(this: TerminalContent) =
     this.lastActivity = epochTime()
 
 
+# --- clickable file paths ---------------------------------------------------
+
+
+proc updateHoveredLink(this: TerminalContent, pos: Vec2) =
+  ## underline the file path under the mouse, if any
+  var link = TerminalLink()
+  var found = false
+  if this.arrangement != nil:
+    let l = this.arrangement.fileLinkAt(this.posToCell(pos))
+    link = l.link
+    found = l.found
+
+  if found != this.hoveredLinkValid or (found and link != this.hoveredLink):
+    this.hoveredLink = link
+    this.hoveredLinkValid = found
+    redraw this
+
+  # the hand cursor marks the path as clickable
+  if this.mouseArea != nil and this.linkCursorShown != found:
+    this.linkCursorShown = found
+    this.mouseArea.cursor[] = if found: BuiltinCursor.pointingHand else: BuiltinCursor.text
+
+
+proc clearHoveredLink(this: TerminalContent) =
+  if this.hoveredLinkValid:
+    this.hoveredLinkValid = false
+    redraw this
+  if this.linkCursorShown:
+    this.linkCursorShown = false
+    if this.mouseArea != nil:
+      this.mouseArea.cursor[] = BuiltinCursor.text
+
+
+proc openHoveredLink(this: TerminalContent) =
+  if not this.hoveredLinkValid or this.terminal == nil: return
+  discard this.terminal.fileOpeners.openFile(this.hoveredLink.target)
+
+
 proc effectiveColors(cell: TerminalCell): tuple[fg, bg: Color] =
   result = (cell.flags.fg, cell.flags.bg)
   if styleReverse in cell.flags.style:
@@ -319,6 +365,22 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
         ),
         colorTheme.bgSelection,
       )
+
+  # hovered file path: underlined like a link (ctrl+click opens it)
+  if this.hoveredLinkValid:
+    let link = this.hoveredLink
+    let viewTop = arr.absViewRow(0)
+    for r in link.a.y .. link.b.y:
+      let y = r.int - viewTop
+      if y notin 0 ..< arr.size.y.int: continue
+      let x0 = (if r == link.a.y: link.a.x.int else: 0).max(0)
+      let x1 = (if r == link.b.y: link.b.x.int else: arr.size.x.int - 1).min(arr.size.x.int - 1)
+      for x in x0 .. x1:
+        let c = arr.viewCell(x, y)
+        ctx.fillRect(
+          rect(origin + vec2(x.float32 * cell.x, y.float32 * cell.y + cell.y - 1.5'f32), vec2(cell.x, 1.5'f32)),
+          c.effectiveColors.fg,
+        )
 
   # terminal cursor (it lives on the live screen, not in the scrolled-back view)
   if arr.cursorVisible and not arr.scrolledBack and currentFocus[] == this:
@@ -442,19 +504,31 @@ method init*(this: TerminalContent) =
     this.parentUiRoot.onTick.connectTo this:
       this.selectionAutoScroll()
 
-    - MouseArea.new:
+    - MouseArea.new as root.mouseArea:
       this.fill(parent)
       cursor = BuiltinCursor.text
 
+      # re-evaluate the link under the mouse every frame: the content under a
+      # still mouse can change (new output, scrolling)
+      this.parentUiRoot.onTick.connectTo this:
+        if this.hovered[]:
+          root.updateHoveredLink(this.mouseXy[])
+        else:
+          root.clearHoveredLink()
+
       on this.pressed[] == true:
         setFocus root
-        root.selectionPressed(this.mouseXy[])
+        if root.hoveredLinkValid and this.parentWindow.keyboard.modifiers.contains(control):
+          root.openHoveredLink()
+        else:
+          root.selectionPressed(this.mouseXy[])
 
       on this.pressed[] == false:
         root.selectDragging = false
 
       this.moved.connectTo root:
         root.selectionMoved(this.mouseXy[])
+        root.updateHoveredLink(this.mouseXy[])
 
       this.scrolled.connectTo root, delta:
         let arr = root.arrangement

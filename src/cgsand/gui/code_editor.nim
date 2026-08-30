@@ -1,10 +1,10 @@
-import std/[sets]
+import std/[sets, os]
 import pkg/[vmath, chroma]
 import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
 import pkg/sigui/window
-import ../logic/[config, code_editor, asyncio]
+import ../logic/[config, code_editor, asyncio, file_openers]
 import ./[highlighted_text]
 
 
@@ -23,8 +23,16 @@ type
 
     filename: string   ## path to save on disk (empty = read-only)
 
+    pendingLine*: int  ## where to put the cursor once the file is loaded (1-based, 0 = none)
+    pendingCol*: int
+    onGoToY*: proc(y: float32)  ## scrolls the viewport after a jump to a position
+
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
+    scrollArea: ScrollArea
+
+  CodeEditorFileOpener* = ref object of FileOpener
+    editor*: CodeEditor
 
 const MinSelectionWidth = 6'f32
 const ScrollBarWidth = 5'f32
@@ -309,6 +317,22 @@ method init*(this: CodeEditorContent) =
           redraw(root)
 
 
+proc applyPendingPosition(this: CodeEditorContent) =
+  ## put the cursor where `openAt` asked and scroll the line into view
+  let line = this.pendingLine
+  let col = this.pendingCol
+  this.pendingLine = 0
+  this.pendingCol = 0
+  if this.arrangement == nil or line < 1: return
+
+  let l = (line - 1).clamp(0, this.arrangement.lines.len - 1)
+  let c = (if col < 1: 0 else: col - 1).clamp(0, this.arrangement.lines[l].arrangement.runes.len)
+  this.arrangement.setCursorPos(l, c)
+  if this.onGoToY != nil:
+    this.onGoToY(this.arrangement.lines[l].rect.y)
+  redraw this
+
+
 proc updateContent(this: CodeEditor) =
   let path = currentScript[]
   try:
@@ -317,7 +341,26 @@ proc updateContent(this: CodeEditor) =
   except CatchableError as exc:
     this.content.filename = ""
     this.content.setArrangement("Unable to read script: " & path & "\n" & exc.msg)
+  this.content.applyPendingPosition()
 
+
+proc open*(this: CodeEditor, target: FileTarget) =
+  ## show the file in this editor and put the cursor at the target position
+  this.content.pendingLine = target.line
+  this.content.pendingCol = target.column
+  setFocus this.content
+  if currentScript[] == target.path:
+    this.updateContent()
+  else:
+    currentScript[] = target.path  # updateContent runs on change
+
+
+method canOpen(this: CodeEditorFileOpener, target: FileTarget): bool =
+  fileExists(target.path)
+
+
+method open(this: CodeEditorFileOpener, target: FileTarget) =
+  this.editor.open(target)
 
 
 method init*(this: CodeEditor) =
@@ -328,7 +371,7 @@ method init*(this: CodeEditor) =
       this.fill(parent)
       color = colorTheme.bgTextArea
 
-    - ScrollArea.new:
+    - ScrollArea.new as root.scrollArea:
       this.fill(parent)
 
       + this.verticalScrollbar[].UiRect:
@@ -345,3 +388,8 @@ method init*(this: CodeEditor) =
     root.updateContent()
     on currentScript.changed: root.updateContent()
     on this.w.changed: root.updateContent()
+
+  # scroll a jumped-to line into the upper third of the viewport
+  this.content.onGoToY = proc(y: float32) =
+    if this.scrollArea != nil:
+      this.scrollArea.targetY[] = max(0'f32, y - this.scrollArea.h[] / 3)
