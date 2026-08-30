@@ -1,4 +1,4 @@
-import std/[unicode, terminal, times]
+import std/[unicode, terminal, times, strutils]
 import pkg/[vmath, chroma]
 import pkg/pixie/[fonts]
 import pkg/rice/[rasterTexts, contexts, gl, primitives]
@@ -14,8 +14,18 @@ const
 
   WheelScrollLines = 3  # history lines / arrow keys per wheel notch
 
+  DoubleClickTime = 0.4'f32  # max seconds between clicks counted as one multi-click
+  DoubleClickRadius = 6'f32
+  SelectionAutoscrollPeriod = 0.05'f32  # min seconds between autoscroll steps
+
 
 type
+  SelectionMode = enum
+    smNone
+    smChar  # a character range dragged with the mouse
+    smWord  # double click: whole words
+    smLine  # triple click: whole lines
+
   TerminalContent* = ref object of Uiobj
     ## the terminal "screen": renders a TerminalArrangement and forwards
     ## keyboard input to the attached terminal backend
@@ -26,6 +36,17 @@ type
     arrangement: TerminalArrangement
     pendingOutput: string  ## unparsed tail of output (an incomplete escape sequence)
     lastActivity: float    ## epochTime of the last output/input, for cursor blinking
+
+    # mouse text selection, in absolute cell coordinates (see logic/terminal/emulator)
+    selectionMode: SelectionMode
+    selectionAnchor: IVec2  ## the cell where the selection started
+    selectionHead: IVec2    ## the cell under the mouse
+    selectDragging: bool
+    mouseDownCount: int   ## rapid clicks in place: 2 = word select, 3 = line select
+    lastMouseDown: float
+    lastMouseDownPos: Vec2
+    lastMousePos: Vec2    ## for autoscrolling a drag past the top/bottom edge
+    lastAutoScroll: float
 
   Terminal* = ref object of Uiobj
     content*: TerminalContent
@@ -52,9 +73,19 @@ proc sendInput*(this: Terminal, s: string) =
     this.backend.sendInput(s)
 
 
+# --- mouse text selection --------------------------------------------------
+
+
+proc clearSelection*(this: TerminalContent) =
+  if this.selectionMode != smNone:
+    this.selectionMode = smNone
+    redraw this
+
+
 proc clear*(this: Terminal) =
   this.content.arrangement.clear()
   this.content.arrangement.clearScrollback()
+  this.content.clearSelection()
   redraw this.content
 
 
@@ -67,6 +98,8 @@ proc cellSize*(this: TerminalContent): Vec2 =
 proc feed*(this: TerminalContent, text: string) =
   ## print `text` to the terminal screen, interpreting escape sequences
   if this.arrangement == nil: return
+  let wasAltScreen = this.arrangement.usingAltScreen
+  let scrollbackBase = this.arrangement.scrollbackBase()
   this.pendingOutput.add text
 
   var i = 0
@@ -79,6 +112,15 @@ proc feed*(this: TerminalContent, text: string) =
     if this.terminal != nil:
       this.terminal.sendInput(this.arrangement.pendingResponses)
     this.arrangement.pendingResponses = ""
+
+  if this.arrangement.usingAltScreen != wasAltScreen:
+    this.clearSelection()  # the other screen buffer is different content
+  else:
+    # every line evicted from the scrollback shifts absolute rows down by one
+    let evicted = this.arrangement.scrollbackBase() - scrollbackBase
+    if evicted > 0:
+      this.selectionAnchor.y = max(0, this.selectionAnchor.y - evicted.int32)
+      this.selectionHead.y = max(0, this.selectionHead.y - evicted.int32)
 
   this.lastActivity = epochTime()
   redraw this
@@ -95,9 +137,126 @@ proc updateGridSize(this: TerminalContent) =
   let rows = max(1, (this.h[] / cell.y).int)
   if cols != this.arrangement.size.x or rows != this.arrangement.size.y:
     this.arrangement.resize ivec2(cols.int32, rows.int32)
+    this.clearSelection()  # the resize re-flow invalidates cell coordinates
     if this.terminal != nil and this.terminal.backend != nil:
       this.terminal.backend.resize(cols, rows)
     redraw this
+
+
+proc posToCell(this: TerminalContent, pos: Vec2): IVec2 =
+  ## the cell at widget-local position `pos`, clamped into the grid
+  ## (x = column, y = absolute row)
+  let arr = this.arrangement
+  let cell = this.cellSize
+  if arr == nil or cell.x <= 0 or cell.y <= 0: return
+  let col = (pos.x / cell.x).int.clamp(0, arr.size.x - 1)
+  let viewRow = (pos.y / cell.y).int.clamp(0, arr.size.y - 1)
+  ivec2(col.int32, arr.absViewRow(viewRow).int32)
+
+
+proc selectionRange(this: TerminalContent): tuple[a, b: IVec2] =
+  ## the selection as an ordered cell range, expanded to whole words/lines
+  let arr = this.arrangement
+  if arr == nil or this.selectionMode == smNone: return
+  let anchor = this.selectionAnchor
+  let head = this.selectionHead
+  case this.selectionMode
+  of smChar:
+    if anchor <= head: (anchor, head) else: (head, anchor)
+  of smWord:
+    let aw = arr.wordRangeAt(anchor)
+    let hw = arr.wordRangeAt(head)
+    if anchor <= head:
+      (ivec2(aw.colStart.int32, anchor.y), ivec2(hw.colEnd.int32, head.y))
+    else:
+      (ivec2(hw.colStart.int32, head.y), ivec2(aw.colEnd.int32, anchor.y))
+  else:  # smLine
+    (ivec2(0, min(anchor.y, head.y)), ivec2(arr.size.x - 1, max(anchor.y, head.y)))
+
+
+proc selectionPressed(this: TerminalContent, pos: Vec2) =
+  this.selectDragging = true
+  this.lastMousePos = pos
+
+  # rapid presses in place count as multi-clicks and cycle 1 -> 2 -> 3 -> 1
+  let now = epochTime()
+  if now - this.lastMouseDown < DoubleClickTime and (pos - this.lastMouseDownPos).length < DoubleClickRadius:
+    this.mouseDownCount = this.mouseDownCount mod 3 + 1
+  else:
+    this.mouseDownCount = 1
+  this.lastMouseDown = now
+  this.lastMouseDownPos = pos
+
+  this.selectionAnchor = this.posToCell(pos)
+  this.selectionHead = this.selectionAnchor
+  this.selectionMode = case this.mouseDownCount
+    of 2: smWord
+    of 3: smLine
+    else: smNone  # a character selection appears once the mouse is dragged
+  redraw this
+
+
+proc selectionMoved(this: TerminalContent, pos: Vec2) =
+  this.lastMousePos = pos
+  if not this.selectDragging: return
+  let cell = this.posToCell(pos)
+  if this.selectionMode == smNone and cell != this.selectionAnchor:
+    this.selectionMode = smChar
+  this.selectionHead = cell
+  redraw this
+
+
+proc selectionAutoScroll(this: TerminalContent) =
+  ## while a drag is held past the top/bottom edge, scroll the view with it
+  if not this.selectDragging or this.selectionMode == smNone: return
+  let arr = this.arrangement
+  if arr == nil or arr.usingAltScreen: return
+  let cell = this.cellSize
+  if cell.y <= 0: return
+
+  let overTop = (-this.lastMousePos.y / cell.y).int
+  let overBottom = ((this.lastMousePos.y - this.h[]) / cell.y).int
+  if overTop <= 0 and overBottom <= 0: return
+  if epochTime() - this.lastAutoScroll < SelectionAutoscrollPeriod: return
+  this.lastAutoScroll = epochTime()
+
+  if overTop > 0:
+    arr.scrollView(1 + overTop div 3)  # back in history, the view follows the mouse up
+    this.selectionHead = this.posToCell(vec2(this.lastMousePos.x, 0))
+  else:
+    arr.scrollView(-(1 + overBottom div 3))
+    this.selectionHead = this.posToCell(vec2(this.lastMousePos.x, this.h[]))
+  redraw this
+
+
+proc selectedText*(this: TerminalContent): string =
+  if this.arrangement == nil or this.selectionMode == smNone: return
+  let (a, b) = this.selectionRange()
+  this.arrangement.textBetween(a, b)
+
+
+proc copySelection*(this: TerminalContent) =
+  let text = this.selectedText()
+  if text.len > 0:
+    this.parentWindow.clipboard.text = text
+
+
+proc pasteClipboard*(this: TerminalContent) =
+  if this.terminal == nil: return
+  var src = this.parentWindow.clipboard.text
+  if src.len == 0: return
+  # a paste goes to the shell as if typed: \r acts as Enter, and control
+  # characters other than \t would trigger shell shortcuts
+  src = src.replace("\r\n", "\n").replace("\r", "\n")
+  var text = ""
+  for r in src.runes:
+    if r.uint32 == 10: text.add "\r"
+    elif r == "\t".runeAt(0): text.add "\t"
+    elif r.uint32 >= 32 and r.uint32 != 127: text.add r
+  if text.len > 0:
+    this.terminal.sendInput(text)
+    this.arrangement.scrollToBottom()
+    this.lastActivity = epochTime()
 
 
 proc effectiveColors(cell: TerminalCell): tuple[fg, bg: Color] =
@@ -141,6 +300,25 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
           rect(origin + vec2(x.float32 * cell.x, rowY + cell.y / 2), vec2(cell.x, 1'f32)),
           fg,
         )
+
+  # mouse selection (over the cell backgrounds, under the text)
+  if this.selectionMode != smNone:
+    let (sa, sb) = this.selectionRange()
+    let topRow = sa.y.int
+    let botRow = sb.y.int
+    for y in 0 ..< arr.size.y:
+      let r = arr.absViewRow(y)
+      if r < topRow or r > botRow: continue
+      let x0 = (if r == topRow: sa.x.int else: 0).max(0)
+      let x1 = (if r == botRow: sb.x.int else: arr.size.x.int - 1).min(arr.size.x.int - 1)
+      if x1 < x0: continue
+      ctx.fillRect(
+        rect(
+          origin + vec2(x0.float32 * cell.x, y.float32 * cell.y),
+          vec2((x1 - x0 + 1).float32 * cell.x, cell.y),
+        ),
+        colorTheme.bgSelection,
+      )
 
   # terminal cursor (it lives on the live screen, not in the scrolled-back view)
   if arr.cursorVisible and not arr.scrolledBack and currentFocus[] == this:
@@ -231,12 +409,27 @@ method recieve*(this: TerminalContent, signal: Signal) =
     elif we.event of KeyEvent:
       let e = (ref KeyEvent)we.event
       if e.pressed and currentFocus[] == this and this.terminal != nil:
-        let seq = keyToSequence(e[])
-        if seq.len > 0:
-          this.terminal.sendInput(seq)
-          this.arrangement.scrollToBottom()
-          this.lastActivity = epochTime()
+        # terminal-local clipboard shortcuts; they must not reach the shell
+        let kb = e.window.keyboard
+        let ctrl = kb.modifiers.contains(control)
+        let shift = kb.modifiers.contains(shift)
+
+        if ctrl and shift and e.key == Key.c:
+          this.copySelection()
           we.handled = true
+        elif ctrl and shift and e.key == Key.v:
+          this.pasteClipboard()
+          we.handled = true
+        elif e.key == Key.insert and (ctrl xor shift):
+          if ctrl: this.copySelection() else: this.pasteClipboard()
+          we.handled = true
+        else:
+          let seq = keyToSequence(e[])
+          if seq.len > 0:
+            this.terminal.sendInput(seq)
+            this.arrangement.scrollToBottom()
+            this.lastActivity = epochTime()
+            we.handled = true
 
 
 method init*(this: TerminalContent) =
@@ -246,11 +439,22 @@ method init*(this: TerminalContent) =
   this.arrangement = newTerminalArrangement(scrollbackLines = currentConfig.terminalScrollbackLines)
 
   this.makeLayout:
+    this.parentUiRoot.onTick.connectTo this:
+      this.selectionAutoScroll()
+
     - MouseArea.new:
       this.fill(parent)
+      cursor = BuiltinCursor.text
 
       on this.pressed[] == true:
         setFocus root
+        root.selectionPressed(this.mouseXy[])
+
+      on this.pressed[] == false:
+        root.selectDragging = false
+
+      this.moved.connectTo root:
+        root.selectionMoved(this.mouseXy[])
 
       this.scrolled.connectTo root, delta:
         let arr = root.arrangement

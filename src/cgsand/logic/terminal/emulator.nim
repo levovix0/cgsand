@@ -551,6 +551,101 @@ proc clearScrollback*(this: TerminalArrangement) =
   this.viewOffset = 0
 
 
+# --- absolute row addressing, for mouse text selection ---
+#
+# An absolute row addresses the visible row stream [history rows, screen rows]
+# top-down (0 = the oldest stored row). Unlike view rows, absolute rows stay
+# attached to their content while the view scrolls and while new lines push
+# the screen content into the history. The alternate screen has no history,
+# its absolute rows are just its screen rows.
+
+
+proc absoluteRows*(this: TerminalArrangement): int =
+  if this.usingAltScreen: this.size.y.int
+  else: this.history.visualLen + this.size.y.int
+
+
+proc absViewRow*(this: TerminalArrangement, y: int): int =
+  ## the absolute row shown at view row `y` (0 = the top of the visible window)
+  if this.usingAltScreen: y
+  else: max(0, this.history.visualLen - this.viewOffset) + y
+
+
+proc scrollbackBase*(this: TerminalArrangement): int =
+  ## the number of history lines evicted before the oldest stored one.
+  ## Every eviction shifts all absolute rows down by one
+  this.history.firstLine
+
+
+proc cellAtAbsRow*(this: TerminalArrangement, row, x: int): TerminalCell =
+  if x notin 0 ..< this.size.x.int: return TerminalCell()
+  if not this.usingAltScreen and row < this.history.visualLen:
+    this.history.cellAt(row, x)
+  else:
+    let y = row - (if this.usingAltScreen: 0 else: this.history.visualLen)
+    if y in 0 ..< this.size.y.int: this[x, y] else: TerminalCell()
+
+
+proc rowContinuesNext*(this: TerminalArrangement, row: int): bool =
+  ## whether the next absolute row continues the logical line of `row`
+  ## (a line wrap), so the two belong to one text line
+  if this.usingAltScreen: return false
+  let h = this.history.visualLen
+  if row < 0 or row + 1 >= h + this.size.y.int: return false
+  if row + 1 < h:
+    # both rows are in the history: the same stored logical line?
+    let a = this.history.view[this.history.viewHead + row]
+    let b = this.history.view[this.history.viewHead + row + 1]
+    a.line == b.line
+  elif row >= h:
+    this.rowWrapped[row - h + 1]
+  else:
+    this.rowWrapped[0]  # the last history row and screen row 0
+
+
+proc `<=`*(a, b: IVec2): bool =
+  ## row-major lexicographic order of two cells: rows first, then columns
+  a.y < b.y or (a.y == b.y and a.x <= b.x)
+
+
+proc textBetween*(this: TerminalArrangement, first, last: IVec2): string =
+  ## the text of the cell range [first, last] (inclusive, row-major order,
+  ## x = column, y = absolute row). Wrapped rows are joined back into one
+  ## line, trailing blanks are dropped
+  let r0 = first.y.int.max(0)
+  let r1 = last.y.int.min(this.absoluteRows - 1)
+  for r in r0 .. r1:
+    let w = this.size.x.int
+    let x0 = if r == r0: first.x.int.max(0) else: 0
+    let x1 = (if r == r1: last.x.int else: w - 1).min(w - 1)
+    var line = ""
+    for x in x0 .. x1:
+      line.add this.cellAtAbsRow(r, x).rune
+    while line.len > 0 and line[^1] == ' ': line.setLen line.len - 1
+    if r > r0 and not this.rowContinuesNext(r - 1):
+      result.add "\n"
+    result.add line
+
+
+proc isWordRune(r: Rune): bool =
+  r.isAlpha or r.uint32 in 48'u32 .. 57'u32 or r == "_".runeAt(0)
+
+
+proc wordRangeAt*(this: TerminalArrangement, at: IVec2): tuple[colStart, colEnd: int] =
+  ## the column range of the word around cell `at`: a run of letters, digits
+  ## and underscores. Both ends equal the cell's column when it holds a separator
+  let row = at.y.int
+  let col = at.x.int
+  result = (col, col)
+  let w = this.size.x.int
+  if col < 0 or col >= w: return
+  if not this.cellAtAbsRow(row, col).rune.isWordRune: return
+  while result.colStart > 0 and this.cellAtAbsRow(row, result.colStart - 1).rune.isWordRune:
+    dec result.colStart
+  while result.colEnd < w - 1 and this.cellAtAbsRow(row, result.colEnd + 1).rune.isWordRune:
+    inc result.colEnd
+
+
 proc ansiColor256(n: int): Color =
   ## xterm 256-color palette
   if n notin 0 .. 255: ColorDimWhite
