@@ -57,7 +57,7 @@ type
   Terminal* = ref object of Uiobj
     content*: TerminalContent
 
-    fileOpeners*: seq[FileOpener]
+    fileOpener*: seq[FileOpener]
 
     backend: TerminalBackend
     m_outputChannel: Channel[string]
@@ -302,7 +302,7 @@ proc clearHoveredLink(this: TerminalContent) =
 
 proc openHoveredLink(this: TerminalContent) =
   if not this.hoveredLinkValid or this.terminal == nil: return
-  discard this.terminal.fileOpeners.openFile(this.hoveredLink.target)
+  this.terminal.fileOpener.open(this.hoveredLink.target)
 
 
 proc effectiveColors(cell: TerminalCell): tuple[fg, bg: Color] =
@@ -450,48 +450,43 @@ method recieve*(this: TerminalContent, signal: Signal) =
       if n.visibility[] == collapsed: return
       n = n.parent
 
-  if signal of WindowEvent and signal.WindowEvent.handled == false:
-    let we = signal.WindowEvent
+  signal.match TextInputEvent:
+    if currentFocus[] == this and this.terminal != nil:
+      # control characters (enter, tab, ...) arrive as KeyEvent instead
+      var text = ""
+      for r in e.text.runes:
+        if r.uint32 >= 32 and r.uint32 != 127:
+          text.add r
 
-    if we.event of TextInputEvent:
-      let e = (ref TextInputEvent)we.event
-      if currentFocus[] == this and this.terminal != nil:
-        # control characters (enter, tab, ...) arrive as KeyEvent instead
-        var text = ""
-        for r in e.text.runes:
-          if r.uint32 >= 32 and r.uint32 != 127:
-            text.add r
+      if text.len > 0:
+        this.terminal.sendInput(text)
+        this.arrangement.scrollToBottom()
+        this.lastActivity = epochTime()
+        signal.handled = true
 
-        if text.len > 0:
-          this.terminal.sendInput(text)
+  signal.match KeyEvent:
+    if e.pressed and currentFocus[] == this and this.terminal != nil:
+      # terminal-local clipboard shortcuts; they must not reach the shell
+      let kb = e.window.keyboard
+      let ctrl = kb.modifiers.contains(control)
+      let shift = kb.modifiers.contains(shift)
+
+      if ctrl and shift and e.key == Key.c:
+        this.copySelection()
+        signal.handled = true
+      elif ctrl and shift and e.key == Key.v:
+        this.pasteClipboard()
+        signal.handled = true
+      elif e.key == Key.insert and (ctrl xor shift):
+        if ctrl: this.copySelection() else: this.pasteClipboard()
+        signal.handled = true
+      else:
+        let seq = keyToSequence(e[])
+        if seq.len > 0:
+          this.terminal.sendInput(seq)
           this.arrangement.scrollToBottom()
           this.lastActivity = epochTime()
-          we.handled = true
-
-    elif we.event of KeyEvent:
-      let e = (ref KeyEvent)we.event
-      if e.pressed and currentFocus[] == this and this.terminal != nil:
-        # terminal-local clipboard shortcuts; they must not reach the shell
-        let kb = e.window.keyboard
-        let ctrl = kb.modifiers.contains(control)
-        let shift = kb.modifiers.contains(shift)
-
-        if ctrl and shift and e.key == Key.c:
-          this.copySelection()
-          we.handled = true
-        elif ctrl and shift and e.key == Key.v:
-          this.pasteClipboard()
-          we.handled = true
-        elif e.key == Key.insert and (ctrl xor shift):
-          if ctrl: this.copySelection() else: this.pasteClipboard()
-          we.handled = true
-        else:
-          let seq = keyToSequence(e[])
-          if seq.len > 0:
-            this.terminal.sendInput(seq)
-            this.arrangement.scrollToBottom()
-            this.lastActivity = epochTime()
-            we.handled = true
+          signal.handled = true
 
 
 method init*(this: TerminalContent) =

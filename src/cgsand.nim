@@ -4,6 +4,7 @@ import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea]
 import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
 import ./cgsand/logic/[config, scripts, file_openers]
+import ./cgsand/logic/world_view/[renderer]
 
 globalLocale[0] = systemLocale()
 
@@ -21,15 +22,13 @@ autosaveProperty previewPortion
 autosaveProperty terminalPortion
 
 
+scripts.scriptEntityBounds = renderer.entityBoundsCallback
+scripts.scriptWorldBounds = renderer.worldBoundsCallback
+scripts.scriptTextSize = renderer.textSizeCallback
+
+
 win.makeLayout:
   this.clearColor = "#00000000".color
-
-  this.onSignal.connectTo this, e:
-    type Ev = ref DropEvent
-    if e of WindowEvent and e.WindowEvent.event of Ev:
-      let files = win.siwinWindow.dragndropClipboard.files
-      if files.len > 0:
-        currentScript[] = files[0]
 
   proc onWindowResize =
     when defined(windows):
@@ -60,26 +59,28 @@ win.makeLayout:
       previewPortion.changed.emit()
       terminalPortion.changed.emit()
 
+
   - RectShadow.new:
     this.fill(parent)
     radius = 7.5
     blurRadius = 10
     color = "#00000060".color
 
+
   - ClipRect.new as contentArea:
     this.fill(parent, 10)
     radius = 7.5
 
-    this.onSignal.connectTo this, e:
-      type Ev = ref StateBoolChangedEvent
-      if e of WindowEvent and e.WindowEvent.event of Ev and e.WindowEvent.event.Ev.kind == maximized:
-        if e.WindowEvent.event.Ev.value:
+    on StateBoolChangedEvent:
+      if e.kind == maximized:
+        if e.value:
           this.fill(parent, 0)
           this.radius[] = 0
         else:
           this.fill(parent, 10)
           this.radius[] = 7.5
   
+
     - UiRect.new:
       this.fill(parent)
       color = "#202020".color
@@ -95,15 +96,21 @@ win.makeLayout:
       top = toolBar.bottom
       bottom = parent.bottom
 
+
     - CodeEditor.new as codeEditor:
       w = binding: round(parent.w[] * codeEditorPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
       this.fillVertical(parent)
       top = toolBar.bottom
       bottom = parent.bottom
       visibility = if currentConfig.codeEditorVisible: Visibility.visible else: Visibility.collapsed
+      
       on this.visibility.changed:
         currentConfig.codeEditorVisible = this.visibility[] == visible
         save(currentConfig)
+      
+      on this.content.path.changed:
+        currentScript[] = this.content.path[]
+
 
     - Terminal.new as terminal:
       w = binding: round(parent.w[] * terminalPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
@@ -111,8 +118,6 @@ win.makeLayout:
       top = toolBar.bottom
       bottom = parent.bottom
 
-
-    documentView.outputChannel[] = terminal.outputChannel
 
     - ToolBar(codeEditor: codeEditor) as toolBar:
       this.fillHorizontal(parent)
@@ -132,6 +137,7 @@ win.makeLayout:
         codeEditorPortion[] = max(e, 0) / contentArea.w[]
         normalizePortions()
     
+
     - Splitter.new:  # (document view / terminal)
       this.achor = terminal.left
       anchorGlobalX = binding: terminal.globalX[] + terminal.w[]
@@ -140,7 +146,20 @@ win.makeLayout:
         terminalPortion[] = max(-e, 0) / contentArea.w[]
         normalizePortions()
 
-    terminal.fileOpeners = @[FileOpener CodeEditorFileOpener(editor: codeEditor)]
+
+  documentView.outputChannel[] = terminal.outputChannel
+
+
+  let fileOpener = @[FileOpener CodeEditorFileOpener(editor: codeEditor)]
+    
+  toolBar.fileOpener[] = fileOpener
+  terminal.fileOpener = fileOpener
+
+
+  on DropEvent:
+    let files = win.siwinWindow.dragndropClipboard.files
+    if files.len > 0:
+      fileOpener.open(Location(path: files[0]))
 
 run win
 

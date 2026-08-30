@@ -16,16 +16,12 @@ type
     changesBarWidth*: Property[float32] = 5'f32.property
     arrowBarWidth*: Property[float32] = 20'f32.property
 
+    path*: Property[string]   ## path to save on disk (if empty, read-only/no_file)
+
     nonFoldedArrowsVisible: Property[bool]
 
     arrangement: CodeArrangement
     dragingCursorI: int
-
-    filename: string   ## path to save on disk (empty = read-only)
-
-    pendingLine*: int  ## where to put the cursor once the file is loaded (1-based, 0 = none)
-    pendingCol*: int
-    onGoToY*: proc(y: float32)  ## scrolls the viewport after a jump to a position
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
@@ -179,9 +175,18 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
 
 
 proc saveFile(this: CodeEditorContent) =
-  if this.filename.len == 0: return
+  if this.path[].len == 0: return
   if this.arrangement == nil: return
-  scheduleFileSave(this.filename, this.arrangement.fileContent())
+  scheduleFileSave(this.path[], this.arrangement.fileContent())
+
+proc scrollToLine(this: CodeEditor, line: int) =
+  if this.content.arrangement.lines.len == 0:
+    this.scrollArea.targetY[] = 0
+  else:
+    let line = line.clamp(0, this.content.arrangement.lines.high)
+    let y = this.content.arrangement.lines[line].rect.y
+    if this.scrollArea != nil:
+      this.scrollArea.targetY[] = max(0'f32, y - this.scrollArea.h[] / 3)
 
 
 method recieve*(this: CodeEditorContent, signal: Signal) =
@@ -193,69 +198,67 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       if n.visibility[] == collapsed: return
       n = n.parent
 
-  if signal of WindowEvent and signal.WindowEvent.handled == false:
-    if signal.WindowEvent.event of TextInputEvent:
-      let e = (ref TextInputEvent)signal.WindowEvent.event
-      if currentFocus[] == this and this.arrangement != nil and not e.repeated:
-        this.arrangement.insert(e.text)
+  signal.match TextInputEvent:
+    if currentFocus[] == this and this.arrangement != nil and not e.repeated:
+      this.arrangement.insert(e.text)
+      this.updateHeight()
+      redraw(this)
+      this.saveFile()
+      signal.handled = true
+
+  signal.match KeyEvent:
+    if e.pressed and currentFocus[] == this and this.arrangement != nil:
+      let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
+      let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
+      
+      case e.key
+      of Key.left:
+        this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
+        redraw(this)
+
+      of Key.right:
+        this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
+        redraw(this)
+
+      of Key.up:
+        this.arrangement.moveCursorUp(extend = shift)
+        redraw(this)
+
+      of Key.down:
+        this.arrangement.moveCursorDown(extend = shift)
+        redraw(this)
+
+      of Key.backspace:
+        deleteBack(this.arrangement)
         this.updateHeight()
         redraw(this)
         this.saveFile()
-        signal.WindowEvent.handled = true
 
-    elif signal.WindowEvent.event of KeyEvent:
-      let e = (ref KeyEvent)signal.WindowEvent.event
-      if e.pressed and currentFocus[] == this and this.arrangement != nil:
-        let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
-        let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
-        case e.key
-        of Key.left:
-          this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
+      of Key.del:
+        deleteForward(this.arrangement)
+        this.updateHeight()
+        redraw(this)
+        this.saveFile()
+
+      of Key.enter:
+        insertNewline(this.arrangement)
+        this.updateHeight()
+        redraw(this)
+        this.saveFile()
+
+      of Key.escape:
+        if this.arrangement.cursors.len > 1:
+          this.arrangement.cursors = @[this.arrangement.cursors[0]]
           redraw(this)
 
-        of Key.right:
-          this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
+      of Key.b:
+        if ctrl:
+          this.arrangement.selectionMode = case this.arrangement.selectionMode
+            of LineSelection: BlockSelection
+            of BlockSelection: LineSelection
           redraw(this)
 
-        of Key.up:
-          this.arrangement.moveCursorUp(extend = shift)
-          redraw(this)
-
-        of Key.down:
-          this.arrangement.moveCursorDown(extend = shift)
-          redraw(this)
-
-        of Key.backspace:
-          deleteBack(this.arrangement)
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-
-        of Key.del:
-          deleteForward(this.arrangement)
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-
-        of Key.enter:
-          insertNewline(this.arrangement)
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-
-        of Key.escape:
-          if this.arrangement.cursors.len > 1:
-            this.arrangement.cursors = @[this.arrangement.cursors[0]]
-            redraw(this)
-
-        of Key.b:
-          if ctrl:
-            this.arrangement.selectionMode = case this.arrangement.selectionMode
-              of LineSelection: BlockSelection
-              of BlockSelection: LineSelection
-            redraw(this)
-
-        else: discard
+      else: discard
 
 
 proc setArrangement(this: CodeEditorContent, text: string) =
@@ -266,6 +269,11 @@ proc setArrangement(this: CodeEditorContent, text: string) =
   let lineNumberMaxWidth = typeset(this.font, $this.arrangement.lines.len).layoutBounds.x
   this.lineNumberBarWidth[] = lineNumberMaxWidth
   redraw(this)
+
+
+proc rearrange(this: CodeEditorContent) =
+  ## todo
+  this.setArrangement(this.arrangement.fileContent())
 
 
 method init*(this: CodeEditorContent) =
@@ -317,49 +325,23 @@ method init*(this: CodeEditorContent) =
           redraw(root)
 
 
-proc applyPendingPosition(this: CodeEditorContent) =
-  ## put the cursor where `openAt` asked and scroll the line into view
-  let line = this.pendingLine
-  let col = this.pendingCol
-  this.pendingLine = 0
-  this.pendingCol = 0
-  if this.arrangement == nil or line < 1: return
-
-  let l = (line - 1).clamp(0, this.arrangement.lines.len - 1)
-  let c = (if col < 1: 0 else: col - 1).clamp(0, this.arrangement.lines[l].arrangement.runes.len)
-  this.arrangement.setCursorPos(l, c)
-  if this.onGoToY != nil:
-    this.onGoToY(this.arrangement.lines[l].rect.y)
-  redraw this
-
-
-proc updateContent(this: CodeEditor) =
-  let path = currentScript[]
-  try:
-    this.content.filename = path
-    this.content.setArrangement(readFile(path))
-  except CatchableError as exc:
-    this.content.filename = ""
-    this.content.setArrangement("Unable to read script: " & path & "\n" & exc.msg)
-  this.content.applyPendingPosition()
-
-
-proc open*(this: CodeEditor, target: FileTarget) =
-  ## show the file in this editor and put the cursor at the target position
-  this.content.pendingLine = target.line
-  this.content.pendingCol = target.column
+proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
-  if currentScript[] == target.path:
-    this.updateContent()
-  else:
-    currentScript[] = target.path  # updateContent runs on change
+  try:
+    this.content.path[] = target.path
+    this.content.setArrangement(readFile(target.path))
+    this.content.arrangement.setCursorPos(target.line, target.col)
+    this.scrollToLine(target.line)
+  except CatchableError as exc:
+    this.content.path[] = ""
+    this.content.setArrangement("Unable to read file: " & target.path & "\n" & exc.msg)
 
 
-method canOpen(this: CodeEditorFileOpener, target: FileTarget): bool =
+method canOpen(this: CodeEditorFileOpener, target: Location): bool =
   fileExists(target.path)
 
 
-method open(this: CodeEditorFileOpener, target: FileTarget) =
+method open(this: CodeEditorFileOpener, target: Location) =
   this.editor.open(target)
 
 
@@ -385,11 +367,5 @@ method init*(this: CodeEditor) =
 
       verticalScrollOverFit = binding: this.h[] - root.content.font[].size * 2
 
-    root.updateContent()
-    on currentScript.changed: root.updateContent()
-    on this.w.changed: root.updateContent()
-
-  # scroll a jumped-to line into the upper third of the viewport
-  this.content.onGoToY = proc(y: float32) =
-    if this.scrollArea != nil:
-      this.scrollArea.targetY[] = max(0'f32, y - this.scrollArea.h[] / 3)
+    root.open(Location(path: currentScript[]))
+    on this.w.changed: root.content.rearrange()

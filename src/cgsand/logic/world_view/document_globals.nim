@@ -1,5 +1,5 @@
 import pkg/pixie/[fonts]
-import ../lib/[sandbox, text]
+import ../../lib/[sandbox, text]
 
 
 type

@@ -2,9 +2,9 @@ import std/[unicode, math]
 import pkg/[ecs, vmath]
 import pkg/pixie/[paths, fonts as pixieFonts]
 import pkg/toscel/[colors]
-import ../lib/[sandbox, geom2d, text]
+import ../../lib/[sandbox, geom2d, text]
 import ./[doclayout, document_globals, dashing]
-import ./fileformats/[pdf]
+import ../fileformats/[pdf]
 
 
 type

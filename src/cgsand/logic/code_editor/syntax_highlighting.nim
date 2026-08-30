@@ -1,6 +1,6 @@
 import std/[unicode, streams]
 import pkg/[chroma]
-import ./[config]
+import ../[config]
 
 # todo: use tree-splitter
 

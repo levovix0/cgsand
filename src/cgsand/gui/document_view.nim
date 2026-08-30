@@ -4,7 +4,8 @@ import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
 import pkg/rice/[primitives, antialiasing, transform, hatching]
-import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
+import ../logic/[scripts, config]
+import ../logic/world_view/[bounds, doclayout, document_globals, renderer]
 import ../lib/[sandbox]
 
 

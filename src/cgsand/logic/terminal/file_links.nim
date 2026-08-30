@@ -12,8 +12,8 @@ import ../file_openers
 type
   TerminalLink* = object
     ## a file path recognized in the terminal text, together with the cell
-    ## range it occupies (x = column, y = absolute row, both inclusive)
-    target*: FileTarget
+    ## range it occupies (x = col, y = absolute row, both inclusive)
+    target*: Location
     a*, b*: IVec2
 
 
@@ -21,13 +21,13 @@ proc `==`*(a, b: TerminalLink): bool =
   a.a == b.a and a.b == b.b and
     a.target.path == b.target.path and
     a.target.line == b.target.line and
-    a.target.column == b.target.column
+    a.target.col == b.target.col
 
 
 proc logicalLine*(this: TerminalArrangement, row: int): tuple[runes: seq[Rune], cells: seq[IVec2]] =
   ## the text of the logical line containing absolute row `row` (wrapped rows
   ## joined without a separator, like `textBetween`), with the cell
-  ## (x = column, y = absolute row) of every rune in it
+  ## (x = col, y = absolute row) of every rune in it
   let rows = this.absoluteRows()
   let mid = row.clamp(0, rows - 1)
 
@@ -55,8 +55,8 @@ proc isPathRune(r: Rune): bool =
   c.isAlphaAscii or c in {'0'..'9', '_', '-', '.', '~', '+', '@', '#', '%', '=', ':', '/', '\\'}
 
 
-proc parseColonPos(s: string): tuple[path: string, line, column: int] =
-  ## a `path:line:column` / `path:line` suffix (gcc, python, ...).
+proc parseColonPos(s: string): tuple[path: string, line, col: int] =
+  ## a `path:line:col` / `path:line` suffix (gcc, python, ...).
   ## A windows drive colon (`D:\`) peels nothing: the tail is not a number
   var rest = s
   var nums: seq[int]
@@ -72,8 +72,8 @@ proc parseColonPos(s: string): tuple[path: string, line, column: int] =
   else: return (rest, nums[0], 0)
 
 
-proc parseParenPos(runes: seq[Rune], last: int): tuple[line, column: int] =
-  ## a `(<line>)` / `(<line>, <column>)` suffix right after rune `last`,
+proc parseParenPos(runes: seq[Rune], last: int): tuple[line, col: int] =
+  ## a `(<line>)` / `(<line>, <col>)` suffix right after rune `last`,
   ## the Nim compiler style: `foo.nim(12, 3) Error: ...`
   if last + 1 >= runes.len or runes[last + 1] != Rune('('): return
   var nums: seq[int]
@@ -130,7 +130,7 @@ proc resolveLinkPath(p: string): string =
 
 
 proc fileLinkAt*(this: TerminalArrangement, at: IVec2): tuple[link: TerminalLink, found: bool] =
-  ## the file path link containing cell `at` (x = column, y = absolute row),
+  ## the file path link containing cell `at` (x = col, y = absolute row),
   ## when the text there is a path to an existing file
   if this.size.x <= 0: return
 
@@ -154,9 +154,9 @@ proc fileLinkAt*(this: TerminalArrangement, at: IVec2): tuple[link: TerminalLink
     token.setLen token.len - 1
   if token.len == 0: return
 
-  var (path, line, column) = parseColonPos(token)
+  var (path, line, col) = parseColonPos(token)
   if line == 0:
-    (line, column) = runes.parseParenPos(ta + token.runeLen - 1)
+    (line, col) = runes.parseParenPos(ta + token.runeLen - 1)
 
   if not looksLikePath(path): return
   let resolved = resolveLinkPath(path)
@@ -164,7 +164,7 @@ proc fileLinkAt*(this: TerminalArrangement, at: IVec2): tuple[link: TerminalLink
 
   (
     link: TerminalLink(
-      target: FileTarget(path: resolved, line: line, column: column),
+      target: Location(path: resolved, line: line, col: col),
       a: cells[ta],
       b: cells[ta + path.runeLen - 1],
     ),

@@ -1,8 +1,10 @@
+# todo
+
 import std/[sets]
 import pkg/[vmath, chroma, ecs]
 import pkg/sigeo/macros/[interfaces, cursors]
 import sandbox
-import ../logic/[config]
+import ../[config]
 
 
 makeInterface Insertable:
