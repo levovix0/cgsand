@@ -8,9 +8,7 @@ srcDir        = "src"
 bin           = @["cgsand"]
 
 
-
 requires "nim >= 2.2.4"
-
 
 
 # --- stable dependencies ---
@@ -20,12 +18,14 @@ requires "localize >= 0.3.5" #d1b5ae63
 
 requires "jsony"
 
+
 # --- unstable dependencies ---
 
 requires "sigui >= 0.2.6"
   ## for GUI
 
 requires "shady == 0.1.4"
+  ## for shaders (bundled with rice, but needed here to specify the version)
 
 requires "https://github.com/levovix0/sigeo#head"
   ## for defing continuous geometry in scripts

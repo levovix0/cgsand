@@ -19,6 +19,15 @@ type
     fileOpener: Property[seq[FileOpener]]
 
 
+  TitleButton = ref object of Uiobj
+    pressedColor: Property[Color]
+    hoveredColor: Property[Color]
+    icon: Property[Image]
+    activated: Event[void]
+
+    mouseArea: MouseArea
+
+
   ToolBar* = ref object of Uiobj
     codeEditor*: Uiobj
     doc*: Property[ptr World]
@@ -29,17 +38,9 @@ type
     fileBrowser: FileBrowser
 
 
-  TitleButton = ref object of Uiobj
-    pressedColor: Property[Color]
-    hoveredColor: Property[Color]
-    icon: Property[Image]
-    activated: Event[void]
-
-    mouseArea: MouseArea
-
-
-registerComponent ToolBar
 registerComponent TitleButton
+registerComponent FileBrowser
+registerComponent ToolBar
 
 
 proc `<`(a, b: BrowserItem): bool = a.name < b.name
@@ -73,7 +74,7 @@ method init(this: TitleButton) =
           this.h[] = 32
           this.image = binding: root.icon[]
       
-      on this.mouseDownAndUpInside:
+      on this.clicked:
         root.activated.emit()
 
 
@@ -162,8 +163,8 @@ method init*(this: ToolBar) =
     - MouseArea.new:
       this.fill(parent)
 
-      this.clicked.connectTo this, e:
-        if e.double:
+      on ClickEvent:
+        if this.hovered[] and e.double:
           this.parentWindow.maximized = not this.parentWindow.maximized
 
     - Layout.row:
@@ -193,7 +194,7 @@ method init*(this: ToolBar) =
           
 
         --- UiObj.new:
-          <--- UiObj.new: root.saveFileDialogOpened[]
+          <--- {update}: root.saveFileDialogOpened[]
           
           if root.saveFileDialogOpened[]:
             - Panel.new:

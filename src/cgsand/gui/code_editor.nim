@@ -289,6 +289,9 @@ method init*(this: CodeEditorContent) =
 
       root.nonFoldedArrowsVisible[] = binding: this.hovered[]
 
+      on this.pressed[] == true:
+        setFocus root
+
       on this.clicked:
         let clickY = this.mouseY[]
         for i, line in root.arrangement.lines:

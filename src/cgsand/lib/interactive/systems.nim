@@ -1,8 +1,8 @@
 import ../sandbox
-import std/[times]
 import pkg/[vmath, bumpy]
 import pkg/siwin/platforms/any/window
-export window
+import pkg/sigui/timeutils
+export window, timeutils
 
 
 declare_ecs_system windowEvent(e: CloseEvent)
@@ -64,11 +64,4 @@ proc interactive_systems_windowEvent_DropEvent(e: DropEvent) {.exportc, dynlib.}
 
 proc interactive_systems_mainModuleFinished() {.exportc, dynlib.} = doc.mainModuleFinished()
 proc interactive_systems_viewportChanged() {.exportc, dynlib.} = doc.viewportChanged()
-
-
-proc secs*(d: Duration): float =
-  d.inMicroseconds.float / 1e6
-
-proc ms*(d: Duration): float =
-  d.inMicroseconds.float / 1e3
 
