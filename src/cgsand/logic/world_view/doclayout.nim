@@ -1,5 +1,5 @@
 import pkg/[ecs]
-import ../lib/[sandbox]
+import ../../lib/[sandbox]
 import ./[bounds, document_globals]
 
 

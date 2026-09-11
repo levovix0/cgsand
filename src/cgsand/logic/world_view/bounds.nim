@@ -3,7 +3,7 @@ import pkg/[vmath]
 import pkg/pixie/[fonts]
 import pkg/pixie/paths
 import pkg/sigeo/[curves2d]
-import ../lib/[sandbox, geom2d, text]
+import ../../lib/[sandbox, geom2d, text]
 import ./[document_globals]
 
 

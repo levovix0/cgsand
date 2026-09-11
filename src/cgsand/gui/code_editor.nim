@@ -1,10 +1,10 @@
-import std/[sets]
+import std/[sets, os]
 import pkg/[vmath, chroma]
 import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
 import pkg/sigui/window
-import ../logic/[config, code_editor, asyncio]
+import ../logic/[config, code_editor, asyncio, file_openers]
 import ./[highlighted_text]
 
 
@@ -16,15 +16,19 @@ type
     changesBarWidth*: Property[float32] = 5'f32.property
     arrowBarWidth*: Property[float32] = 20'f32.property
 
+    path*: Property[string]   ## path to save on disk (if empty, read-only/no_file)
+
     nonFoldedArrowsVisible: Property[bool]
 
     arrangement: CodeArrangement
     dragingCursorI: int
 
-    filename: string   ## path to save on disk (empty = read-only)
-
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
+    scrollArea: ScrollArea
+
+  CodeEditorFileOpener* = ref object of FileOpener
+    editor*: CodeEditor
 
 const MinSelectionWidth = 6'f32
 const ScrollBarWidth = 5'f32
@@ -54,131 +58,135 @@ proc updateHeight(this: CodeEditorContent) =
   this.h[] = this.arrangement.visibleHeight()
 
 
-method draw*(this: CodeEditorContent, ctx: DrawContext) =
-  this.drawBefore(ctx)
-
+method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   let winRect = rect(vec2(), this.parentUiRoot.wh)
   let textOffsetX = this.textOffsetX
   let lineNumberBarOffsetX_r = this.lineNumberBarOffsetX + this.lineNumberBarWidth[]
   let arrowBarCenterX = this.arrowBarOffsetX + this.arrowBarWidth[] / 2
 
-  if this.visibility[] == visible:
-    let spaceW = typeset(this.font, " ").layoutBounds.x
-    for i, line in this.arrangement.lines:
-      if line.isHidden: continue
+  let spaceW = typeset(this.font, " ").layoutBounds.x
+  for i, line in this.arrangement.lines:
+    if line.isHidden: continue
 
-      if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
-      if this.globalY + line.rect.y > winRect.y + winRect.h: continue
+    if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
+    if this.globalY + line.rect.y > winRect.y + winRect.h: continue
 
-      # line number
-      ctx.drawRasterText(
-        (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
-        typeset(this.font, $(i + 1)),
-        colorTheme.sLineNumber.vec4,
-        origin=vec2(1, 0),
-      )
+    # line number
+    ctx.drawRasterText(
+      (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
+      typeset(this.font, $(i + 1)),
+      colorTheme.sLineNumber.vec4,
+      origin=vec2(1, 0),
+    )
 
-      if line.foldable:
-        let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
-        if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
-          # fold arrow
-          ctx.drawRasterText(
-            (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
-            typeset(this.font, arrowChar),
-            colorTheme.sLineNumber.vec4,
-            origin=vec2(0.5, 0),
-          )
-
-      for offset in line.indentOffsets:
-        let guideX = textOffsetX + offset.float32 * spaceW
-        ctx.fillRect(
-          rect(
-            this.globalXy + ctx.offset + vec2(guideX, line.rect.y),
-            vec2(1'f32, line.rect.h),
-          ),
-          color(0.3'f32, 0.3'f32, 0.3'f32),
+    if line.foldable:
+      let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
+      if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
+        # fold arrow
+        ctx.drawRasterText(
+          (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
+          typeset(this.font, arrowChar),
+          colorTheme.sLineNumber.vec4,
+          origin=vec2(0.5, 0),
         )
 
-      let lineH = this.font[].lineHeightPixels
-      for c_idx in 0..<this.arrangement.cursors.len:
-        if this.arrangement.cursors[c_idx].isDuplicate: continue
-        let sel = this.arrangement.selectionRangeForLine(c_idx, i)
-        if sel.len <= 0: continue
-        let arr = line.arrangement
+    for offset in line.indentOffsets:
+      let guideX = textOffsetX + offset.float32 * spaceW
+      ctx.fillRect(
+        rect(
+          this.globalXy + ctx.offset + vec2(guideX, line.rect.y),
+          vec2(1'f32, line.rect.h),
+        ),
+        color(0.3'f32, 0.3'f32, 0.3'f32),
+      )
 
-        if arr.runes.len == 0:
-          # selection rect for empty line
+    let lineH = this.font[].lineHeightPixels
+    for c_idx in 0..<this.arrangement.cursors.len:
+      if this.arrangement.cursors[c_idx].isDuplicate: continue
+      let sel = this.arrangement.selectionRangeForLine(c_idx, i)
+      if sel.len <= 0: continue
+      let arr = line.arrangement
+
+      if arr.runes.len == 0:
+        # selection rect for empty line
+        ctx.fillRect(
+          rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+          color(0.2'f32, 0.4'f32, 0.7'f32),
+        )
+
+      else:
+        for subRowIdx, span in arr.lines:
+          let rowFirst = span[0]
+          let rowLast = span[1]
+          if rowFirst > rowLast: continue
+          if sel.a > rowLast: continue
+          if sel.b <= rowFirst: continue
+          let subRowY = line.rect.y + arr.selectionRects[rowFirst].y
+          let leftRune = max(sel.a, rowFirst)
+          let startX = arr.selectionRects[leftRune].x
+          let rightRune = min(sel.b - 1, rowLast)
+          let endX = arr.selectionRects[rightRune].x + arr.selectionRects[rightRune].w
+          let extraW: float32 =
+            if sel.b >= arr.runes.len and subRowIdx == arr.lines.high: MinSelectionWidth
+            else: 0.0'f32
+          let selW = max(endX - startX, 0.0'f32) + extraW
+          if selW <= 0: continue
+
+          # selection rect
           ctx.fillRect(
-            rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+            rect(
+              this.globalXy + ctx.offset + vec2(textOffsetX + startX, subRowY),
+              vec2(selW, lineH),
+            ),
             color(0.2'f32, 0.4'f32, 0.7'f32),
           )
 
-        else:
-          for subRowIdx, span in arr.lines:
-            let rowFirst = span[0]
-            let rowLast = span[1]
-            if rowFirst > rowLast: continue
-            if sel.a > rowLast: continue
-            if sel.b <= rowFirst: continue
-            let subRowY = line.rect.y + arr.selectionRects[rowFirst].y
-            let leftRune = max(sel.a, rowFirst)
-            let startX = arr.selectionRects[leftRune].x
-            let rightRune = min(sel.b - 1, rowLast)
-            let endX = arr.selectionRects[rightRune].x + arr.selectionRects[rightRune].w
-            let extraW: float32 =
-              if sel.b >= arr.runes.len and subRowIdx == arr.lines.high: MinSelectionWidth
-              else: 0.0'f32
-            let selW = max(endX - startX, 0.0'f32) + extraW
-            if selW <= 0: continue
+    # the code
+    drawHighlightedText(
+      ctx,
+      (this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y)).vec3(0),
+      line.arrangement,
+      line.kinds,
+    )
 
-            # selection rect
-            ctx.fillRect(
-              rect(
-                this.globalXy + ctx.offset + vec2(textOffsetX + startX, subRowY),
-                vec2(selW, lineH),
-              ),
-              color(0.2'f32, 0.4'f32, 0.7'f32),
-            )
+    if currentFocus[] == this:
+      for cursor in this.arrangement.cursors:
+        if cursor.line == i:
+          const cursorW = 1.5'f32
+          let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
+          # text cursor
+          ctx.fillRect(
+            rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
+            color(1'f32, 1'f32, 1'f32),
+          )
 
-      # the code
-      drawHighlightedText(
-        ctx,
-        (this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y)).vec3(0),
-        line.arrangement,
-        line.kinds,
+    if line.foldable and i in this.arrangement.foldedLines:
+      const lineH = 1'f32
+      let rect = line.visibleRect
+
+      # line for folded line
+      ctx.fillRect(
+        rect(
+          this.globalXy + ctx.offset + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
+          vec2(rect.w, lineH),
+        ),
+        color(0.3'f32, 0.6'f32, 1.0'f32),
       )
-
-      if currentFocus[] == this:
-        for cursor in this.arrangement.cursors:
-          if cursor.line == i:
-            const cursorW = 1.5'f32
-            let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
-            # text cursor
-            ctx.fillRect(
-              rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
-              color(1'f32, 1'f32, 1'f32),
-            )
-
-      if line.foldable and i in this.arrangement.foldedLines:
-        const lineH = 1'f32
-        let rect = line.visibleRect
-
-        # line for folded line
-        ctx.fillRect(
-          rect(
-            this.globalXy + ctx.offset + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
-            vec2(rect.w, lineH),
-          ),
-          color(0.3'f32, 0.6'f32, 1.0'f32),
-        )
-
-  this.drawAfter(ctx)
 
 
 proc saveFile(this: CodeEditorContent) =
-  if this.filename.len == 0: return
+  if this.path[].len == 0: return
   if this.arrangement == nil: return
-  scheduleFileSave(this.filename, this.arrangement.fileContent())
+  scheduleFileSave(this.path[], this.arrangement.fileContent())
+
+proc scrollToLine(this: CodeEditor, line: int) =
+  if this.content.arrangement.lines.len == 0:
+    this.scrollArea.targetY[] = 0
+  else:
+    let line = line.clamp(0, this.content.arrangement.lines.high)
+    let y = this.content.arrangement.lines[line].rect.y
+    if this.scrollArea != nil:
+      this.scrollArea.targetY[] = max(0'f32, y - this.scrollArea.h[] / 3)
 
 
 method recieve*(this: CodeEditorContent, signal: Signal) =
@@ -190,69 +198,67 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       if n.visibility[] == collapsed: return
       n = n.parent
 
-  if signal of WindowEvent and signal.WindowEvent.handled == false:
-    if signal.WindowEvent.event of TextInputEvent:
-      let e = (ref TextInputEvent)signal.WindowEvent.event
-      if currentFocus[] == this and this.arrangement != nil and not e.repeated:
-        this.arrangement.insert(e.text)
+  signal.match TextInputEvent:
+    if currentFocus[] == this and this.arrangement != nil and not e.repeated:
+      this.arrangement.insert(e.text)
+      this.updateHeight()
+      redraw(this)
+      this.saveFile()
+      signal.handled = true
+
+  signal.match KeyEvent:
+    if e.pressed and currentFocus[] == this and this.arrangement != nil:
+      let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
+      let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
+      
+      case e.key
+      of Key.left:
+        this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
+        redraw(this)
+
+      of Key.right:
+        this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
+        redraw(this)
+
+      of Key.up:
+        this.arrangement.moveCursorUp(extend = shift)
+        redraw(this)
+
+      of Key.down:
+        this.arrangement.moveCursorDown(extend = shift)
+        redraw(this)
+
+      of Key.backspace:
+        deleteBack(this.arrangement)
         this.updateHeight()
         redraw(this)
         this.saveFile()
-        signal.WindowEvent.handled = true
 
-    elif signal.WindowEvent.event of KeyEvent:
-      let e = (ref KeyEvent)signal.WindowEvent.event
-      if e.pressed and currentFocus[] == this and this.arrangement != nil:
-        let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
-        let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
-        case e.key
-        of Key.left:
-          this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
+      of Key.del:
+        deleteForward(this.arrangement)
+        this.updateHeight()
+        redraw(this)
+        this.saveFile()
+
+      of Key.enter:
+        insertNewline(this.arrangement)
+        this.updateHeight()
+        redraw(this)
+        this.saveFile()
+
+      of Key.escape:
+        if this.arrangement.cursors.len > 1:
+          this.arrangement.cursors = @[this.arrangement.cursors[0]]
           redraw(this)
 
-        of Key.right:
-          this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
+      of Key.b:
+        if ctrl:
+          this.arrangement.selectionMode = case this.arrangement.selectionMode
+            of LineSelection: BlockSelection
+            of BlockSelection: LineSelection
           redraw(this)
 
-        of Key.up:
-          this.arrangement.moveCursorUp(extend = shift)
-          redraw(this)
-
-        of Key.down:
-          this.arrangement.moveCursorDown(extend = shift)
-          redraw(this)
-
-        of Key.backspace:
-          deleteBack(this.arrangement)
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-
-        of Key.del:
-          deleteForward(this.arrangement)
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-
-        of Key.enter:
-          insertNewline(this.arrangement)
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-
-        of Key.escape:
-          if this.arrangement.cursors.len > 1:
-            this.arrangement.cursors = @[this.arrangement.cursors[0]]
-            redraw(this)
-
-        of Key.b:
-          if ctrl:
-            this.arrangement.selectionMode = case this.arrangement.selectionMode
-              of LineSelection: BlockSelection
-              of BlockSelection: LineSelection
-            redraw(this)
-
-        else: discard
+      else: discard
 
 
 proc setArrangement(this: CodeEditorContent, text: string) =
@@ -263,6 +269,11 @@ proc setArrangement(this: CodeEditorContent, text: string) =
   let lineNumberMaxWidth = typeset(this.font, $this.arrangement.lines.len).layoutBounds.x
   this.lineNumberBarWidth[] = lineNumberMaxWidth
   redraw(this)
+
+
+proc rearrange(this: CodeEditorContent) =
+  ## todo
+  this.setArrangement(this.arrangement.fileContent())
 
 
 method init*(this: CodeEditorContent) =
@@ -314,15 +325,24 @@ method init*(this: CodeEditorContent) =
           redraw(root)
 
 
-proc updateContent(this: CodeEditor) =
-  let path = currentScript[]
+proc open*(this: CodeEditor, target: Location) =
+  setFocus this.content
   try:
-    this.content.filename = path
-    this.content.setArrangement(readFile(path))
+    this.content.path[] = target.path
+    this.content.setArrangement(readFile(target.path))
+    this.content.arrangement.setCursorPos(target.line, target.col)
+    this.scrollToLine(target.line)
   except CatchableError as exc:
-    this.content.filename = ""
-    this.content.setArrangement("Unable to read script: " & path & "\n" & exc.msg)
+    this.content.path[] = ""
+    this.content.setArrangement("Unable to read file: " & target.path & "\n" & exc.msg)
 
+
+method canOpen(this: CodeEditorFileOpener, target: Location): bool =
+  fileExists(target.path)
+
+
+method open(this: CodeEditorFileOpener, target: Location) =
+  this.editor.open(target)
 
 
 method init*(this: CodeEditor) =
@@ -333,7 +353,7 @@ method init*(this: CodeEditor) =
       this.fill(parent)
       color = colorTheme.bgTextArea
 
-    - ScrollArea.new:
+    - ScrollArea.new as root.scrollArea:
       this.fill(parent)
 
       + this.verticalScrollbar[].UiRect:
@@ -347,6 +367,5 @@ method init*(this: CodeEditor) =
 
       verticalScrollOverFit = binding: this.h[] - root.content.font[].size * 2
 
-    root.updateContent()
-    on currentScript.changed: root.updateContent()
-    on this.w.changed: root.updateContent()
+    root.open(Location(path: currentScript[]))
+    on this.w.changed: root.content.rearrange()

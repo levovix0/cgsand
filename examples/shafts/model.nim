@@ -1,6 +1,6 @@
 import std/[math]
 import sandbox, geom2d
-import pkg/sigeo/grids/extrusions
+import pkg/sigeo/surfaces/[grids]
 import ./[shafts]
 
 
@@ -42,6 +42,8 @@ proc draw3d*(profile: World, doc = doc) =
 
 
 mainModule:
+  doc[globals, CanvasSettings].margin = v2(10.mm, 10.mm)
+  
   let bevel = ShaftConjunction(kind: Bevel, radius: 1.6.mm)
   let fillet = ShaftConjunction(kind: Fillet, radius: 2.mm)
   let shaft = Shaft(

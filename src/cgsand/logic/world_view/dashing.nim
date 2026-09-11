@@ -1,4 +1,4 @@
-import ../lib/[sandbox]
+import ../../lib/[sandbox]
 
 
 iterator dashedSegments*(

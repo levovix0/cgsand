@@ -144,7 +144,7 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
           p.fillet (fillets[i] * min(scaleX, scaleY)).sc
       
       close p
-      sketch.add p, doc.foreground, mainLine
+      sketch.add p, doc.fgColor, mainLine
 
     block:
       letCur p: armoredProfile
@@ -155,7 +155,7 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
           p.fillet (armoredFillets[i] * min(scaleX, scaleY)).sc
       
       close p
-      sketch.add p, doc.foreground, mainLine
+      sketch.add p, doc.fgColor, mainLine
       sketch.add p, Hatching(period: (g.D - g.d) / 70 * scale), hatchingLine
       sketch.add p, Hatching(angle: -Pi/4, period: (g.D - g.d) / 70 * scale), hatchingLine
     
@@ -164,7 +164,6 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
       for i in 0..3: p.add profile.curves[i]
       for i in 5..7: p.add armoredProfile.curves[i]
       close p
-      # sketch.add p, Foreground color(1, 0.4, 0.4), PixelThickness 5
       sketch.add p, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
     
     block:
@@ -172,19 +171,18 @@ proc draw*(g: SealGeomParams, origin: Position2 = point2(), scale: float = 1, ax
       for i in countdown(profile.curves.high, 4): p.add profile.curves[i].cut(1, 0)
       for i in countdown(4, 0): p.add armoredProfile.curves[i].cut(1, 0)
       close p
-      # sketch.add p, Foreground color(1, 0.4, 0.4), PixelThickness 5
       sketch.add p, Hatching(period: (g.D - g.d) / 40 * scale), hatchingLine
     
     block:
       var p = CircleArc2()
       p = circleArc(v2(67.5, 70).world(top).pt, (7.5 * min(scaleX, scaleY)).sc)
-      sketch.add p, doc.foreground, mainLine
+      sketch.add p, doc.fgColor, mainLine
       sketch.add p, Hatching(period: (g.D - g.d) / 70 * scale), hatchingLine
     
     block:
       var p = CircleArc2()
       p = circleArc(v2(67.5, 70).world(top).pt, (5 * min(scaleX, scaleY)).sc)
-      sketch.add p, doc.foreground, mainLine
+      sketch.add p, doc.fgColor, mainLine
       sketch.add p, Hatching(angle: -Pi/4, period: (g.D - g.d) / 70 * scale), hatchingLine
     
     block:

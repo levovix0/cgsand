@@ -1,7 +1,7 @@
 import pkg/[vmath]
 import pkg/rice/[rasterTexts, contexts, gl]
 import pkg/sigui/[uibase]
-import ../logic/[syntax_highlighting]
+import ../logic/code_editor/[syntax_highlighting]
 
 
 proc drawHighlightedText*(

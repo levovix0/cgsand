@@ -4,7 +4,8 @@ import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
 import pkg/toscel/[button]
 import pkg/rice/[primitives, antialiasing, transform, hatching]
-import ../logic/[scripts, config, bounds, doclayout, world_view, document_globals]
+import ../logic/[scripts, config]
+import ../logic/world_view/[bounds, doclayout, document_globals, renderer]
 import ../lib/[sandbox]
 
 
@@ -126,7 +127,7 @@ proc worldCenter3D*(w: World): Vec3 =
   vec3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 
 
-proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
+method drawInner*(this: DocumentView, ctx: DrawContext) =
   if this.script[].hasWorldToDraw:
     let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32)
     if this.documentPixels == nil:
@@ -202,15 +203,6 @@ proc drawDocumentView(this: DocumentView, ctx: DrawContext) =
       )
     )
     glDisable(GlBlend)
-
-
-
-
-method draw*(this: DocumentView, ctx: DrawContext) =
-  this.drawBefore(ctx)
-  if this.visibility[] == visible:
-    this.drawDocumentView(ctx)
-  this.drawAfter(ctx)
 
 
 method recieve*(this: DocumentView, signal: Signal) =

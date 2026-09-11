@@ -1,27 +1,33 @@
+import std/[os, algorithm, sequtils]
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, mouseArea, animations, layouts]
 import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, listWidget]
-import ../logic/[config, pdf_renderer]
-import std/[os]
-import icons
-
-const startDirName = "examples"
+import ../logic/[config, file_openers]
+import ../logic/world_view/[pdf_renderer]
+import ./icons
 
 type
   BrowserItem = object
-    display: string # Displayed name
-    path: string    # Real path to object
-    isDir: bool     # Is this folder or not
+    name: string
+    path: string
+    isDir: bool
+
+  FileBrowser = ref object of ComboBox
+    items: seq[BrowserItem]
+    currentPath: string
+    fileOpener: Property[seq[FileOpener]]
+
 
   ToolBar* = ref object of Uiobj
     codeEditor*: Uiobj
     doc*: Property[ptr World]
-    browserItems: seq[BrowserItem] # Component state for hidden logic
-    rootPath: string               # Hardcoded root reference path
-    currentPath: string            # Current directory path that changes on click
+    fileOpener*: Property[seq[FileOpener]]
 
     saveFileDialogOpened: Property[bool]
+
+    fileBrowser: FileBrowser
+
 
   TitleButton = ref object of Uiobj
     pressedColor: Property[Color]
@@ -36,42 +42,12 @@ registerComponent ToolBar
 registerComponent TitleButton
 
 
-proc updateFileBrowser(this: ToolBar, dir: string): seq[string] =
-  result = @[]
-  this.browserItems = @[] # Clear old data
-  
-  if parentDir(dir) != dir:
-    this.browserItems.add(BrowserItem(display: "..", path: parentDir(dir), isDir: true))
-    
-  # Separate lists to keep folders on top
-  var folders: seq[BrowserItem] = @[]
-  var files: seq[BrowserItem] = @[]
-  
-  # Read disk and check types using system tools
-  for kind, path in walkDir(dir, relative = true):
-    let fullPath = dir / path
-    if kind in {pcDir, pcLinkToDir}:
-      folders.add(BrowserItem(display: path & "/", path: fullPath, isDir: true))
-    else:
-      files.add(BrowserItem(display: path, path: fullPath, isDir: false))
-      
-  # Combine everything into the internal state array
-  this.browserItems.add(folders)
-  this.browserItems.add(files)
-  
-  # Return an array of strings for the ComboBox
-  for item in this.browserItems:
-    result.add(item.display)
+proc `<`(a, b: BrowserItem): bool = a.name < b.name
 
-proc getCurrentRelativePath(this: ToolBar): string =
-  if this.currentPath == this.rootPath:
-    return startDirName
-  else:
-    # Returns a path like: examples/subfolder1/subfolder2
-    return startDirName / relativePath(this.currentPath, this.rootPath)
 
 proc windowControlsWidth*(this: ToolBar): float32 =
   180
+
 
 method init(this: TitleButton) =
   procCall this.super.init()
@@ -100,13 +76,83 @@ method init(this: TitleButton) =
       on this.mouseDownAndUpInside:
         root.activated.emit()
 
-method init*(this: ToolBar) =
+
+proc setCurrentPath(this: FileBrowser, dir: string) =
+  this.currentPath = dir
+  this.items = @[]
+  
+  if parentDir(dir) != dir:
+    this.items.add(BrowserItem(name: "..", path: parentDir(dir.absolutePath).relativePath(getCurrentDir()), isDir: true))
+    
+  var folders: seq[BrowserItem] = @[]
+  var files: seq[BrowserItem] = @[]
+  
+  for kind, path in walkDir(dir):
+    if kind in {pcDir, pcLinkToDir}:
+      folders.add(BrowserItem(name: path.splitPath.tail & "/", path: path, isDir: true))
+    else:
+      files.add(BrowserItem(name: path.splitPath.tail, path: path, isDir: false))
+      
+  this.items.add sorted folders
+  this.items.add sorted files
+  
+  this.options[] = this.items.mapIt(it.name)
+
+
+method init(this: FileBrowser) =
   procCall this.super.init()
 
-  # Initialize state fields
-  this.rootPath = absolutePath(startDirName)
-  this.currentPath = this.rootPath
-  this.browserItems = @[]
+  this.makeLayout:
+    text = binding: config.currentScript[]
+    w = 300
+    fitOptionsWidth = false
+
+    # Disconnecting valid binding and making it always true
+    disconnect this.binding_valid
+    this.valid[] = true
+
+    on this.textEdited:
+      root.fileOpener[].open(Location(path: this.text[]))
+    
+    proc fileChangeConfirmHandler(selectedOptionText: string) =
+      var foundItem: BrowserItem
+      for item in root.items:
+        if item.name == selectedOptionText:
+          foundItem = item
+          break
+      
+      if foundItem.isDir:
+        root.setCurrentPath(foundItem.path)
+        this.selectedOption[] = -1
+        this.dropdownOpened[] = true
+
+        this.lineEdit.border.color[] = color_border_lineEdit
+        this.text[] = root.currentPath
+        
+      else:
+        # If file is selected - we write its path to the config
+        let path = foundItem.path
+        root.fileOpener[].open(Location(path: path.absolutePath))
+        
+        this.lineEdit.border.color[] = color_border_accent_lineEdit
+        this.text[] = path
+
+    on KeyEvent:
+      if e.pressed:
+        if this.lineEdit.textArea.active[] and not signal.handled:
+          if e.key == Key.enter:
+            fileChangeConfirmHandler(this.text[])
+    
+    this.optionSelected.connectTo this, kind:
+      let selectedOptionText = this.options[][this.selectedOption[]]
+      if kind == ClickSelection:
+        fileChangeConfirmHandler(selectedOptionText)
+      else:
+        this.lineEdit.border.color[] = color_border_lineEdit
+
+
+method init*(this: ToolBar) =
+  procCall this.super.init()
 
   this.makeLayout:
     - UiRect.new:
@@ -132,56 +178,10 @@ method init*(this: ToolBar) =
         on this.activated:
           root.codeEditor.visibility[] = (if root.codeEditor.visibility[] == visible: collapsed else: visible)
 
-      - ComboBox.new:
-        text = binding: config.currentScript[]
-        this.options[] = root.updateFileBrowser(root.currentPath)
+      - FileBrowser.new as root.fileBrowser:
         w = 300
-        fitOptionsWidth = false
-
-        # Disconnecting valid binding and making it always true
-        disconnect this.binding_valid
-        this.valid[] = true
-
-        on this.textEdited:
-          config.currentScript[] = this.text[]
-        
-        proc fileChangeConfirmHandler(selectedOptionText: string) =
-          var foundItem: BrowserItem
-          for item in root.browserItems:
-            if item.display == selectedOptionText:
-              foundItem = item
-              break
-          
-          if foundItem.isDir:
-            root.currentPath = foundItem.path
-            
-            this.options[] = root.updateFileBrowser(root.currentPath)
-            this.selectedOption[] = -1
-            this.dropdownOpened[] = true
-
-            this.lineEdit.border.color[] = color_border_lineEdit
-            this.text[] = root.getCurrentRelativePath()
-            
-          else:
-            # If file is selected - we write its path to the config
-            config.currentScript[] = startDirName / relativePath(foundItem.path, root.rootPath)
-            
-            this.lineEdit.border.color[] = color_border_accent_lineEdit
-            this.text[] = startDirName / relativePath(foundItem.path, root.rootPath)
-
-        this.onSignal.connectTo this, signal:
-          if signal of WindowEvent and signal.WindowEvent.event of KeyEvent:
-            let e = (ref KeyEvent)(signal.WindowEvent.event)
-            if e.pressed:
-              if this.lineEdit.textArea.active[] and not signal.WindowEvent.handled:
-                if e.key == Key.enter:
-                  fileChangeConfirmHandler(this.text[])
-        this.optionSelected.connectTo this, e:
-          let selectedOptionText = this.options[][this.selectedOption[]]
-          if e == ClickSelection:
-            fileChangeConfirmHandler(selectedOptionText)
-          else:
-            this.lineEdit.border.color[] = color_border_lineEdit
+        this.setCurrentPath("examples")
+        fileOpener = binding: root.fileOpener[]
 
       - Button.new:
         text = tr"Export PDF"
@@ -227,7 +227,7 @@ method init*(this: ToolBar) =
                   top = parent.top + 24
                   bottom = parent.bottom - 100
 
-                  items = binding: root.updateFileBrowser(root.currentPath)
+                  items = root.fileBrowser.items.mapIt(it.name)
 
               - Label.new as title_label:
                 left = parent.left
@@ -252,7 +252,7 @@ method init*(this: ToolBar) =
                 left = parent.left
                 centerY = file_type.bottom + 32
                 text = binding:
-                  root.getCurrentRelativePath() & "/" & filename.text[] & ".pdf"
+                  root.fileBrowser.currentPath & "/" & filename.text[] & ".pdf"
                 color = "#8c8c8c".color
                 fontSize = 14
               
