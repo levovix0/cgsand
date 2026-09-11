@@ -1,7 +1,8 @@
 import std/[os, algorithm, sequtils]
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
-import pkg/sigui/[uibase, mouseArea, animations, layouts]
+import pkg/pixie/images
+import pkg/sigui/[uibase, mouseArea, animations, layouts, windowCreation]
 import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, listWidget]
 import ../logic/[config, file_openers]
 import ../logic/world_view/[pdf_renderer]
@@ -31,7 +32,7 @@ type
   ToolBar* = ref object of Uiobj
     codeEditor*: Uiobj
     doc*: Property[ptr World]
-    fileOpener*: Property[seq[FileOpener]]
+    fileOpener* {.unprintable.}: Property[seq[FileOpener]]
 
     saveFileDialogOpened: Property[bool]
 
@@ -72,7 +73,11 @@ method init(this: TitleButton) =
           this.centerIn(parent)
           this.w[] = 32
           this.h[] = 32
-          this.image = binding: root.icon[]
+          this.image = binding:
+            if root.icon[] != nil:
+              root.root.ctx.imageFromBuffer(ivec2(root.icon[].width.int32, root.icon[].height.int32), root.icon[].data[0].addr)
+            else:
+              nil
       
       on this.clicked:
         root.activated.emit()
@@ -165,7 +170,7 @@ method init*(this: ToolBar) =
 
       on ClickEvent:
         if this.hovered[] and e.double:
-          this.parentWindow.maximized = not this.parentWindow.maximized
+          this.root.UiWindow.siwinWindow.maximized = not this.root.UiWindow.siwinWindow.maximized
 
     - Layout.row:
       centerY = parent.center

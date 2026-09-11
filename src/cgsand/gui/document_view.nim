@@ -2,7 +2,9 @@ import std/[locks, math]
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
+import pkg/sigui/rendering/rice_backend
 import pkg/toscel/[button]
+import pkg/rice/contexts as riceContexts except DrawContext
 import pkg/rice/[primitives, antialiasing, transform, hatching]
 import ../logic/[scripts, config]
 import ../logic/world_view/[bounds, doclayout, document_globals, renderer]
@@ -26,7 +28,7 @@ registerComponent DocumentView
 
 
 proc fillHatchingRect(
-  ctx: DrawContext,
+  ctx: riceContexts.DrawContext,
   pos, size: Vec2,
   color1, color2: Color,
   dir: Vec2,
@@ -61,7 +63,7 @@ proc projection*(this: DocumentView): Mat4 =
   projectionMatrix(layout.pageBounds, this.wh, globals.axisYDirection)
 
 proc viewportToGlMatrix*(this: DocumentView): Mat4 =
-  combine(this.viewport, this.projection)
+  combine(this.viewport[], this.projection)
 
 proc widgetToViewportPoint*(this: DocumentView, pos: Vec2): Vec2 =
   widgetToViewportPoint(pos, this.wh, this.viewportToGlMatrix)
@@ -128,6 +130,7 @@ proc worldCenter3D*(w: World): Vec3 =
 
 
 method drawInner*(this: DocumentView, ctx: DrawContext) =
+  let ctx = ctx.RiceDrawContext.raw
   if this.script[].hasWorldToDraw:
     let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32)
     if this.documentPixels == nil:
@@ -262,7 +265,7 @@ method init*(this: DocumentView) =
 
   var prevDragPos = vec2(0, 0)
 
-  this.parentUiRoot.onTick.connectTo this, e:
+  this.root.onTick.connectTo this, e:
     let script = this.script[]
     if script != nil:
       withLock script.lock:

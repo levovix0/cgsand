@@ -2,10 +2,10 @@ import std/[options, math, tables]
 import pkg/[ecs, vmath, bumpy]
 import pkg/pixie/paths
 import pkg/pixie/[fonts]
-import pkg/toscel/fonts as toscelFonts
+import pkg/toscel/[fonts]
 import pkg/rice/[primitives, transform, texts, paths, contexts, polygonal3d, gl, hatching]
 import pkg/sigeo/surfaces/[grids]
-import ../../lib/[sandbox, geom2d]
+import ../../lib/[sandbox, geom2d, text]
 import ./[bounds, doclayout, document_globals, dashing]
 
 
@@ -430,7 +430,5 @@ proc worldBoundsCallback*(world: World): Bounds2 {.cdecl.} =
   layout.contentBounds
 
 proc textSizeCallback*(text: string, fontSize: float64): Vec2 {.cdecl.} =
-  var f = newFont(toscelFonts.font_default)
-  f.size = fontSize
-  let box = typeset(f, text).computeBounds()
+  let box = typeset(font_default.withSize(fontSize), text).computeBounds()
   vec2(box.w, box.h)

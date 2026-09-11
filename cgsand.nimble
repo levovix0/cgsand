@@ -21,11 +21,8 @@ requires "jsony"
 
 # --- unstable dependencies ---
 
-requires "sigui >= 0.2.6"
+requires "sigui >= 0.3.0"
   ## for GUI
-
-requires "shady == 0.1.4"
-  ## for shaders (bundled with rice, but needed here to specify the version)
 
 requires "https://github.com/levovix0/sigeo#head"
   ## for defing continuous geometry in scripts

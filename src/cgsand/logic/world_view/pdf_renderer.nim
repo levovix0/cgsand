@@ -1,6 +1,7 @@
 import std/[unicode, math]
 import pkg/[ecs, vmath]
-import pkg/pixie/[paths, fonts as pixieFonts]
+import pkg/pixie/[paths, fonts]
+import pkg/sigui/rendering/rice_backend
 import pkg/toscel/[colors]
 import ../../lib/[sandbox, geom2d, text]
 import ./[doclayout, document_globals, dashing]
@@ -263,7 +264,7 @@ proc renderWorld(o: var PdfWriter, ctx: PdfRenderCtx, w: World, wGlobals: Docume
     let ct     = extraT * t3
     let sizePt = fontSize.float32 * ctx.scale * mmToPt.float32
     let fnt    = font.withSize(sizePt.float64)
-    let arr    = pixieFonts.typeset(fnt, text)
+    let arr    = typeset(fnt, text)
     let box    = arr.layoutBounds()
     let origin = posAt.factor()
     let offX   = -box.x * origin.x

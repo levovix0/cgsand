@@ -43,11 +43,14 @@ doc.add Scheme andN(orN("x", "!z"), "y")
 doc.add Scheme norN(nandN(norN(nandN("!x", "z")), "y"))
 
 
+let darkTheme* = cache[].mgetOrPut(DarkTheme, true)
 
 doc.update globals:
-  add CanvasSettings(autoSize: true, margin: v2(2))
-  add Background color(1, 1, 1)
-  add Foreground color(0, 0, 0)
+  add CanvasSettings(
+    autoSize: true, margin: v2(2),
+    foreground: (if darkTheme: color(0.75, 0.75, 0.8) else: color(0, 0, 0)),
+    background: (if darkTheme: color(0, 0, 0, 0) else: color(1, 1, 1)),
+  )
   # add Foreground color(0.75, 0.75, 0.8)
   add FontSize 1
 
@@ -174,8 +177,7 @@ doc.forEach (r2: Rect, AndGate|OrGate, i: Input):
       doc.add line(p[2], p[3])
     
     if has(InverseOut):
-      doc.add circle(point2(r1.pos.x + r1.wh.x, r1.pos.y - r1.wh.y/2), 0.1):
-        Background color(1, 1, 1)
+      doc.add circle(point2(r1.pos.x + r1.wh.x, r1.pos.y - r1.wh.y/2), 0.1), color(1, 1, 1), Fill()
       
 
   doc.forEach (p1: Position2, Sym, id: EntityId):

@@ -2,6 +2,9 @@
 import "src/cgsand/lib/config.nims"
 
 
+--path:"src/cgsand/lib"
+
+
 task build, "build":
   exec "nim c --debugger:native src/cgsand.nim"
 

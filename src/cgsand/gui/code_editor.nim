@@ -1,9 +1,7 @@
 import std/[sets, os]
 import pkg/[vmath, chroma]
-import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
-import pkg/sigui/window
 import ../logic/[config, code_editor, asyncio, file_openers]
 import ./[highlighted_text]
 
@@ -59,23 +57,23 @@ proc updateHeight(this: CodeEditorContent) =
 
 
 method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
-  let winRect = rect(vec2(), this.parentUiRoot.wh)
+  let winRect = rect(vec2(), this.root.wh)
   let textOffsetX = this.textOffsetX
   let lineNumberBarOffsetX_r = this.lineNumberBarOffsetX + this.lineNumberBarWidth[]
   let arrowBarCenterX = this.arrowBarOffsetX + this.arrowBarWidth[] / 2
 
-  let spaceW = typeset(this.font, " ").layoutBounds.x
+  let spaceW = typeset(this.font[], " ").layoutBounds.x
   for i, line in this.arrangement.lines:
     if line.isHidden: continue
 
-    if this.globalY + line.rect.y + line.rect.h < winRect.y: continue
-    if this.globalY + line.rect.y > winRect.y + winRect.h: continue
+    if this.globalY[] + line.rect.y + line.rect.h < winRect.y: continue
+    if this.globalY[] + line.rect.y > winRect.y + winRect.h: continue
 
     # line number
     ctx.drawRasterText(
-      (this.globalXy + ctx.offset + vec2(lineNumberBarOffsetX_r, line.rect.y)).vec3(0),
-      typeset(this.font, $(i + 1)),
-      colorTheme.sLineNumber.vec4,
+      this.globalXy + vec2(lineNumberBarOffsetX_r, line.rect.y),
+      typeset(this.font[], $(i + 1)),
+      colorTheme.sLineNumber,
       origin=vec2(1, 0),
     )
 
@@ -84,19 +82,16 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
         # fold arrow
         ctx.drawRasterText(
-          (this.globalXy + ctx.offset + vec2(arrowBarCenterX, line.rect.y)).vec3(0),
-          typeset(this.font, arrowChar),
-          colorTheme.sLineNumber.vec4,
+          this.globalXy + vec2(arrowBarCenterX, line.rect.y),
+          typeset(this.font[], arrowChar),
+          colorTheme.sLineNumber,
           origin=vec2(0.5, 0),
         )
 
     for offset in line.indentOffsets:
       let guideX = textOffsetX + offset.float32 * spaceW
       ctx.fillRect(
-        rect(
-          this.globalXy + ctx.offset + vec2(guideX, line.rect.y),
-          vec2(1'f32, line.rect.h),
-        ),
+        rect(this.globalXy + vec2(guideX, line.rect.y), vec2(1'f32, line.rect.h)),
         color(0.3'f32, 0.3'f32, 0.3'f32),
       )
 
@@ -110,7 +105,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       if arr.runes.len == 0:
         # selection rect for empty line
         ctx.fillRect(
-          rect(this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+          rect(this.globalXy + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
           color(0.2'f32, 0.4'f32, 0.7'f32),
         )
 
@@ -135,7 +130,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
           # selection rect
           ctx.fillRect(
             rect(
-              this.globalXy + ctx.offset + vec2(textOffsetX + startX, subRowY),
+              this.globalXy + vec2(textOffsetX + startX, subRowY),
               vec2(selW, lineH),
             ),
             color(0.2'f32, 0.4'f32, 0.7'f32),
@@ -144,7 +139,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
     # the code
     drawHighlightedText(
       ctx,
-      (this.globalXy + ctx.offset + vec2(textOffsetX, line.rect.y)).vec3(0),
+      this.globalXy + vec2(textOffsetX, line.rect.y),
       line.arrangement,
       line.kinds,
     )
@@ -156,7 +151,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
           let pos = vec2(textOffsetX, line.rect.y) + line.colToPos(cursor.col)
           # text cursor
           ctx.fillRect(
-            rect(this.globalXy + ctx.offset + pos, vec2(cursorW, this.font[].lineHeightPixels)),
+            rect(this.globalXy + pos, vec2(cursorW, this.font[].lineHeightPixels)),
             color(1'f32, 1'f32, 1'f32),
           )
 
@@ -167,7 +162,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       # line for folded line
       ctx.fillRect(
         rect(
-          this.globalXy + ctx.offset + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
+          this.globalXy + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
           vec2(rect.w, lineH),
         ),
         color(0.3'f32, 0.6'f32, 1.0'f32),
@@ -266,7 +261,7 @@ proc setArrangement(this: CodeEditorContent, text: string) =
   this.arrangement = text.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.updateHeight()
 
-  let lineNumberMaxWidth = typeset(this.font, $this.arrangement.lines.len).layoutBounds.x
+  let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
   this.lineNumberBarWidth[] = lineNumberMaxWidth
   redraw(this)
 
@@ -316,7 +311,7 @@ method init*(this: CodeEditorContent) =
           if line.isHidden: continue
           if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
             let col = line.posToCol(vec2(this.mouseX[], this.mouseY[] - line.rect.y))
-            let append = Key.lalt in this.parentWindow.keyboard.pressed or Key.ralt in this.parentWindow.keyboard.pressed
+            let append = Key.lalt in this.root.keyboardState.pressed or Key.ralt in this.root.keyboardState.pressed
             root.arrangement.setCursorPos(i, col, append)
             root.dragingCursorI = root.arrangement.cursors.high
             redraw(root)

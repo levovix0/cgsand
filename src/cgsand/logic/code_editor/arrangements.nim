@@ -1,6 +1,6 @@
 import std/[unicode, sequtils, sets, algorithm, strutils]
 import pkg/[vmath, bumpy]
-import pkg/pixie/fonts
+import pkg/sigui/rendering
 import ./[syntax_highlighting]
 export CodeKind
 

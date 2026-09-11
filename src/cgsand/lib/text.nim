@@ -1,8 +1,9 @@
 import ./sandbox
-import pkg/pixie/fonts as pixieFonts
+import pkg/sigui/rendering as siguiRendering
 import pkg/toscel/fonts as toscelFonts
 
-export pixieFonts, toscelFonts
+export siguiRendering except Path, DrawContext
+export toscelFonts
 
 
 #[ declared in ./sandbox
@@ -10,11 +11,6 @@ type
   Text* = string
   FontSize* = float64
 ]#
-
-
-proc withSize*(font: Typeface, size: float64 = 1): Font =
-  result = newFont(font)
-  result.size = size
 
 
 when isMainModule:

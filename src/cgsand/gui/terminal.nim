@@ -1,10 +1,7 @@
 import std/[unicode, terminal, times, strutils]
 import pkg/[vmath, chroma]
-import pkg/pixie/[fonts]
-import pkg/rice/[rasterTexts, contexts, gl, primitivesAA]
 import pkg/toscel/[focus]
-import pkg/sigui/[uibase, mouseArea, animations]
-import pkg/sigui/window
+import pkg/sigui/[uibase, window, mouseArea, animations, rendering]
 import ../logic/[config, terminal, file_openers]
 
 
@@ -47,7 +44,7 @@ type
   Terminal* = ref object of Uiobj
     content*: TerminalContent
 
-    fileOpener*: seq[FileOpener]
+    fileOpener* {.unprintable.}: seq[FileOpener]
 
     backend: TerminalBackend
     m_outputChannel: Channel[string]
@@ -104,7 +101,7 @@ proc clear*(this: Terminal) =
 
 proc cellSize*(this: TerminalContent): Vec2 =
   ## assumes this.font is monospace
-  this.font.typeset("T").selectionRects[0].wh
+  this.font[].typeset("T").selectionRects[0].wh
 
 
 proc feed*(this: TerminalContent, text: string) =
@@ -250,12 +247,12 @@ proc selectedText*(this: TerminalContent): string =
 proc copySelection*(this: TerminalContent) =
   let text = this.selectedText()
   if text.len > 0:
-    this.parentWindow.clipboard.text = text
+    this.root.clipboardText = text
 
 
 proc pasteClipboard*(this: TerminalContent) =
   if this.terminal == nil: return
-  var src = this.parentWindow.clipboard.text
+  var src = this.root.clipboardText
   if src.len == 0: return
   # a paste goes to the shell as if typed: \r acts as Enter, and control
   # characters other than \t would trigger shell shortcuts
@@ -321,7 +318,7 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
   if arr == nil or arr.size.x <= 0 or arr.size.y <= 0: return
 
   let cell = this.cellSize
-  let origin = this.globalXy + ctx.offset
+  let origin = this.globalXy
   let spaceRune = " ".runeAt(0)
 
   # backgrounds and decorations
@@ -333,23 +330,20 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
 
       if bg != ColorDimBlack:
         ctx.fillRect(
-          pos = origin + vec2(x.float32 * cell.x, rowY),
-          size = cell,
-          color = bg,
+          rect(origin + vec2(x.float32 * cell.x, rowY), cell),
+          bg,
         )
 
       if styleUnderscore in c.flags.style:
         ctx.fillRect(
-          pos = origin + vec2(x.float32 * cell.x, rowY + cell.y - 1.5'f32),
-          size = vec2(cell.x, 1.5'f32),
-          color = fg,
+          rect(origin + vec2(x.float32 * cell.x, rowY + cell.y - 1.5'f32), vec2(cell.x, 1.5'f32)),
+          fg,
         )
 
       if styleStrikethrough in c.flags.style:
         ctx.fillRect(
-          pos = origin + vec2(x.float32 * cell.x, rowY + cell.y / 2),
-          size = vec2(cell.x, 1'f32),
-          color = fg,
+          rect(origin + vec2(x.float32 * cell.x, rowY + cell.y / 2), vec2(cell.x, 1'f32)),
+          fg,
         )
 
   # mouse selection (over the cell backgrounds, under the text)
@@ -364,9 +358,8 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       let x1 = (if r == botRow: sb.x.int else: arr.size.x.int - 1).min(arr.size.x.int - 1)
       if x1 < x0: continue
       ctx.fillRect(
-        pos = origin + vec2(x0.float32 * cell.x, y.float32 * cell.y),
-        size = vec2((x1 - x0 + 1).float32 * cell.x, cell.y),
-        color = colorTheme.bgSelection,
+        rect(origin + vec2(x0.float32 * cell.x, y.float32 * cell.y), vec2((x1 - x0 + 1).float32 * cell.x, cell.y)),
+        colorTheme.bgSelection,
       )
 
   # hovered file path: underlined like a link (ctrl+click opens it)
@@ -381,9 +374,8 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       for x in x0 .. x1:
         let c = arr.viewCell(x, y)
         ctx.fillRect(
-          pos = origin + vec2(x.float32 * cell.x, y.float32 * cell.y + cell.y - 1.5'f32),
-          size = vec2(cell.x, 1.5'f32),
-          color = c.effectiveColors.fg,
+          rect(origin + vec2(x.float32 * cell.x, y.float32 * cell.y + cell.y - 1.5'f32), vec2(cell.x, 1.5'f32)),
+          c.effectiveColors.fg,
         )
 
   # terminal cursor (it lives on the live screen, not in the scrolled-back view)
@@ -391,13 +383,13 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
     let rect = rect(origin + vec2(arr.cursor.x.float32 * cell.x, arr.cursor.y.float32 * cell.y), cell)
     if currentFocus[] == this:
       if this.cursorBlink[]:
-        ctx.fillRect(pos = rect.xy, rect.wh, "#c1c1c1".color)
+        ctx.fillRect(rect, "#c1c1c1".color)
     else:
-      ctx.drawRect(pos = rect.xy, rect.wh, "#c1c1c1".color, thickness = 1)
+      ctx.drawRect(rect, "#c1c1c1".color, thickness = 1)
 
   # text
   # note: rune quads take a position in gl coordinates, unlike fillRect
-  var textCtx = ctx.startRasterTextDrawing(this.font[])
+  var textCtx = ctx.startRasterTextDrawing(this.font[], origin)
   for y in 0 ..< arr.size.y:
     let rowY = y.float32 * cell.y
     for x in 0 ..< arr.size.x:
@@ -405,9 +397,8 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       if c.rune == spaceRune: continue
 
       let (fg, _) = c.effectiveColors
-      textCtx.color.uniform = fg.vec4
-      let glPos = ctx.viewportToGlMatrix * (origin + vec2(x.float32 * cell.x, rowY)).vec3(0)
-      ctx.fastRasterDrawRune(c.rune, rect(glPos.xy, cell), textCtx)
+      textCtx.color = fg
+      ctx.fastRasterDrawRune(c.rune, rect(vec2(x.float32 * cell.x, rowY), cell), textCtx)
 
   ctx.endRasterTextDrawing()
 
@@ -498,7 +489,7 @@ method init*(this: TerminalContent) =
   this.arrangement = newTerminalArrangement(scrollbackLines = currentConfig.terminalScrollbackLines)
 
   this.makeLayout:
-    on this.parentUiRoot.onTick:
+    on this.root.onTick:
       root.selectionAutoScroll()
       if currentFocus[] == root:
         root.cursorBlink[] = ((getTime() - root.lastActivity) mod (CursorBlinkActiveTime + CursorBlinkInactiveTime)) <= CursorBlinkActiveTime
@@ -514,7 +505,7 @@ method init*(this: TerminalContent) =
 
       # re-evaluate the link under the mouse every frame: the content under a
       # still mouse can change (new output, scrolling)
-      this.parentUiRoot.onTick.connectTo this:
+      this.root.onTick.connectTo this:
         if this.hovered[]:
           root.updateHoveredLink(this.mouseXy[])
         else:
@@ -522,7 +513,7 @@ method init*(this: TerminalContent) =
 
       on this.pressed[] == true:
         setFocus root
-        if root.hoveredLinkValid and this.parentWindow.keyboard.modifiers.contains(control):
+        if root.hoveredLinkValid and this.root.keyboardState.modifiers.contains(control):
           root.openHoveredLink()
         else:
           root.selectionPressed(this.mouseXy[])
@@ -538,7 +529,7 @@ method init*(this: TerminalContent) =
         let arr = root.arrangement
         if arr == nil: return
         
-        let delta = if this.parentWindow.keyboard.modifiers.contains(shift): vec2(delta.y, delta.x) else: delta
+        let delta = if this.root.keyboardState.modifiers.contains(shift): vec2(delta.y, delta.x) else: delta
 
         if delta.x != 0 and root.terminal != nil:
           # send left/right arrow keys
@@ -584,7 +575,7 @@ method init*(this: Terminal) =
   except CatchableError:
     this.backend = nil  # the terminal is still usable for compilation logs
 
-  this.parentUiRoot.onTick.connectTo this:
+  this.root.onTick.connectTo this:
     this.drainOutput()
 
   this.makeLayout:

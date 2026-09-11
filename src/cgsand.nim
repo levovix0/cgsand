@@ -1,7 +1,7 @@
 import std/[os, math]
 import pkg/[ecs]
 import pkg/siwin
-import pkg/sigui/[uibase, window, mouseArea, animations]
+import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
 import ./cgsand/logic/[config, scripts, file_openers]
 import ./cgsand/logic/world_view/[renderer]

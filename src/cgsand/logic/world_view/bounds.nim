@@ -1,8 +1,8 @@
 import std/[options]
 import pkg/[vmath]
-import pkg/pixie/[fonts]
-import pkg/pixie/paths
+import pkg/pixie/[paths, fonts]
 import pkg/sigeo/[curves2d]
+import pkg/sigui/rendering/rice_backend
 import ../../lib/[sandbox, geom2d, text]
 import ./[document_globals]
 
