@@ -1,28 +1,17 @@
 import std/[unicode, terminal, times, strutils]
 import pkg/[vmath, chroma]
 import pkg/pixie/[fonts]
-import pkg/rice/[rasterTexts, contexts, gl, primitives]
+import pkg/rice/[rasterTexts, contexts, gl, primitivesAA]
 import pkg/toscel/[focus]
-import pkg/sigui/[uibase, mouseArea]
+import pkg/sigui/[uibase, mouseArea, animations]
 import pkg/sigui/window
 import ../logic/[config, terminal, file_openers]
-
-
-const
-  CursorBlinkPeriod = 1.2'f32
-  CursorSolidAfterActivity = 0.8'f32  # the cursor does not blink right after output/input
-
-  WheelScrollLines = 3  # history lines / arrow keys per wheel notch
-
-  DoubleClickTime = 0.4'f32  # max seconds between clicks counted as one multi-click
-  DoubleClickRadius = 6'f32
-  SelectionAutoscrollPeriod = 0.05'f32  # min seconds between autoscroll steps
 
 
 type
   SelectionMode = enum
     smNone
-    smChar  # a character range dragged with the mouse
+    smChar  # single click: runes
     smWord  # double click: whole words
     smLine  # triple click: whole lines
 
@@ -35,7 +24,9 @@ type
 
     arrangement: TerminalArrangement
     pendingOutput: string  ## unparsed tail of output (an incomplete escape sequence)
-    lastActivity: float    ## epochTime of the last output/input, for cursor blinking
+
+    lastActivity: Time
+    cursorBlink: Property[bool]
 
     # mouse text selection, in absolute cell coordinates (see logic/terminal/emulator)
     selectionMode: SelectionMode
@@ -52,7 +43,6 @@ type
     mouseArea: MouseArea
     hoveredLink: TerminalLink
     hoveredLinkValid: bool
-    linkCursorShown: bool  ## whether the mouse cursor is currently a hand
 
   Terminal* = ref object of Uiobj
     content*: TerminalContent
@@ -67,6 +57,20 @@ type
 registerComponent Terminal
 registerComponent TerminalContent
 
+
+const
+  CursorBlinkActiveTime = 1's
+  CursorBlinkInactiveTime = 1's
+
+  WheelScrollLines = 3  # history lines / arrow keys per wheel notch
+
+  DoubleClickTime = 0.4'f32  # max seconds between clicks counted as one multi-click
+  DoubleClickRadius = 6'f32
+  SelectionAutoscrollPeriod = 0.05'f32  # min seconds between autoscroll steps
+
+let
+  HandCursor = (ref Cursor) BuiltinCursor.pointingHand
+  TextCursor = (ref Cursor) BuiltinCursor.text
 
 
 proc outputChannel*(this: Terminal): ptr Channel[string] =
@@ -130,7 +134,7 @@ proc feed*(this: TerminalContent, text: string) =
       this.selectionAnchor.y = max(0, this.selectionAnchor.y - evicted.int32)
       this.selectionHead.y = max(0, this.selectionHead.y - evicted.int32)
 
-  this.lastActivity = epochTime()
+  this.lastActivity = getTime()
   redraw this
 
 
@@ -264,7 +268,7 @@ proc pasteClipboard*(this: TerminalContent) =
   if text.len > 0:
     this.terminal.sendInput(text)
     this.arrangement.scrollToBottom()
-    this.lastActivity = epochTime()
+    this.lastActivity = getTime()
 
 
 # --- clickable file paths ---------------------------------------------------
@@ -285,19 +289,14 @@ proc updateHoveredLink(this: TerminalContent, pos: Vec2) =
     redraw this
 
   # the hand cursor marks the path as clickable
-  if this.mouseArea != nil and this.linkCursorShown != found:
-    this.linkCursorShown = found
-    this.mouseArea.cursor[] = if found: BuiltinCursor.pointingHand else: BuiltinCursor.text
+  this.mouseArea.cursor[] = if found: HandCursor else: TextCursor
 
 
 proc clearHoveredLink(this: TerminalContent) =
   if this.hoveredLinkValid:
     this.hoveredLinkValid = false
     redraw this
-  if this.linkCursorShown:
-    this.linkCursorShown = false
-    if this.mouseArea != nil:
-      this.mouseArea.cursor[] = BuiltinCursor.text
+  this.mouseArea.cursor[] = TextCursor
 
 
 proc openHoveredLink(this: TerminalContent) =
@@ -333,18 +332,24 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       let (fg, bg) = c.effectiveColors
 
       if bg != ColorDimBlack:
-        ctx.fillRect(rect(origin + vec2(x.float32 * cell.x, rowY), cell), bg)
+        ctx.fillRect(
+          pos = origin + vec2(x.float32 * cell.x, rowY),
+          size = cell,
+          color = bg,
+        )
 
       if styleUnderscore in c.flags.style:
         ctx.fillRect(
-          rect(origin + vec2(x.float32 * cell.x, rowY + cell.y - 1.5'f32), vec2(cell.x, 1.5'f32)),
-          fg,
+          pos = origin + vec2(x.float32 * cell.x, rowY + cell.y - 1.5'f32),
+          size = vec2(cell.x, 1.5'f32),
+          color = fg,
         )
 
       if styleStrikethrough in c.flags.style:
         ctx.fillRect(
-          rect(origin + vec2(x.float32 * cell.x, rowY + cell.y / 2), vec2(cell.x, 1'f32)),
-          fg,
+          pos = origin + vec2(x.float32 * cell.x, rowY + cell.y / 2),
+          size = vec2(cell.x, 1'f32),
+          color = fg,
         )
 
   # mouse selection (over the cell backgrounds, under the text)
@@ -359,11 +364,9 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       let x1 = (if r == botRow: sb.x.int else: arr.size.x.int - 1).min(arr.size.x.int - 1)
       if x1 < x0: continue
       ctx.fillRect(
-        rect(
-          origin + vec2(x0.float32 * cell.x, y.float32 * cell.y),
-          vec2((x1 - x0 + 1).float32 * cell.x, cell.y),
-        ),
-        colorTheme.bgSelection,
+        pos = origin + vec2(x0.float32 * cell.x, y.float32 * cell.y),
+        size = vec2((x1 - x0 + 1).float32 * cell.x, cell.y),
+        color = colorTheme.bgSelection,
       )
 
   # hovered file path: underlined like a link (ctrl+click opens it)
@@ -378,20 +381,19 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       for x in x0 .. x1:
         let c = arr.viewCell(x, y)
         ctx.fillRect(
-          rect(origin + vec2(x.float32 * cell.x, y.float32 * cell.y + cell.y - 1.5'f32), vec2(cell.x, 1.5'f32)),
-          c.effectiveColors.fg,
+          pos = origin + vec2(x.float32 * cell.x, y.float32 * cell.y + cell.y - 1.5'f32),
+          size = vec2(cell.x, 1.5'f32),
+          color = c.effectiveColors.fg,
         )
 
   # terminal cursor (it lives on the live screen, not in the scrolled-back view)
-  if arr.cursorVisible and not arr.scrolledBack and currentFocus[] == this:
-    let idle = epochTime() - this.lastActivity
-    let blinkOn = idle < CursorSolidAfterActivity or
-      (idle - CursorSolidAfterActivity) mod CursorBlinkPeriod < CursorBlinkPeriod / 2
-    if blinkOn:
-      ctx.fillRect(
-        rect(origin + vec2(arr.cursor.x.float32 * cell.x, arr.cursor.y.float32 * cell.y), cell),
-        color(1'f32, 1'f32, 1'f32, 0.3'f32),
-      )
+  if arr.cursorVisible and not arr.scrolledBack:
+    let rect = rect(origin + vec2(arr.cursor.x.float32 * cell.x, arr.cursor.y.float32 * cell.y), cell)
+    if currentFocus[] == this:
+      if this.cursorBlink[]:
+        ctx.fillRect(pos = rect.xy, rect.wh, "#c1c1c1".color)
+    else:
+      ctx.drawRect(pos = rect.xy, rect.wh, "#c1c1c1".color, thickness = 1)
 
   # text
   # note: rune quads take a position in gl coordinates, unlike fillRect
@@ -461,7 +463,7 @@ method recieve*(this: TerminalContent, signal: Signal) =
       if text.len > 0:
         this.terminal.sendInput(text)
         this.arrangement.scrollToBottom()
-        this.lastActivity = epochTime()
+        this.lastActivity = getTime()
         signal.handled = true
 
   signal.match KeyEvent:
@@ -485,7 +487,7 @@ method recieve*(this: TerminalContent, signal: Signal) =
         if seq.len > 0:
           this.terminal.sendInput(seq)
           this.arrangement.scrollToBottom()
-          this.lastActivity = epochTime()
+          this.lastActivity = getTime()
           signal.handled = true
 
 
@@ -496,8 +498,15 @@ method init*(this: TerminalContent) =
   this.arrangement = newTerminalArrangement(scrollbackLines = currentConfig.terminalScrollbackLines)
 
   this.makeLayout:
-    this.parentUiRoot.onTick.connectTo this:
-      this.selectionAutoScroll()
+    on this.parentUiRoot.onTick:
+      root.selectionAutoScroll()
+      if currentFocus[] == root:
+        root.cursorBlink[] = ((getTime() - root.lastActivity) mod (CursorBlinkActiveTime + CursorBlinkInactiveTime)) <= CursorBlinkActiveTime
+      else:
+        root.cursorBlink[] = true
+    
+    on currentFocus[] == root:
+      root.lastActivity = getTime()
 
     - MouseArea.new as root.mouseArea:
       this.fill(parent)
