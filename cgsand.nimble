@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "0.1.1"
 author        = "levovix"
 description   = "Code-geometric sandbox"
 license       = "MIT"
