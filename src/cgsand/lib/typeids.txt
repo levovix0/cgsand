@@ -23,7 +23,6 @@ SubWorld
 Fill
 Color
 Hatching
-Layer
 PixelThickness
 Stroke
 Dashing

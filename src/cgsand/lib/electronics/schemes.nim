@@ -137,11 +137,15 @@ const subscript* = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈
 proc setElectronicsSchemesGlobals*(globals: EntityId) =
   doc.update globals:
     add OwnerModule "electronics/schemes"
-    add CanvasSettings(autoSize: true, margin: v2(schemeTheme.canvasMargin), mmScale: 2.5)
+    add CanvasSettings(
+      autoSize: true,
+      margin: v2(schemeTheme.canvasMargin),
+      mmScale: 2.5,
+      background: schemeTheme.background,
+      foreground: schemeTheme.foreground,
+    )
     add AxisYDown
     add FontSize schemeTheme.baseFontSize
-    add Background schemeTheme.background
-    add Foreground schemeTheme.foreground
 
 if not doc.hasComponent(globals, OwnerModule):
   setElectronicsSchemesGlobals(globals)
@@ -625,17 +629,13 @@ proc placeConnections*(rules: seq[PlacementRule], nodeRects: Table[Node, Rect]) 
       if cast[pointer](node) in lineNodes:
         let px = r.x
         let py = inputPortY(node, r, portIdx)
-        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius):
-          Foreground schemeTheme.errorColor
-          Background schemeTheme.errorColor
+        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius), schemeTheme.errorColor, Fill()
 
       if cast[pointer](inp.n) in lineNodes:
         let inRect = nodeRects[inp.n]
         let px = inRect.x + inRect.w
         let py = outputPortY(inp.n, inRect, inp.port)
-        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius):
-          Foreground schemeTheme.errorColor
-          Background schemeTheme.errorColor
+        doc.add circle(center = point2(px, py), radius = schemeTheme.errorCircleRadius), schemeTheme.errorColor, Fill()
 
   # todo: check that the Branch points are connecting diffirent signals
   # Pass 4: if 2+ Connection start from the same point, add a Branch
@@ -725,17 +725,15 @@ proc drawRect(r: Rect) =
 
 
 proc drawComponents* =
-  doc.forEach (c: Connection, color: (Foreground|Color)||schemeTheme.foreground, thickness: opt Thickness):
+  doc.forEach (c: Connection, color: Color||schemeTheme.foreground, thickness: opt Thickness):
     for i in 0..<(c.len-1):
       if has Thickness:
         doc.add line(c[i], c[i + 1]), Thickness thickness, color
       else:
         doc.add line(c[i], c[i + 1]), color
 
-  doc.forEach (b: Branch, color: (Foreground|Color)||schemeTheme.foreground):
-    doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius):
-      Foreground color
-      Background color
+  doc.forEach (b: Branch, color: Color||schemeTheme.foreground):
+    doc.add circle(center = b.Point2, radius = schemeTheme.branchRadius), color, Fill()
 
   doc.forEach (n: Node, r: Rect):
     case n.kind
@@ -749,9 +747,7 @@ proc drawComponents* =
       for i, o in n.outputs:
         let p = point2(r.x + r.w, outputPortY(n, r, i))
         if not o:
-          doc.add circle(center = p, radius = schemeTheme.negationCircleRadius):
-            Foreground schemeTheme.foreground
-            Background schemeTheme.background
+          doc.add circle(center = p, radius = schemeTheme.negationCircleRadius), schemeTheme.foreground, Fill()
     
     of SymN:
       var name = n.name
@@ -809,9 +805,7 @@ proc drawComponents* =
           PositionAtCenter
         if negate:
           doc.add line(textPos + v2(-0.5, -0.5), textPos + v2(0.5, -0.5)), Thickness schemeTheme.negationLineThickness
-          doc.add circle(point2(r.x + 6, y + outH/2), radius = schemeTheme.negationCircleRadius):
-            Foreground schemeTheme.foreground
-            Background schemeTheme.background
+          doc.add circle(point2(r.x + 6, y + outH/2), radius = schemeTheme.negationCircleRadius), schemeTheme.foreground, Fill()
 
 
 proc simulateNode(n: Node, vals: var Table[Node, Value], prevVals: Table[Node, Value], computing: var HashSet[Node], skipSim: HashSet[Node], computed: var HashSet[Node], cacheable: bool = true): Value =
