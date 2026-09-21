@@ -47,11 +47,26 @@
     }
   },
   "src/cgsand/gui/tool_bar.nim": {
+    "Save as PDF": {
+      "": "Сохранить как PDF"
+    },
+    "Name:": {
+      "": "Название:"
+    },
     "Code": {
       "": "Код"
     },
+    "Select location": {
+      "": "Выберите расположение"
+    },
     "Export PDF": {
       "": "Экспорт PDF"
+    },
+    "Save": {
+      "": "Сохранить"
+    },
+    "Cancel": {
+      "": "Отмена"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {
