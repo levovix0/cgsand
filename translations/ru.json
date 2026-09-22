@@ -4,7 +4,7 @@
       "": "Вызовите `checkLevel()` для завершения уровня"
     },
     "To move to the next level, replace l1_basics with l2_text": {
-      "": "Для перехода на следующий уровень замени l1_basics на l2_text"
+      "": "Для перехода на следующий уровень замените l1_basics на l2_text"
     },
     "Create a square on points above": {
       "": "Создайте квадрат по точкам выше"
@@ -52,6 +52,9 @@
     },
     "Export PDF": {
       "": "Экспорт PDF"
+    },
+    "Terminal": {
+      "": "Терминал"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {

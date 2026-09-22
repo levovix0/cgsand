@@ -31,6 +31,7 @@ type
 
   ToolBar* = ref object of Uiobj
     codeEditor*: Uiobj
+    terminal*: Uiobj
     doc*: Property[ptr World]
     fileOpener* {.unprintable.}: Property[seq[FileOpener]]
 
@@ -183,6 +184,13 @@ method init*(this: ToolBar) =
 
         on this.activated:
           root.codeEditor.visibility[] = (if root.codeEditor.visibility[] == visible: collapsed else: visible)
+
+      - Button.new:
+        text = tr"Terminal"
+        accent = binding: root.terminal.visibility[] == visible
+
+        on this.activated:
+          root.terminal.visibility[] = (if root.terminal.visibility[] == visible: collapsed else: visible)
 
       - FileBrowser.new as root.fileBrowser:
         w = 300

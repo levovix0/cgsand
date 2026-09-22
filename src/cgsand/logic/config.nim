@@ -14,6 +14,7 @@ type
     windowW*: int = 1280
     windowH*: int = 720
     codeEditorVisible*: bool = true
+    terminalVisible*: bool = true
 
     # todo: make proper attachable and floating panels in toscel
     codeEditorPortion*: float = 1

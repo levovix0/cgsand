@@ -117,9 +117,13 @@ win.makeLayout:
       right = parent.right
       top = toolBar.bottom
       bottom = parent.bottom
+      
+      on this.visibility.changed:
+        currentConfig.terminalVisible = this.visibility[] == visible
+        save(currentConfig)
 
 
-    - ToolBar(codeEditor: codeEditor) as toolBar:
+    - ToolBar(codeEditor: codeEditor, terminal: terminal) as toolBar:
       this.fillHorizontal(parent)
       h = 60
 
