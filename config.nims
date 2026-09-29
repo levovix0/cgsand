@@ -18,3 +18,6 @@ task buildRelease, "build with -d:danger":
 task runRelease, "build and run with -d:danger":
   exec "nim c -d:danger -r src/cgsand.nim"
 
+task run_inspect, "build and run with -d:danger":
+  exec "nim c -d:inspector -d:danger -r src/cgsand.nim"
+

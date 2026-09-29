@@ -6,6 +6,10 @@ import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
 import ./cgsand/logic/[config, scripts, file_openers]
 import ./cgsand/logic/world_view/[renderer]
 
+when defined(inspector):
+  import pkg/sigui/inspector
+
+
 globalLocale[0] = systemLocale()
 
 when defined(useX11):
@@ -165,6 +169,8 @@ win.makeLayout:
     if files.len > 0:
       fileOpener.open(Location(path: files[0]))
 
+when defined(inspector):
+  openInspector win
 run win
 
 
