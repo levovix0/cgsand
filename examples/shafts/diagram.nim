@@ -43,9 +43,9 @@ type
 
 
 let dimensionFontSize = FontSize 0.5
-var loadColor: Color = doc.foreground
-var forceColor: Color = doc.foreground
-var momentColor: Color = doc.foreground
+var loadColor: Color = doc.fgColor
+var forceColor: Color = doc.fgColor
+var momentColor: Color = doc.fgColor
 if darkTheme:
   loadColor = parseHtmlHex "#ff9b28"
   forceColor = parseHtmlHex "#1e8fff"
@@ -155,7 +155,7 @@ proc draw*(beam: Beam) =
     for x in countup(0, int((load.x.b - load.x.a) * 4)):
       let p = line(a, b).pointAt(x / int((load.x.b - load.x.a) * 4))
       doc.add line(p + dir/4, p + dir), loadColor
-      addArrow(p, -dir, dir.length / 2, loadColor)
+      doc.add arrow(p, -dir, dir.length / 2), loadColor
       
     for x in countup(0, int(load.x.b - load.x.a) - 1):
       let p = line(a + v2((l*beam.meterSize)/2, 0), b - v2((l*beam.meterSize)/2, 0)).pointAt(x / (int(load.x.b - load.x.a) - 1))
@@ -172,7 +172,7 @@ proc draw*(beam: Beam) =
     let dir = (if force.force > 0: v2(0, -1) else: v2(0, 1)) * forceHeight
 
     doc.add line(pos + dir/4, pos + dir), forceColor, wide
-    addArrow(pos, -dir, 1, forceColor)
+    doc.add arrow(pos, -dir, 1), forceColor
 
     doc.add Text abs(force.force / (q * l)).`$`.addName("ql"):
       Position2 pos + dir + v2(textMargin, 0)
@@ -191,8 +191,8 @@ proc draw*(beam: Beam) =
     doc.add line(pos - dir, pos + dir), momentColor
     doc.add line(pos - dir, pos - dir - dirx), momentColor
     doc.add line(pos + dir, pos + dir + dirx), momentColor
-    addArrow(pos + dir + dirx, dirx, momentWidth/2, momentColor)
-    addArrow(pos - dir - dirx, -dirx, momentWidth/2, momentColor)
+    doc.add arrow(pos + dir + dirx, dirx, momentWidth/2), momentColor
+    doc.add arrow(pos - dir - dirx, -dirx, momentWidth/2), momentColor
 
     doc.add Text abs(moment.moment / (q * l)).`$`.addName("ql²"):
       Position2 pos + dir + dirx + dirx.normalize * textMargin
@@ -272,8 +272,8 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
   let qBaseY = beam.origin.y + settings.qOffset
   let mBaseY = qBaseY + settings.mGap
 
-  let qColor = if darkTheme: parseHtmlHex "#5dade2" else: doc.foreground
-  let mColor = if darkTheme: parseHtmlHex "#58d68d" else: doc.foreground
+  let qColor = if darkTheme: parseHtmlHex "#5dade2" else: doc.fgColor
+  let mColor = if darkTheme: parseHtmlHex "#58d68d" else: doc.fgColor
 
   # Diagram label name for Q and M
   let qName = "ql"
@@ -329,10 +329,10 @@ proc drawQM*(beam: Beam, settings: DiagramSettings) =
 
   block:
     let b = doc.entityBounds(text_Qy)
-    doc.add circle(b.min + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, Foreground qColor
+    doc.add circle(b.min + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, qColor
   block:
     let b = doc.entityBounds(text_Mx)
-    doc.add circle(b.min + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, Foreground mColor
+    doc.add circle(b.min + (b.max - b.min)/2, max(b.max.x - b.min.x, b.max.y - b.min.y)/2 + 0.2), Thickness 0.05, mColor
 
   # Full-span vertical lines at load boundaries
   let fullSpanTop = beam.origin.y
