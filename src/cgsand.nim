@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
-import ./cgsand/logic/[config, scripts, file_openers]
+import ./cgsand/logic/[configuration, scripts, file_openers]
 import ./cgsand/logic/world_view/[renderer]
 
 when defined(inspector):
@@ -13,17 +13,20 @@ when defined(inspector):
 globalLocale[0] = systemLocale()
 
 when defined(useX11):
-  let win = newSiwinGlobals(x11).newOpenglWindow(size = ivec2(currentConfig.windowW.int32, currentConfig.windowH.int32), title = "cgsand", frameless = true, transparent = true).newUiWindow
+  let win = newSiwinGlobals(x11).newOpenglWindow(
+    size = ivec2(config.window.w[].int32, config.window.h[].int32),
+    title = "cgsand",
+    frameless = true,
+    transparent = true,
+  ).newUiWindow
 else:
-  let win = newUiWindow(size = ivec2(currentConfig.windowW.int32, currentConfig.windowH.int32), title = "cgsand", frameless = true, transparent = true)
-
-
-var codeEditorPortion: Property[float]
-var previewPortion: Property[float]
-var terminalPortion: Property[float]
-autosaveProperty codeEditorPortion
-autosaveProperty previewPortion
-autosaveProperty terminalPortion
+  let win = newUiWindow(
+    size = ivec2(config.window.w[].int32, config.window.h[].int32),
+    title = "cgsand",
+    frameless = true,
+    transparent = true,
+  )
+win.siwinWindow.maximized = config.window.maximized[]
 
 
 scripts.scriptEntityBounds = renderer.entityBoundsCallback
@@ -45,23 +48,21 @@ win.makeLayout:
   on this.w.changed:
     onWindowResize()
     if not win.siwinWindow.minimized:
-      currentConfig.windowW = this.w[].int
-      save(currentConfig)
+      config.window.w[] = this.w[].int
   on this.h.changed:
     onWindowResize()
     if not win.siwinWindow.minimized:
-      currentConfig.windowH = this.h[].int
-      save(currentConfig)
+      config.window.h[] = this.h[].int
 
   proc normalizePortions =
-    let scale = codeEditorPortion[] + previewPortion[] + terminalPortion[]
+    let scale = config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[]
     if not scale.almostEqual(1):
-      codeEditorPortion{} /= scale
-      previewPortion{} /= scale
-      terminalPortion{} /= scale
-      codeEditorPortion.changed.emit()
-      previewPortion.changed.emit()
-      terminalPortion.changed.emit()
+      config.codeEditorPortion{} /= scale
+      config.previewPortion{} /= scale
+      config.terminalPortion{} /= scale
+      config.codeEditorPortion.changed.emit()
+      config.previewPortion.changed.emit()
+      config.terminalPortion.changed.emit()
 
 
   - RectShadow.new:
@@ -77,12 +78,17 @@ win.makeLayout:
 
     on StateBoolChangedEvent:
       if e.kind == maximized:
-        if e.value:
-          this.fill(parent, 0)
-          this.radius[] = 0
-        else:
-          this.fill(parent, 10)
-          this.radius[] = 7.5
+        config.window.maximized[] = e.value
+    
+    radius = binding:
+      if config.window.maximized[]: 0'f32
+      else: 7.5
+    
+    binding:
+      if config.window.maximized[]:
+        this.fill(parent, 0)
+      else:
+        this.fill(parent, 10)
   
 
     - UiRect.new:
@@ -102,29 +108,35 @@ win.makeLayout:
 
 
     - CodeEditor.new as codeEditor:
-      w = binding: round(parent.w[] * codeEditorPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
+      w = binding: round(
+        parent.w[] * config.codeEditorPortion[] /
+        (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
+      )
       this.fillVertical(parent)
       top = toolBar.bottom
       bottom = parent.bottom
-      visibility = if currentConfig.codeEditorVisible: Visibility.visible else: Visibility.collapsed
+      visibility = if config.codeEditorVisible[]: Visibility.visible else: Visibility.collapsed
       
       on this.visibility.changed:
-        currentConfig.codeEditorVisible = this.visibility[] == visible
-        save(currentConfig)
+        config.codeEditorVisible[] = this.visibility[] == visible
+        save(config)
       
       on this.content.path.changed:
-        currentScript[] = this.content.path[]
+        config.scriptFile[] = this.content.path[]
 
 
     - Terminal.new as terminal:
-      w = binding: round(parent.w[] * terminalPortion[] / (codeEditorPortion[] + previewPortion[] + terminalPortion[]))
+      w = binding: round(
+        parent.w[] * config.terminalPortion[] /
+        (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
+      )
       right = parent.right
       top = toolBar.bottom
       bottom = parent.bottom
-      
+      visibility = if config.terminalVisible[]: Visibility.visible else: Visibility.collapsed
+
       on this.visibility.changed:
-        currentConfig.terminalVisible = this.visibility[] == visible
-        save(currentConfig)
+        config.terminalVisible[] = this.visibility[] == visible
 
 
     - ToolBar(codeEditor: codeEditor, terminal: terminal) as toolBar:
@@ -142,7 +154,7 @@ win.makeLayout:
       anchorGlobalX = binding: codeEditor.globalX[]
 
       on this.resized:
-        codeEditorPortion[] = max(e, 0) / contentArea.w[]
+        config.codeEditorPortion[] = max(e, 0) / contentArea.w[]
         normalizePortions()
     
 
@@ -151,7 +163,7 @@ win.makeLayout:
       anchorGlobalX = binding: terminal.globalX[] + terminal.w[]
 
       on this.resized:
-        terminalPortion[] = max(-e, 0) / contentArea.w[]
+        config.terminalPortion[] = max(-e, 0) / contentArea.w[]
         normalizePortions()
 
 

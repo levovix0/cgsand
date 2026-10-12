@@ -2,7 +2,7 @@ import std/[sets, os]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
-import ../logic/[config, code_editor, asyncio, file_openers]
+import ../logic/[configuration, code_editor, asyncio, file_openers]
 import ./[highlighted_text]
 
 
@@ -365,5 +365,5 @@ method init*(this: CodeEditor) =
 
       verticalScrollOverFit = binding: this.h[] - root.content.font[].size * 2
 
-    root.open(Location(path: currentScript[]))
+    root.open(Location(path: config.scriptFile[]))
     on this.w.changed: root.content.rearrange()

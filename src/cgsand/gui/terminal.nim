@@ -2,7 +2,7 @@ import std/[unicode, terminal, times, strutils]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, window, mouseArea, animations, rendering]
-import ../logic/[config, terminal, file_openers]
+import ../logic/[configuration, terminal, file_openers]
 
 
 type
@@ -486,7 +486,7 @@ method init*(this: TerminalContent) =
   procCall this.super.init()
 
   this.font{} = font_monospace.withSize(11)
-  this.arrangement = newTerminalArrangement(scrollbackLines = currentConfig.terminalScrollbackLines)
+  this.arrangement = newTerminalArrangement(scrollbackLines = config.terminalScrollbackLines[])
 
   this.makeLayout:
     on this.root.onTick:

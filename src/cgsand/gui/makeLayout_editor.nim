@@ -3,7 +3,7 @@ import pkg/[vmath, chroma, ecs]
 import pkg/rice/[rasterTexts, contexts, gl, primitives]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, mouseArea]
-import ../logic/[config, makeLayout_editor]
+import ../logic/[configuration, makeLayout_editor]
 
 type
   MakeLayoutEditor* = ref object of Uiobj

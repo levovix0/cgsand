@@ -6,7 +6,7 @@ import pkg/sigui/rendering/rice_backend
 import pkg/toscel/[button]
 import pkg/rice/contexts as riceContexts except DrawContext
 import pkg/rice/[primitives, antialiasing, transform, hatching]
-import ../logic/[scripts, config]
+import ../logic/[scripts, configuration]
 import ../logic/world_view/[bounds, doclayout, document_globals, renderer]
 import ../lib/[sandbox]
 
@@ -250,12 +250,12 @@ proc recompileScript*(this: DocumentView) =
         return  # ignore recompile request while still compiling
   this.meshCache = nil
   let oldCache =
-    if this.script[] != nil and this.script[].filename == currentScript[]:
+    if this.script[] != nil and this.script[].filename == config.scriptFile[]:
       this.script[].cache
     else:
       nil
   this.script{} = nil  # unload current script
-  this.script[] = compileAndRunScript(currentScript[], "build/script", oldCache, this.scriptOptLevel[], this.outputChannel[])
+  this.script[] = compileAndRunScript(config.scriptFile[], "build/script", oldCache, this.scriptOptLevel[], this.outputChannel[])
 
 
 

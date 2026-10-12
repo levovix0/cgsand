@@ -4,7 +4,7 @@ import pkg/siwin/platforms/any/window
 import pkg/pixie/images
 import pkg/sigui/[uibase, mouseArea, animations, layouts, windowCreation]
 import pkg/toscel/[colors, comboBox, lineEdit, button, panel, label, listWidget]
-import ../logic/[config, file_openers]
+import ../logic/[configuration, file_openers]
 import ../logic/world_view/[pdf_renderer]
 import ./icons
 
@@ -110,7 +110,7 @@ method init(this: FileBrowser) =
   procCall this.super.init()
 
   this.makeLayout:
-    text = binding: config.currentScript[]
+    text = binding: config.scriptFile[]
     w = 300
     fitOptionsWidth = false
 
