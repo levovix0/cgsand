@@ -78,7 +78,7 @@ macro genconfig(typename, body: untyped) =
         nnkBracketExpr.newTree(bindSym("Property"), typ),
         newCall(nnkBracketExpr.newTree(bindSym("property"), typ), init),
       )
-      propertyComment = ""  # todo: remember property comment to show it in settings editor
+      propertyComment = ""  # todo: remember property comment to show it in the config editor
 
     elif x.kind == nnkCommentStmt:
       if propertyComment != "": propertyComment.add "\n"

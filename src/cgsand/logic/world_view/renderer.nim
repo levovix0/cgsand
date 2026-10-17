@@ -83,7 +83,7 @@ proc projectionMatrix*(pageBounds: Bounds2, widgetSize: Vec2, axisYDirection: Ax
 
   combine(
     translate(-pageBounds.center.V2.vec3(0)),
-    scale(y = (if axisYDirection == AxisYDown: -1 else: 1)),
+    scale(1, (if axisYDirection == AxisYDown: -1 else: 1)),
     scale vec3(2 / (upp * widgetSize.x), 2 / (upp * widgetSize.y), 1/1000),
   )
 

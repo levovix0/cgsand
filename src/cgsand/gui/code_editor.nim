@@ -354,11 +354,7 @@ method init*(this: CodeEditor) =
     - ScrollArea.new as root.scrollArea:
       this.fill(parent)
 
-      + this.verticalScrollbar[].UiRect:
-        color = colorTheme.bgScrollBar
-
-      + this.horizontalScrollbar[].UiRect:
-        color = colorTheme.bgScrollBar
+      color = colorTheme.bgScrollBar
 
       - CodeEditorContent.new as root.content:
         w = binding: parent.w[] - ScrollBarWidth

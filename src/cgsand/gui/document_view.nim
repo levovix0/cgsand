@@ -370,7 +370,7 @@ method init*(this: DocumentView) =
           )
           prevDragPos = currentMousePos
 
-    - globalKeybinding({Key.f5}):
+    - (globalKeybinding({Key.f5})):
       on this.activated: root.recompileScript()
     
     - Layout.row:
