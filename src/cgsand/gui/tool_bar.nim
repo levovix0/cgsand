@@ -84,12 +84,14 @@ method init(this: TitleButton) =
         root.activated.emit()
 
 
-proc setCurrentPath(this: FileBrowser, dir: string) =
-  this.currentPath = dir
-  this.items = @[]
-  
+proc getDirItems*(dir: string): seq[BrowserItem] =
+  result = @[]
   if parentDir(dir) != dir:
-    this.items.add(BrowserItem(name: "..", path: parentDir(dir.absolutePath).relativePath(getCurrentDir()), isDir: true))
+    result.add(BrowserItem(
+      name: "..", 
+      path: parentDir(dir.absolutePath).relativePath(getCurrentDir()), 
+      isDir: true
+    ))
     
   var folders: seq[BrowserItem] = @[]
   var files: seq[BrowserItem] = @[]
@@ -100,9 +102,12 @@ proc setCurrentPath(this: FileBrowser, dir: string) =
     else:
       files.add(BrowserItem(name: path.splitPath.tail, path: path, isDir: false))
       
-  this.items.add sorted folders
-  this.items.add sorted files
-  
+  result.add sorted folders
+  result.add sorted files
+
+proc setCurrentPath(this: FileBrowser, dir: string) =
+  this.currentPath = dir
+  this.items = getDirItems(dir)
   this.options[] = this.items.mapIt(it.name)
 
 
@@ -199,17 +204,18 @@ method init*(this: ToolBar) =
 
       - Button.new:
         text = tr"Export PDF"
-        # enabled = binding: root.doc[] != nil
+        enabled = binding: root.doc[] != nil
 
         on this.activated:
-          
           root.saveFileDialogOpened[] = not root.saveFileDialogOpened[]
-          
 
         --- UiObj.new:
           <--- {update}: root.saveFileDialogOpened[]
           
           if root.saveFileDialogOpened[]:
+            var currentExportDir = getCurrentDir()
+            var currentExportItems = getDirItems(currentExportDir)
+            
             - Panel.new:
               x = 0
               y = 60
@@ -225,13 +231,13 @@ method init*(this: ToolBar) =
               - Label.new:
                 left = parent.left
                 centerY = parent.top + 2
-                text = "Сохранить как PDF"
+                text = tr"Save as PDF"
                 fontSize = 18
               
               - Label.new:
                 right = parent.right
                 centerY = parent.top + 2
-                text = "Выберите расположение"
+                text = tr"Select location"
                 color = "#8c8c8c".color
                 fontSize = 14
               
@@ -241,12 +247,12 @@ method init*(this: ToolBar) =
                   top = parent.top + 24
                   bottom = parent.bottom - 100
 
-                  items = root.fileBrowser.items.mapIt(it.name)
+                  items = currentExportItems.mapIt(it.name)
 
               - Label.new as title_label:
                 left = parent.left
                 centerY = file_list.bottom + 32
-                text = "Имя:"
+                text = tr"Name:"
                 fontSize = 14
               
               - ComboBox.new as file_type:
@@ -256,11 +262,25 @@ method init*(this: ToolBar) =
                 otherTextCanBeEntered = false
                 fitOptionsWidth = false
                 options = @["Portable Document Format, *.pdf", "All Files"]
+                selectedOption = 0
+
+              file_list.itemSelected.connectTo file_list, kind:
+                let idx = file_list.selectedItem[]
+                if idx >= 0 and idx < currentExportItems.len:
+                  let item = currentExportItems[idx]
+                  if item.isDir:
+                    currentExportDir = item.path
+                    currentExportItems = getDirItems(currentExportDir)
+                    file_list.items[] = currentExportItems.mapIt(it.name)
+                    file_list.selectedItem[] = -1
+                  else:
+                    filename.text[] = item.name.changeFileExt("")
 
               - LineEdit.new as filename:
                 right = file_type.left - 10
                 left = title_label.right + 10
                 centerY = file_list.bottom + 32
+                text = "document" # Default name
 
               - Label.new as fullpath:
                 left = parent.left
@@ -273,23 +293,23 @@ method init*(this: ToolBar) =
               - Button.new as save_button:
                 right = parent.right
                 centerY = file_type.bottom + 32
-                text = "Сохранить"
+                text = tr"Save"
                 accent = true
 
                 on this.activated:
                   if root.doc[] == nil or root.doc[][] == nil: return
                   let r = PdfRenerer(doc: root.doc[])
                   # let filters = ["*.pdf".cstring, "*".cstring]
-                  let filename = fullpath.text[]
-                  if filename != "":
-                    writePdf filename, r
+                  let targetPath = fullpath.text[]
+                  if targetPath != "":
+                    writePdf targetPath, r
                     root.saveFileDialogOpened[] = false
 
               
               - Button.new as cancel_button:
                 right = save_button.left - 10
                 centerY = file_type.bottom + 32
-                text = "Отмена"
+                text = tr"Cancel"
 
                 on this.activated:
                   root.saveFileDialogOpened[] = false
