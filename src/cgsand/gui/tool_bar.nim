@@ -34,6 +34,9 @@ type
     terminal*: Uiobj
     doc*: Property[ptr World]
     fileOpener* {.unprintable.}: Property[seq[FileOpener]]
+    titleRegionStartX*: Property[float32]
+      ## Local X coordinate after the interactive toolbar controls. On Windows
+      ## the custom title region must start here so it does not steal clicks.
 
     saveFileDialogOpened: Property[bool]
 
@@ -205,6 +208,8 @@ method init*(this: ToolBar) =
       - Button.new:
         text = tr"Export PDF"
         enabled = binding: root.doc[] != nil
+
+        root.titleRegionStartX[] = binding: this.x[] + this.w[] + 10
 
         on this.activated:
           root.saveFileDialogOpened[] = not root.saveFileDialogOpened[]

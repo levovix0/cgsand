@@ -39,7 +39,12 @@ win.makeLayout:
 
   proc onWindowResize =
     when defined(windows):
-      win.siwinWindow.setTitleRegion(toolBar.globalXy + vec2(400,0), vec2(toolBar.w[] - toolBar.windowControlsWidth, toolBar.h[]) -  vec2(400,0))
+      let titleStartX = toolBar.titleRegionStartX[]
+      let titleEndX = toolBar.w[] - toolBar.windowControlsWidth
+      win.siwinWindow.setTitleRegion(
+        toolBar.globalXy + vec2(titleStartX, 0),
+        vec2(max(titleEndX - titleStartX, 0), toolBar.h[]),
+      )
     else:
       win.siwinWindow.setTitleRegion(toolBar.globalXy, toolBar.wh)
     win.siwinWindow.setBorderWidth(10, 0, 40)
@@ -147,6 +152,9 @@ win.makeLayout:
         if documentView.scriptStage[] == Idle and documentView.script[] != nil:
           documentView.script[].world
         else: nil
+
+    on toolBar.titleRegionStartX.changed:
+      onWindowResize()
     
 
     - Splitter.new:  # (codeEditor / document view)
