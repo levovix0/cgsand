@@ -21,7 +21,7 @@ requires "jsony"
 
 # --- unstable dependencies ---
 
-requires "sigui >= 0.3.0"
+requires "sigui == 0.3.1"
   ## for GUI
 
 requires "https://github.com/levovix0/sigeo#head"
