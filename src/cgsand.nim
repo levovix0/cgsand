@@ -2,7 +2,7 @@ import std/[os, math]
 import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
-import ./cgsand/gui/[code_editor, document_view, tool_bar, terminal, splitter]
+import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter]
 import ./cgsand/logic/[configuration, scripts, file_openers]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -39,14 +39,14 @@ win.makeLayout:
 
   proc onWindowResize =
     when defined(windows):
-      let titleStartX = toolBar.titleRegionStartX[]
-      let titleEndX = toolBar.w[] - toolBar.windowControlsWidth
+      let titleStartX = titleBar.titleRegionStartX[]
+      let titleEndX = titleBar.w[] - titleBar.windowControlsWidth
       win.siwinWindow.setTitleRegion(
-        toolBar.globalXy + vec2(titleStartX, 0),
-        vec2(max(titleEndX - titleStartX, 0), toolBar.h[]),
+        titleBar.globalXy + vec2(titleStartX, 0),
+        vec2(max(titleEndX - titleStartX, 0), titleBar.h[]),
       )
     else:
-      win.siwinWindow.setTitleRegion(toolBar.globalXy, toolBar.wh)
+      win.siwinWindow.setTitleRegion(titleBar.globalXy, titleBar.wh)
     win.siwinWindow.setBorderWidth(10, 0, 40)
 
   defer: onWindowResize()
@@ -108,7 +108,7 @@ win.makeLayout:
       this.right = binding:
         if terminal.visibility[] == collapsed: parent.right
         else: terminal.left
-      top = toolBar.bottom
+      top = titleBar.bottom
       bottom = parent.bottom
 
 
@@ -118,7 +118,7 @@ win.makeLayout:
         (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
       )
       this.fillVertical(parent)
-      top = toolBar.bottom
+      top = titleBar.bottom
       bottom = parent.bottom
       visibility = if config.codeEditorVisible[]: Visibility.visible else: Visibility.collapsed
       
@@ -136,7 +136,7 @@ win.makeLayout:
         (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
       )
       right = parent.right
-      top = toolBar.bottom
+      top = titleBar.bottom
       bottom = parent.bottom
       visibility = if config.terminalVisible[]: Visibility.visible else: Visibility.collapsed
 
@@ -144,7 +144,7 @@ win.makeLayout:
         config.terminalVisible[] = this.visibility[] == visible
 
 
-    - ToolBar(codeEditor: codeEditor, terminal: terminal) as toolBar:
+    - TitleBar(codeEditor: codeEditor, terminal: terminal) as titleBar:
       this.fillHorizontal(parent)
       h = 60
 
@@ -153,7 +153,7 @@ win.makeLayout:
           documentView.script[].world
         else: nil
 
-    on toolBar.titleRegionStartX.changed:
+    on titleBar.titleRegionStartX.changed:
       onWindowResize()
     
 
@@ -180,7 +180,7 @@ win.makeLayout:
 
   let fileOpener = @[FileOpener CodeEditorFileOpener(editor: codeEditor)]
     
-  toolBar.fileOpener[] = fileOpener
+  titleBar.fileOpener[] = fileOpener
   terminal.fileOpener = fileOpener
 
 

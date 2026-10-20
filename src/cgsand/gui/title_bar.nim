@@ -29,13 +29,13 @@ type
     mouseArea: MouseArea
 
 
-  ToolBar* = ref object of Uiobj
+  TitleBar* = ref object of Uiobj
     codeEditor*: Uiobj
     terminal*: Uiobj
     doc*: Property[ptr World]
     fileOpener* {.unprintable.}: Property[seq[FileOpener]]
     titleRegionStartX*: Property[float32]
-      ## Local X coordinate after the interactive toolbar controls. On Windows
+      ## Local X coordinate after the interactive titlebar controls. On Windows
       ## the custom title region must start here so it does not steal clicks.
 
     saveFileDialogOpened: Property[bool]
@@ -45,13 +45,13 @@ type
 
 registerComponent TitleButton
 registerComponent FileBrowser
-registerComponent ToolBar
+registerComponent TitleBar
 
 
 proc `<`(a, b: BrowserItem): bool = a.name < b.name
 
 
-proc windowControlsWidth*(this: ToolBar): float32 =
+proc windowControlsWidth*(this: TitleBar): float32 =
   180
 
 
@@ -166,7 +166,7 @@ method init(this: FileBrowser) =
         this.lineEdit.border.color[] = color_border_lineEdit
 
 
-method init*(this: ToolBar) =
+method init*(this: TitleBar) =
   procCall this.super.init()
 
   this.makeLayout:

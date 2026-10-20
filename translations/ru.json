@@ -41,12 +41,7 @@
       "": "Сброс вида"
     }
   },
-  "src/cgsand/gui/terminal.nim": {
-    "[process exited]": {
-      "": "[процесс завершён]"
-    }
-  },
-  "src/cgsand/gui/tool_bar.nim": {
+  "src/cgsand/gui/title_bar.nim": {
     "Save as PDF": {
       "": "Сохранить как PDF"
     },
@@ -70,6 +65,11 @@
     },
     "Cancel": {
       "": "Отмена"
+    }
+  },
+  "src/cgsand/gui/terminal.nim": {
+    "[process exited]": {
+      "": "[процесс завершён]"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {
