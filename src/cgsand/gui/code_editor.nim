@@ -266,6 +266,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       this.markCursorActivity()
       let shift = (this.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
       let ctrl = (this.modifierKeysDown * {Key.lcontrol, Key.rcontrol}).len > 0
+      let alt = (this.modifierKeysDown * {Key.lalt, Key.ralt}).len > 0
       
       case e.key
       of Key.left:
@@ -332,9 +333,15 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           signal.handled = true
 
       of Key.d:
-        if ctrl:
+        if ctrl and alt:
           if this.arrangement.addSelectionToNextMatch():
             redraw(this)
+          signal.handled = true
+        elif ctrl:
+          this.arrangement.duplicateSelectionsOrLines()
+          this.updateHeight()
+          redraw(this)
+          this.saveFile()
           signal.handled = true
 
       else: discard

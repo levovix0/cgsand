@@ -901,6 +901,70 @@ proc insert*(arr: CodeArrangement, text: string) =
   finishEdit(arr, minLine)
 
 
+proc duplicateSelectionsOrLines*(arr: CodeArrangement) =
+  ## With selections, duplicate every selected fragment immediately after
+  ## itself and keep the copies selected. Without selections, duplicate every
+  ## unique line containing a cursor and move those cursors to the copies.
+  var hasSelections = false
+  for cursor in arr.cursors:
+    if not cursor.isDuplicate and cursor.hasSelection:
+      hasSelections = true
+      break
+
+  var minLine = int.high
+  if hasSelections:
+    var order: seq[tuple[line, col, cursorI: int]]
+    for cursorI, cursor in arr.cursors:
+      if cursor.isDuplicate or not cursor.hasSelection: continue
+      let (_, _, endLine, endCol) = selectionBounds(cursor, arr.selectionMode)
+      order.add (endLine, endCol, cursorI)
+    order.sort(SortOrder.Descending)
+
+    for item in order:
+      let text = arr.selectedText(item.cursorI)
+      let runes = text.toRunes
+      if runes.len == 0: continue
+      let (_, _, endLine, endCol) = selectionBounds(arr.cursors[item.cursorI], arr.selectionMode)
+
+      var copyEndLine = endLine
+      var copyEndCol = endCol
+      for r in runes:
+        if r == Rune('\n'):
+          inc copyEndLine
+          copyEndCol = 0
+        else:
+          inc copyEndCol
+
+      arr.insertAt(endLine, endCol, runes)
+      arr.setSelection(item.cursorI, endLine, endCol, copyEndLine, copyEndCol)
+      minLine = min(minLine, endLine)
+
+  else:
+    var targetLines: seq[int]
+    for cursor in arr.cursors:
+      if not cursor.isDuplicate and cursor.line notin targetLines:
+        targetLines.add cursor.line
+    targetLines.sort(SortOrder.Descending)
+
+    for lineI in targetLines:
+      if lineI < 0 or lineI >= arr.lines.len: continue
+      let content = arr.lines[lineI].runes
+      var affected: seq[tuple[cursorI, col: int]]
+      for cursorI, cursor in arr.cursors:
+        if cursor.line == lineI:
+          affected.add (cursorI, cursor.col)
+
+      arr.insertAt(lineI, content.len, @[Rune('\n')] & content)
+      for item in affected:
+        let col = min(item.col, content.len)
+        arr.setSelection(item.cursorI, lineI + 1, col, lineI + 1, col)
+      minLine = min(minLine, lineI)
+
+  if minLine != int.high:
+    arr.collapseDuplicatedCursors()
+    finishEdit(arr, minLine)
+
+
 proc deleteBack*(arr: CodeArrangement) =
   ## Backspace: delete char before cursor or selection.
   var minLine = int.high
