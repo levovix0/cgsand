@@ -1,4 +1,4 @@
-import std/[sets, os]
+import std/[sets, os, times]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
@@ -20,6 +20,10 @@ type
 
     arrangement: CodeArrangement
     dragingCursorI: int
+    modifierKeysDown: set[Key]
+    mouseDownCount: int
+    lastMouseDown: float
+    lastMouseDownPos: Vec2
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
@@ -30,6 +34,8 @@ type
 
 const MinSelectionWidth = 6'f32
 const ScrollBarWidth = 5'f32
+const MultiClickTime = 0.4'f32
+const MultiClickRadius = 6'f32
 
 
 registerComponent CodeEditor
@@ -186,6 +192,19 @@ proc scrollToLine(this: CodeEditor, line: int) =
 
 method recieve*(this: CodeEditorContent, signal: Signal) =
   procCall this.super.recieve(signal)
+
+  signal.match StateBoolChangedEvent:
+    if e.kind == StateBoolChangedEventKind.focus:
+      # Modifier key-up events can be swallowed by Alt+Tab on Windows.
+      # Start with a clean state whenever the window focus changes.
+      this.modifierKeysDown = {}
+
+  signal.match KeyEvent:
+    if e.key in {Key.lshift, Key.rshift, Key.lcontrol, Key.rcontrol, Key.lalt, Key.ralt}:
+      if e.pressed:
+        this.modifierKeysDown.incl e.key
+      else:
+        this.modifierKeysDown.excl e.key
   
   block:
     var n = this.Uiobj
@@ -203,8 +222,8 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
   signal.match KeyEvent:
     if e.pressed and currentFocus[] == this and this.arrangement != nil:
-      let shift = Key.lshift in e.window.keyboard.pressed or Key.rshift in e.window.keyboard.pressed
-      let ctrl = Key.lcontrol in e.window.keyboard.pressed or Key.rcontrol in e.window.keyboard.pressed
+      let shift = (this.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
+      let ctrl = (this.modifierKeysDown * {Key.lcontrol, Key.rcontrol}).len > 0
       
       case e.key
       of Key.left:
@@ -252,6 +271,23 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
             of LineSelection: BlockSelection
             of BlockSelection: LineSelection
           redraw(this)
+
+      of Key.c:
+        if ctrl:
+          let text = this.arrangement.selectedText()
+          if text.len > 0:
+            this.root.clipboardText = text
+          signal.handled = true
+
+      of Key.v:
+        if ctrl:
+          let text = this.root.clipboardText
+          if text.len > 0:
+            this.arrangement.insert(text)
+            this.updateHeight()
+            redraw(this)
+            this.saveFile()
+          signal.handled = true
 
       else: discard
 
@@ -311,14 +347,45 @@ method init*(this: CodeEditorContent) =
           if line.isHidden: continue
           if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
             let col = line.posToCol(vec2(this.mouseX[], this.mouseY[] - line.rect.y))
-            let append = Key.lalt in this.root.keyboardState.pressed or Key.ralt in this.root.keyboardState.pressed
-            root.arrangement.setCursorPos(i, col, append)
-            root.dragingCursorI = root.arrangement.cursors.high
+            let append = (root.modifierKeysDown * {Key.lalt, Key.ralt}).len > 0
+            let extend = (root.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
+
+            let clickPos = this.mouseXy[]
+            let now = epochTime()
+            if not append and not extend and
+                now - root.lastMouseDown < MultiClickTime and
+                (clickPos - root.lastMouseDownPos).length < MultiClickRadius:
+              root.mouseDownCount = root.mouseDownCount mod 3 + 1
+            else:
+              root.mouseDownCount = 1
+            root.lastMouseDown = now
+            root.lastMouseDownPos = clickPos
+
+            if extend and not append and root.arrangement.cursors.len > 0:
+              # Shift+click extends the primary selection from its original
+              # anchor. A regular click still replaces all extra cursors.
+              let cursor = root.arrangement.cursors[0]
+              let anchorLine = if cursor.hasSelection: cursor.anchorLine else: cursor.line
+              let anchorCol = if cursor.hasSelection: cursor.anchorCol else: cursor.col
+              root.arrangement.cursors.setLen(1)
+              root.arrangement.setSelection(0, anchorLine, anchorCol, i, col)
+              root.dragingCursorI = 0
+            elif not append and root.mouseDownCount == 2:
+              root.arrangement.cursors.setLen(1)
+              root.arrangement.selectWordAt(0, i, col)
+              root.dragingCursorI = -1
+            elif not append and root.mouseDownCount == 3:
+              root.arrangement.cursors.setLen(1)
+              root.arrangement.selectLineAt(0, i)
+              root.dragingCursorI = -1
+            else:
+              root.arrangement.setCursorPos(i, col, append)
+              root.dragingCursorI = root.arrangement.cursors.high
             redraw(root)
             break
 
       on this.moved:
-        if this.pressed[]:
+        if this.pressed[] and root.dragingCursorI >= 0:
           root.arrangement.selectToPos(root.dragingCursorI, this.mouseXy[])
           redraw(root)
 

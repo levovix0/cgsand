@@ -24,6 +24,9 @@ type
     kinds*: seq[CodeKind]
       ## syntax highlighting for a line of code, per rune
 
+    syntaxValid: bool
+      ## false for a newly inserted line until updateSyntaxFrom processes it
+
     indentOffsets*: seq[int]
       ## virtual-column positions of each indent-level boundary inside this line (e.g. [2, 4, 8])
       ## recalculated on updateIndentOffsets
@@ -240,6 +243,40 @@ proc setSelection*(arrangement: CodeArrangement, cursorI: int, anchorLine, ancho
   arrangement.cursors[cursorI] = c
 
 
+proc isWordRune(r: Rune): bool =
+  r.isAlpha or r.uint32 in 48'u32 .. 57'u32 or r == Rune('_')
+
+
+proc selectWordAt*(arrangement: CodeArrangement, cursorI, lineI, col: int) =
+  ## Select the identifier-like word under col. Punctuation and whitespace are
+  ## selected one rune at a time; clicking past the line end clears selection.
+  if cursorI < 0 or cursorI >= arrangement.cursors.len: return
+  if lineI < 0 or lineI >= arrangement.lines.len: return
+
+  let runes = arrangement.lines[lineI].runes
+  if col < 0 or col >= runes.len:
+    arrangement.setSelection(cursorI, lineI, runes.len, lineI, runes.len)
+    return
+
+  var first = col
+  var last = col + 1
+  if runes[col].isWordRune:
+    while first > 0 and runes[first - 1].isWordRune: dec first
+    while last < runes.len and runes[last].isWordRune: inc last
+  arrangement.setSelection(cursorI, lineI, first, lineI, last)
+
+
+proc selectLineAt*(arrangement: CodeArrangement, cursorI, lineI: int) =
+  ## Select the whole logical line, including its newline when one follows.
+  if cursorI < 0 or cursorI >= arrangement.cursors.len: return
+  if lineI < 0 or lineI >= arrangement.lines.len: return
+
+  if lineI < arrangement.lines.high:
+    arrangement.setSelection(cursorI, lineI, 0, lineI + 1, 0)
+  else:
+    arrangement.setSelection(cursorI, lineI, 0, lineI, arrangement.lines[lineI].runes.len)
+
+
 proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
   if cursorI < 0 or cursorI >= arrangement.cursors.len: return
 
@@ -430,20 +467,24 @@ proc refreshArrangementLine*(arr: CodeArrangement, lineI: int) =
 
 
 proc updateSyntaxFrom*(arr: CodeArrangement, startLineI: int) =
-  ## Incrementally re-highlight from startLineI forward.
-  ## Stops early when the cross-line parse state no longer changes.
+  ## Incrementally re-highlight from startLineI forward. Structural edits can
+  ## introduce new lines with no previous syntax data; those lines must all be
+  ## processed before the stable-state early exit is allowed.
   for i in startLineI ..< arr.lines.len:
     let startState =
       if i == 0: NimParseState()
       else: nextLineParseState(arr.lines[i - 1].parseEndState)
 
     let line = arr.lines[i]
+    let wasSyntaxValid = line.syntaxValid
     let oldEndState = line.parseEndState
     let res = parseNimCode(line.runes, startState, line.runes.len)
     line.kinds = res.segments
     line.parseEndState = res.state
+    line.syntaxValid = true
 
-    if i > startLineI and nextLineParseState(res.state) == nextLineParseState(oldEndState):
+    if i > startLineI and wasSyntaxValid and
+        nextLineParseState(res.state) == nextLineParseState(oldEndState):
       break
 
 
@@ -526,12 +567,12 @@ proc adjustCursorsAfterDelete(arr: CodeArrangement, editLine, editCol, deletedCo
 proc adjustCursorsAfterLineSplit(arr: CodeArrangement, splitLine, splitCol: int) =
   for i in 0 ..< arr.cursors.len:
     var c = arr.cursors[i]
-    if c.line == splitLine and c.col > splitCol:
+    if c.line == splitLine and c.col >= splitCol:
       c.line += 1; c.col -= splitCol
     elif c.line > splitLine:
       c.line += 1
     if c.hasSelection:
-      if c.anchorLine == splitLine and c.anchorCol > splitCol:
+      if c.anchorLine == splitLine and c.anchorCol >= splitCol:
         c.anchorLine += 1; c.anchorCol -= splitCol
       elif c.anchorLine > splitLine:
         c.anchorLine += 1
@@ -657,11 +698,53 @@ proc sortedCursorIndices(arr: CodeArrangement): seq[int] =
   result = order.mapIt(it.idx)
 
 
+proc selectedTextOf(arr: CodeArrangement, cursorI: int): string =
+  let cursor = arr.cursors[cursorI]
+  if not cursor.hasSelection: return
+
+  let (sl, sc, el, ec) = selectionBounds(cursor, arr.selectionMode)
+
+  template addSlice(lineI, firstCol, lastCol: int) =
+    let line = arr.lines[lineI].runes
+    let first = firstCol.clamp(0, line.len)
+    let last = lastCol.clamp(0, line.len)
+    if first < last:
+      result.add $line[first..<last]
+
+  case arr.selectionMode
+  of LineSelection:
+    if sl == el:
+      addSlice(sl, sc, ec)
+    else:
+      addSlice(sl, sc, arr.lines[sl].runes.len)
+      for lineI in sl + 1..el:
+        result.add '\n'
+        addSlice(lineI, 0, if lineI == el: ec else: arr.lines[lineI].runes.len)
+
+  of BlockSelection:
+    for lineI in sl..el:
+      if lineI != sl: result.add '\n'
+      addSlice(lineI, sc, ec)
+
+
+proc selectedText*(arr: CodeArrangement): string =
+  ## Return selections in document order. Multiple cursor selections are
+  ## separated by a newline, matching the editor's multi-cursor model.
+  let order = arr.sortedCursorIndices()
+  for i in countdown(order.high, 0):
+    let text = arr.selectedTextOf(order[i])
+    if text.len == 0: continue
+    if result.len > 0: result.add '\n'
+    result.add text
+
+
 # --- integrated editing procs ---
 
 proc insert*(arr: CodeArrangement, text: string) =
   ## Insert text at every active cursor.
-  let runes = text.toRunes
+  # Windows puts CRLF in the clipboard. Internally each CodeArrangementLine is
+  # newline-free, so normalize all external line endings before splitting.
+  let runes = text.replace("\r\n", "\n").replace("\r", "\n").toRunes
   if runes.len == 0: return
   var minLine = int.high
   for cursorI in arr.sortedCursorIndices():
@@ -742,6 +825,7 @@ proc toArrangement*(text: string, font: Font, width: float32): CodeArrangement =
     cline.runes = line.toRunes
     cline.kinds = parsed.segments
     cline.parseEndState = parsed.state
+    cline.syntaxValid = true
     typesetWithIndent(font, width, cline)
     cline.rect = rect(0, 0, cline.arrangement.layoutBounds.x, cline.arrangement.lines.len.max(1).float32 * font.lineHeightPixels)
     parseState = nextLineParseState(parsed.state)
