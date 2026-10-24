@@ -193,8 +193,7 @@ proc collapseDuplicatedCursors*(arrangement: CodeArrangement) =
     positions.incl (c.line, c.col)
 
 
-proc selectionRangeForLine*(arrangement: CodeArrangement, cursorI: int, lineI: int): Slice[int] =
-  let c = arrangement.cursors[cursorI]
+proc selectionRangeForLine*(arrangement: CodeArrangement, c: CursorPos, lineI: int): Slice[int] =
   if not c.hasSelection: return 0..<0
   if lineI < 0 or lineI >= arrangement.lines.len: return 0..<0
 
@@ -229,6 +228,10 @@ proc selectionRangeForLine*(arrangement: CodeArrangement, cursorI: int, lineI: i
   of BlockSelection:
     if lineI < min(al, cl) or lineI > max(al, cl): return 0..<0
     min(ac, cc)..max(ac, cc)
+
+
+proc selectionRangeForLine*(arrangement: CodeArrangement, cursorI: int, lineI: int): Slice[int] =
+  arrangement.selectionRangeForLine(arrangement.cursors[cursorI], lineI)
 
 
 proc setSelection*(arrangement: CodeArrangement, cursorI: int, anchorLine, anchorCol, cursorLine, cursorCol: int) =
@@ -470,6 +473,12 @@ proc updateSyntaxFrom*(arr: CodeArrangement, startLineI: int) =
   ## Incrementally re-highlight from startLineI forward. Structural edits can
   ## introduce new lines with no previous syntax data; those lines must all be
   ## processed before the stable-state early exit is allowed.
+  var lastInvalidLine = startLineI
+  for i in countdown(arr.lines.high, startLineI):
+    if not arr.lines[i].syntaxValid:
+      lastInvalidLine = i
+      break
+
   for i in startLineI ..< arr.lines.len:
     let startState =
       if i == 0: NimParseState()
@@ -483,7 +492,7 @@ proc updateSyntaxFrom*(arr: CodeArrangement, startLineI: int) =
     line.parseEndState = res.state
     line.syntaxValid = true
 
-    if i > startLineI and wasSyntaxValid and
+    if i > startLineI and i >= lastInvalidLine and wasSyntaxValid and
         nextLineParseState(res.state) == nextLineParseState(oldEndState):
       break
 
@@ -613,11 +622,13 @@ proc insertAt*(arr: CodeArrangement, line, col: int, runes: seq[Rune]) =
         let chunk = runes[chunkStart..<i]
         let lr = arr.lines[lineI].runes
         arr.lines[lineI].runes = lr[0..<colI] & chunk & lr[colI..<lr.len]
+        arr.lines[lineI].syntaxValid = false
         adjustCursorsAfterInsert(arr, lineI, colI, chunk.len)
         colI += chunk.len
       if atNl:
         let lr = arr.lines[lineI].runes
         arr.lines[lineI].runes = lr[0..<colI]
+        arr.lines[lineI].syntaxValid = false
         arr.lines.insert(CodeArrangementLine(runes: lr[colI..<lr.len]), lineI + 1)
         shiftFoldedLines(arr, lineI + 1, 1)
         adjustCursorsAfterLineSplit(arr, lineI, colI)
@@ -631,10 +642,12 @@ proc deleteAt*(arr: CodeArrangement, sl, sc, el, ec: int) =
   if sl > el or (sl == el and sc >= ec): return
   if sl == el:
     arr.lines[sl].runes.delete(sc..ec - 1)
+    arr.lines[sl].syntaxValid = false
     adjustCursorsAfterDelete(arr, sl, sc, ec - sc)
   else:
     let kept = arr.lines[sl].runes[0..<sc] & arr.lines[el].runes[ec..<arr.lines[el].runes.len]
     arr.lines[sl].runes = kept
+    arr.lines[sl].syntaxValid = false
     arr.lines.delete(sl + 1..el)
     shiftFoldedLines(arr, sl + 1, -(el - sl))
     adjustCursorsAfterMultiLineDeletion(arr, sl, sc, el, ec)
@@ -698,7 +711,7 @@ proc sortedCursorIndices(arr: CodeArrangement): seq[int] =
   result = order.mapIt(it.idx)
 
 
-proc selectedTextOf(arr: CodeArrangement, cursorI: int): string =
+proc selectedText*(arr: CodeArrangement, cursorI: int): string =
   let cursor = arr.cursors[cursorI]
   if not cursor.hasSelection: return
 
@@ -732,10 +745,141 @@ proc selectedText*(arr: CodeArrangement): string =
   ## separated by a newline, matching the editor's multi-cursor model.
   let order = arr.sortedCursorIndices()
   for i in countdown(order.high, 0):
-    let text = arr.selectedTextOf(order[i])
+    let text = arr.selectedText(order[i])
     if text.len == 0: continue
     if result.len > 0: result.add '\n'
     result.add text
+
+
+proc wordAtCursor*(arr: CodeArrangement, cursorI: int): string =
+  ## Return the identifier-like word touching the cursor. At the end of a word,
+  ## the rune on the left is used, matching common code-editor behaviour.
+  if cursorI < 0 or cursorI >= arr.cursors.len: return
+  let cursor = arr.cursors[cursorI]
+  if cursor.line < 0 or cursor.line >= arr.lines.len: return
+  let runes = arr.lines[cursor.line].runes
+  if runes.len == 0: return
+
+  var at = cursor.col
+  if at < 0: return
+  if at >= runes.len or not runes[at].isWordRune:
+    if at == 0 or at - 1 >= runes.len or not runes[at - 1].isWordRune: return
+    dec at
+
+  var first = at
+  var last = at + 1
+  while first > 0 and runes[first - 1].isWordRune: dec first
+  while last < runes.len and runes[last].isWordRune: inc last
+  result = $runes[first..<last]
+
+
+proc selectWordAtCursor*(arr: CodeArrangement, cursorI: int): bool =
+  if cursorI < 0 or cursorI >= arr.cursors.len: return
+  let cursor = arr.cursors[cursorI]
+  let word = arr.wordAtCursor(cursorI)
+  if word.len == 0: return
+
+  let wordLen = word.runeLen
+  let runes = arr.lines[cursor.line].runes
+  var at = cursor.col
+  if at >= runes.len or not runes[at].isWordRune: dec at
+  var first = at
+  while first > 0 and runes[first - 1].isWordRune: dec first
+  arr.setSelection(cursorI, cursor.line, first, cursor.line, first + wordLen)
+  result = true
+
+
+proc matchingSelections*(arr: CodeArrangement, query: string, wholeWord = false): seq[CursorPos] =
+  ## Find non-overlapping case-insensitive matches and return them as forward
+  ## selections. Newlines are included, so a selected multiline fragment works.
+  if arr.lines.len == 0: return
+  let normalizedQuery = query.replace("\r\n", "\n").replace("\r", "\n")
+  let queryRunes = normalizedQuery.toRunes.mapIt(it.toLower)
+  if queryRunes.len == 0: return
+
+  var textRunes: seq[Rune]
+  var boundaries: seq[CursorPos]
+  for lineI, line in arr.lines:
+    for col, r in line.runes:
+      boundaries.add CursorPos(line: lineI, col: col)
+      textRunes.add r.toLower
+    if lineI < arr.lines.high:
+      boundaries.add CursorPos(line: lineI, col: line.runes.len)
+      textRunes.add Rune('\n')
+  boundaries.add CursorPos(line: arr.lines.high, col: arr.lines[^1].runes.len)
+
+  var i = 0
+  while i + queryRunes.len <= textRunes.len:
+    var matches = true
+    for queryI, r in queryRunes:
+      if textRunes[i + queryI] != r:
+        matches = false
+        break
+
+    if matches and wholeWord:
+      if i > 0 and textRunes[i - 1].isWordRune: matches = false
+      let after = i + queryRunes.len
+      if after < textRunes.len and textRunes[after].isWordRune: matches = false
+
+    if matches:
+      let first = boundaries[i]
+      let last = boundaries[i + queryRunes.len]
+      result.add CursorPos(
+        line: last.line,
+        col: last.col,
+        snapCol: last.col,
+        hasSelection: true,
+        anchorLine: first.line,
+        anchorCol: first.col,
+      )
+      i += queryRunes.len
+    else:
+      inc i
+
+
+proc sameSelection(a, b: CursorPos): bool =
+  let aForward = a.anchorLine < a.line or
+    (a.anchorLine == a.line and a.anchorCol <= a.col)
+  let bForward = b.anchorLine < b.line or
+    (b.anchorLine == b.line and b.anchorCol <= b.col)
+  let aStart = if aForward: (a.anchorLine, a.anchorCol) else: (a.line, a.col)
+  let aEnd = if aForward: (a.line, a.col) else: (a.anchorLine, a.anchorCol)
+  let bStart = if bForward: (b.anchorLine, b.anchorCol) else: (b.line, b.col)
+  let bEnd = if bForward: (b.line, b.col) else: (b.anchorLine, b.anchorCol)
+  aStart == bStart and aEnd == bEnd
+
+
+proc addSelectionToNextMatch*(arr: CodeArrangement): bool =
+  ## VS Code-like Ctrl+D: first select the word at a bare cursor, then append
+  ## the next case-insensitive occurrence, wrapping at the end of the document.
+  if arr.cursors.len == 0 or arr.selectionMode != LineSelection: return
+  if not arr.cursors[0].hasSelection:
+    return arr.selectWordAtCursor(0)
+
+  let query = arr.selectedText(0)
+  if query.len == 0: return
+  let matches = arr.matchingSelections(query)
+  if matches.len == 0: return
+
+  let current = arr.cursors[^1]
+  var currentEnd = (current.line, current.col)
+  if (current.anchorLine, current.anchorCol) > currentEnd:
+    currentEnd = (current.anchorLine, current.anchorCol)
+
+  proc alreadySelected(candidate: CursorPos): bool =
+    for cursor in arr.cursors:
+      if cursor.sameSelection(candidate): return true
+
+  for candidate in matches:
+    let candidateStart = (candidate.anchorLine, candidate.anchorCol)
+    if candidateStart >= currentEnd and not alreadySelected(candidate):
+      arr.cursors.add candidate
+      return true
+
+  for candidate in matches:
+    if not alreadySelected(candidate):
+      arr.cursors.add candidate
+      return true
 
 
 # --- integrated editing procs ---

@@ -24,6 +24,8 @@ type
     mouseDownCount: int
     lastMouseDown: float
     lastMouseDownPos: Vec2
+    cursorActivityAt: float
+    cursorWordHighlightsVisible: bool
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
@@ -36,6 +38,7 @@ const MinSelectionWidth = 6'f32
 const ScrollBarWidth = 5'f32
 const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
+const CursorWordHighlightDelay = 0.5'f32
 
 
 registerComponent CodeEditor
@@ -62,11 +65,71 @@ proc updateHeight(this: CodeEditorContent) =
   this.h[] = this.arrangement.visibleHeight()
 
 
+proc markCursorActivity(this: CodeEditorContent) =
+  this.cursorActivityAt = epochTime()
+  this.cursorWordHighlightsVisible = false
+
+
+proc drawSelectionRange(
+  this: CodeEditorContent,
+  ctx: DrawContext,
+  line: CodeArrangementLine,
+  selection: Slice[int],
+  fill: Color,
+) =
+  if selection.len <= 0: return
+  let textOffsetX = this.textOffsetX
+  let lineH = this.font[].lineHeightPixels
+  let text = line.arrangement
+
+  if text.runes.len == 0:
+    ctx.fillRect(
+      rect(this.globalXy + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
+      fill,
+    )
+    return
+
+  for subRowIdx, span in text.lines:
+    let rowFirst = span[0]
+    let rowLast = span[1]
+    if rowFirst > rowLast: continue
+    if selection.a > rowLast: continue
+    if selection.b <= rowFirst: continue
+    let subRowY = line.rect.y + text.selectionRects[rowFirst].y
+    let leftRune = max(selection.a, rowFirst)
+    let startX = text.selectionRects[leftRune].x
+    let rightRune = min(selection.b - 1, rowLast)
+    let endX = text.selectionRects[rightRune].x + text.selectionRects[rightRune].w
+    let extraW: float32 =
+      if selection.b >= text.runes.len and subRowIdx == text.lines.high: MinSelectionWidth
+      else: 0.0'f32
+    let selectionW = max(endX - startX, 0.0'f32) + extraW
+    if selectionW <= 0: continue
+
+    ctx.fillRect(
+      rect(
+        this.globalXy + vec2(textOffsetX + startX, subRowY),
+        vec2(selectionW, lineH),
+      ),
+      fill,
+    )
+
+
 method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   let winRect = rect(vec2(), this.root.wh)
   let textOffsetX = this.textOffsetX
   let lineNumberBarOffsetX_r = this.lineNumberBarOffsetX + this.lineNumberBarWidth[]
   let arrowBarCenterX = this.arrowBarOffsetX + this.arrowBarWidth[] / 2
+
+  var matchingSelections: seq[CursorPos]
+  if this.arrangement.cursors.len > 0:
+    let selected = this.arrangement.selectedText(0)
+    if selected.len > 0:
+      matchingSelections = this.arrangement.matchingSelections(selected)
+    elif this.cursorWordHighlightsVisible and this.arrangement.cursors.len == 1:
+      let word = this.arrangement.wordAtCursor(0)
+      if word.len > 0:
+        matchingSelections = this.arrangement.matchingSelections(word, wholeWord = true)
 
   let spaceW = typeset(this.font[], " ").layoutBounds.x
   for i, line in this.arrangement.lines:
@@ -101,46 +164,22 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         color(0.3'f32, 0.3'f32, 0.3'f32),
       )
 
-    let lineH = this.font[].lineHeightPixels
+    for matchSelection in matchingSelections:
+      this.drawSelectionRange(
+        ctx,
+        line,
+        this.arrangement.selectionRangeForLine(matchSelection, i),
+        color(0.24'f32, 0.30'f32, 0.38'f32),
+      )
+
     for c_idx in 0..<this.arrangement.cursors.len:
       if this.arrangement.cursors[c_idx].isDuplicate: continue
-      let sel = this.arrangement.selectionRangeForLine(c_idx, i)
-      if sel.len <= 0: continue
-      let arr = line.arrangement
-
-      if arr.runes.len == 0:
-        # selection rect for empty line
-        ctx.fillRect(
-          rect(this.globalXy + vec2(textOffsetX, line.rect.y), vec2(MinSelectionWidth, lineH)),
-          color(0.2'f32, 0.4'f32, 0.7'f32),
-        )
-
-      else:
-        for subRowIdx, span in arr.lines:
-          let rowFirst = span[0]
-          let rowLast = span[1]
-          if rowFirst > rowLast: continue
-          if sel.a > rowLast: continue
-          if sel.b <= rowFirst: continue
-          let subRowY = line.rect.y + arr.selectionRects[rowFirst].y
-          let leftRune = max(sel.a, rowFirst)
-          let startX = arr.selectionRects[leftRune].x
-          let rightRune = min(sel.b - 1, rowLast)
-          let endX = arr.selectionRects[rightRune].x + arr.selectionRects[rightRune].w
-          let extraW: float32 =
-            if sel.b >= arr.runes.len and subRowIdx == arr.lines.high: MinSelectionWidth
-            else: 0.0'f32
-          let selW = max(endX - startX, 0.0'f32) + extraW
-          if selW <= 0: continue
-
-          # selection rect
-          ctx.fillRect(
-            rect(
-              this.globalXy + vec2(textOffsetX + startX, subRowY),
-              vec2(selW, lineH),
-            ),
-            color(0.2'f32, 0.4'f32, 0.7'f32),
-          )
+      this.drawSelectionRange(
+        ctx,
+        line,
+        this.arrangement.selectionRangeForLine(c_idx, i),
+        color(0.2'f32, 0.4'f32, 0.7'f32),
+      )
 
     # the code
     drawHighlightedText(
@@ -198,6 +237,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       # Modifier key-up events can be swallowed by Alt+Tab on Windows.
       # Start with a clean state whenever the window focus changes.
       this.modifierKeysDown = {}
+      this.markCursorActivity()
 
   signal.match KeyEvent:
     if e.key in {Key.lshift, Key.rshift, Key.lcontrol, Key.rcontrol, Key.lalt, Key.ralt}:
@@ -214,6 +254,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
   signal.match TextInputEvent:
     if currentFocus[] == this and this.arrangement != nil and not e.repeated:
+      this.markCursorActivity()
       this.arrangement.insert(e.text)
       this.updateHeight()
       redraw(this)
@@ -222,6 +263,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
   signal.match KeyEvent:
     if e.pressed and currentFocus[] == this and this.arrangement != nil:
+      this.markCursorActivity()
       let shift = (this.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
       let ctrl = (this.modifierKeysDown * {Key.lcontrol, Key.rcontrol}).len > 0
       
@@ -289,12 +331,19 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
             this.saveFile()
           signal.handled = true
 
+      of Key.d:
+        if ctrl:
+          if this.arrangement.addSelectionToNextMatch():
+            redraw(this)
+          signal.handled = true
+
       else: discard
 
 
 proc setArrangement(this: CodeEditorContent, text: string) =
   # todo: if only the width changed, update arrangement instead of regenerating it
   this.arrangement = text.toArrangement(this.font[], this.w[] - this.textOffsetX)
+  this.markCursorActivity()
   this.updateHeight()
 
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -311,6 +360,16 @@ method init*(this: CodeEditorContent) =
   procCall this.super.init()
 
   this.font{} = font_monospace.withSize(12)
+  this.markCursorActivity()
+
+  this.root.onTick.connectTo this:
+    if currentFocus[] == this and this.arrangement != nil and
+        this.arrangement.cursors.len == 1 and
+        not this.arrangement.cursors[0].hasSelection and
+        not this.cursorWordHighlightsVisible and
+        epochTime() - this.cursorActivityAt >= CursorWordHighlightDelay:
+      this.cursorWordHighlightsVisible = true
+      redraw(this)
 
   this.makeLayout:
     - MouseArea.new:
@@ -322,6 +381,7 @@ method init*(this: CodeEditorContent) =
 
       on this.pressed[] == true:
         setFocus root
+        root.markCursorActivity()
 
       on this.clicked:
         let clickY = this.mouseY[]
@@ -343,6 +403,7 @@ method init*(this: CodeEditorContent) =
 
       on this.pressed[] == true:
         setFocus root
+        root.markCursorActivity()
         for i, line in root.arrangement.lines:
           if line.isHidden: continue
           if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
@@ -386,9 +447,9 @@ method init*(this: CodeEditorContent) =
 
       on this.moved:
         if this.pressed[] and root.dragingCursorI >= 0:
+          root.markCursorActivity()
           root.arrangement.selectToPos(root.dragingCursorI, this.mouseXy[])
           redraw(root)
-
 
 proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
