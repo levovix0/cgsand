@@ -26,6 +26,7 @@ type
     lastMouseDownPos: Vec2
     cursorActivityAt: float
     cursorWordHighlightsVisible: bool
+    undoHistory: seq[CodeArrangementSnapshot]
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
@@ -39,6 +40,7 @@ const ScrollBarWidth = 5'f32
 const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
 const CursorWordHighlightDelay = 0.5'f32
+const MaxUndoHistory = 15
 
 
 registerComponent CodeEditor
@@ -68,6 +70,19 @@ proc updateHeight(this: CodeEditorContent) =
 proc markCursorActivity(this: CodeEditorContent) =
   this.cursorActivityAt = epochTime()
   this.cursorWordHighlightsVisible = false
+
+
+proc pushUndoSnapshot(this: CodeEditorContent) =
+  if this.arrangement == nil: return
+  if this.undoHistory.len >= MaxUndoHistory:
+    this.undoHistory.delete(0)
+  this.undoHistory.add this.arrangement.snapshot()
+
+
+proc discardUnchangedUndoSnapshot(this: CodeEditorContent) =
+  if this.undoHistory.len > 0 and this.arrangement != nil and
+      this.undoHistory[^1].text == this.arrangement.fileContent():
+    this.undoHistory.setLen(this.undoHistory.len - 1)
 
 
 proc drawSelectionRange(
@@ -219,6 +234,19 @@ proc saveFile(this: CodeEditorContent) =
   if this.arrangement == nil: return
   scheduleFileSave(this.path[], this.arrangement.fileContent())
 
+
+proc undo(this: CodeEditorContent): bool =
+  if this.undoHistory.len == 0: return
+  let previous = this.undoHistory.pop()
+  this.arrangement = previous.toArrangement(this.font[], this.w[] - this.textOffsetX)
+  this.markCursorActivity()
+  this.updateHeight()
+  let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
+  this.lineNumberBarWidth[] = lineNumberMaxWidth
+  redraw(this)
+  this.saveFile()
+  result = true
+
 proc scrollToLine(this: CodeEditor, line: int) =
   if this.content.arrangement.lines.len == 0:
     this.scrollArea.targetY[] = 0
@@ -255,7 +283,9 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
   signal.match TextInputEvent:
     if currentFocus[] == this and this.arrangement != nil and not e.repeated:
       this.markCursorActivity()
+      this.pushUndoSnapshot()
       this.arrangement.insert(e.text)
+      this.discardUnchangedUndoSnapshot()
       this.updateHeight()
       redraw(this)
       this.saveFile()
@@ -286,19 +316,25 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         redraw(this)
 
       of Key.backspace:
+        this.pushUndoSnapshot()
         deleteBack(this.arrangement)
+        this.discardUnchangedUndoSnapshot()
         this.updateHeight()
         redraw(this)
         this.saveFile()
 
       of Key.del:
+        this.pushUndoSnapshot()
         deleteForward(this.arrangement)
+        this.discardUnchangedUndoSnapshot()
         this.updateHeight()
         redraw(this)
         this.saveFile()
 
       of Key.enter:
+        this.pushUndoSnapshot()
         insertNewline(this.arrangement)
+        this.discardUnchangedUndoSnapshot()
         this.updateHeight()
         redraw(this)
         this.saveFile()
@@ -326,7 +362,9 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         if ctrl:
           let text = this.root.clipboardText
           if text.len > 0:
+            this.pushUndoSnapshot()
             this.arrangement.insert(text)
+            this.discardUnchangedUndoSnapshot()
             this.updateHeight()
             redraw(this)
             this.saveFile()
@@ -338,10 +376,17 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
             redraw(this)
           signal.handled = true
         elif ctrl:
+          this.pushUndoSnapshot()
           this.arrangement.duplicateSelectionsOrLines()
+          this.discardUnchangedUndoSnapshot()
           this.updateHeight()
           redraw(this)
           this.saveFile()
+          signal.handled = true
+
+      of Key.z:
+        if ctrl:
+          discard this.undo()
           signal.handled = true
 
       else: discard
@@ -460,6 +505,7 @@ method init*(this: CodeEditorContent) =
 
 proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
+  this.content.undoHistory.setLen(0)
   try:
     this.content.path[] = target.path
     this.content.setArrangement(readFile(target.path))

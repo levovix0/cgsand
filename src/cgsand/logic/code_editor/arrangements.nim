@@ -70,6 +70,12 @@ type
     selectionMode*: SelectionMode
     width*: float32
 
+  CodeArrangementSnapshot* = object
+    text*: string
+    cursors*: seq[CursorPos]
+    foldedLines*: seq[int]
+    selectionMode*: SelectionMode
+
 
 
 proc lineHeightPixels*(font: Font): float32 =
@@ -81,6 +87,15 @@ proc fileContent*(cf: CodeArrangement): string =
   for i, line in cf.lines:
     if i != 0: result.add "\n"
     result.add $line.runes
+
+
+proc snapshot*(arrangement: CodeArrangement): CodeArrangementSnapshot =
+  result.text = arrangement.fileContent()
+  result.selectionMode = arrangement.selectionMode
+  for cursor in arrangement.cursors:
+    result.cursors.add cursor
+  for lineI in arrangement.foldedLines:
+    result.foldedLines.add lineI
 
 proc writeCodeFile*(filename: string, v: CodeArrangement) =
   writeFile filename, v.fileContent
@@ -1042,4 +1057,18 @@ proc toArrangement*(text: string, font: Font, width: float32): CodeArrangement =
   result.updateIndentOffsets()
   result.updateFoldable()
   result.cursors = @[CursorPos()]
+  result.updateRects()
+
+
+proc toArrangement*(snapshot: CodeArrangementSnapshot, font: Font, width: float32): CodeArrangement =
+  result = snapshot.text.toArrangement(font, width)
+  result.selectionMode = snapshot.selectionMode
+  result.cursors.setLen(0)
+  for cursor in snapshot.cursors:
+    result.cursors.add cursor
+  if result.cursors.len == 0:
+    result.cursors.add CursorPos()
+  for lineI in snapshot.foldedLines:
+    if lineI >= 0 and lineI < result.lines.len:
+      result.foldedLines.incl lineI
   result.updateRects()
