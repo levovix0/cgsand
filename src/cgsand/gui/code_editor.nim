@@ -89,6 +89,8 @@ proc drawSelectionRange(
   this: CodeEditorContent,
   ctx: DrawContext,
   line: CodeArrangementLine,
+  lineI: int,
+  cursor: CursorPos,
   selection: Slice[int],
   fill: Color,
 ) =
@@ -116,7 +118,8 @@ proc drawSelectionRange(
     let rightRune = min(selection.b - 1, rowLast)
     let endX = text.selectionRects[rightRune].x + text.selectionRects[rightRune].w
     let extraW: float32 =
-      if selection.b >= text.runes.len and subRowIdx == text.lines.high: MinSelectionWidth
+      if selection.b >= text.runes.len and subRowIdx == text.lines.high and
+          cursor.anchorLine != cursor.line and lineI < max(cursor.anchorLine, cursor.line): MinSelectionWidth
       else: 0.0'f32
     let selectionW = max(endX - startX, 0.0'f32) + extraW
     if selectionW <= 0: continue
@@ -183,6 +186,8 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       this.drawSelectionRange(
         ctx,
         line,
+        i,
+        matchSelection,
         this.arrangement.selectionRangeForLine(matchSelection, i),
         color(0.24'f32, 0.30'f32, 0.38'f32),
       )
@@ -192,6 +197,8 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       this.drawSelectionRange(
         ctx,
         line,
+        i,
+        this.arrangement.cursors[c_idx],
         this.arrangement.selectionRangeForLine(c_idx, i),
         color(0.2'f32, 0.4'f32, 0.7'f32),
       )
@@ -448,8 +455,8 @@ method init*(this: CodeEditorContent) =
 
     - MouseArea.new:
       this.fillVertical(parent)
-      x = binding: parent.textOffsetX
-      w = binding: parent.w[] - parent.textOffsetX
+      x = binding: root.breakpointBarWidth[] + root.lineNumberBarWidth[] + root.changesBarWidth[] + root.arrowBarWidth[]
+      w = binding: parent.w[] - (root.breakpointBarWidth[] + root.lineNumberBarWidth[] + root.changesBarWidth[] + root.arrowBarWidth[])
 
       allowEventFallthrough = true
 
