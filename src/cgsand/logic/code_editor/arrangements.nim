@@ -265,6 +265,25 @@ proc isWordRune(r: Rune): bool =
   r.isAlpha or r.uint32 in 48'u32 .. 57'u32 or r == Rune('_')
 
 
+proc wordRunAt*(arrangement: CodeArrangement, lineI, col: int): Slice[int] =
+  ## Bounds of the word-like run under col: identifier-like runes extend the
+  ## run, any other rune is a run of its own. `.a` is the index of the first
+  ## rune of the run and `.b` the index of the last one. Empty range when col
+  ## is past the line end.
+  if lineI < 0 or lineI >= arrangement.lines.len: return 0..<0
+  let runes = arrangement.lines[lineI].runes
+  if col < 0 or col >= runes.len: return 0..<0
+
+  if not runes[col].isWordRune:
+    return col..<min(col + 1, runes.len)
+
+  var first = col
+  var last = col + 1
+  while first > 0 and runes[first - 1].isWordRune: dec first
+  while last < runes.len and runes[last].isWordRune: inc last
+  first..<last
+
+
 proc selectWordAt*(arrangement: CodeArrangement, cursorI, lineI, col: int) =
   ## Select the identifier-like word under col. Punctuation and whitespace are
   ## selected one rune at a time; clicking past the line end clears selection.
@@ -276,12 +295,8 @@ proc selectWordAt*(arrangement: CodeArrangement, cursorI, lineI, col: int) =
     arrangement.setSelection(cursorI, lineI, runes.len, lineI, runes.len)
     return
 
-  var first = col
-  var last = col + 1
-  if runes[col].isWordRune:
-    while first > 0 and runes[first - 1].isWordRune: dec first
-    while last < runes.len and runes[last].isWordRune: inc last
-  arrangement.setSelection(cursorI, lineI, first, lineI, last)
+  let run = arrangement.wordRunAt(lineI, col)
+  arrangement.setSelection(cursorI, lineI, run.a, lineI, run.b + 1)
 
 
 proc selectLineAt*(arrangement: CodeArrangement, cursorI, lineI: int) =
@@ -295,37 +310,81 @@ proc selectLineAt*(arrangement: CodeArrangement, cursorI, lineI: int) =
     arrangement.setSelection(cursorI, lineI, 0, lineI, arrangement.lines[lineI].runes.len)
 
 
-proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
-  if cursorI < 0 or cursorI >= arrangement.cursors.len: return
-
-  var foundLine = -1
-  var foundCol = 0
+proc cellAt*(arrangement: CodeArrangement, mouseXy: Vec2): tuple[line, col: int] =
+  ## The line and column under the mouse position, skipping hidden lines.
+  ## line is -1 when there are no visible lines.
   var firstVisible = -1
   var lastVisible = -1
-
   for i, line in arrangement.lines:
     if line.isHidden: continue
     if firstVisible == -1: firstVisible = i
     lastVisible = i
     if mouseXy.y >= line.rect.y and mouseXy.y < line.rect.y + line.rect.h:
-      foundLine = i
-      foundCol = line.posToCol(vec2(mouseXy.x, mouseXy.y - line.rect.y))
-      break
+      let col = line.posToCol(vec2(mouseXy.x, mouseXy.y - line.rect.y))
+      return (i, col)
 
-  if foundLine == -1 and firstVisible != -1:
-    if mouseXy.y < arrangement.lines[firstVisible].rect.y:
-      foundLine = firstVisible
-      foundCol = 0
-    else:
-      foundLine = lastVisible
-      foundCol = arrangement.lines[lastVisible].arrangement.runes.len
+  if firstVisible == -1: return (-1, 0)
+  if mouseXy.y < arrangement.lines[firstVisible].rect.y:
+    return (firstVisible, 0)
+  result = (lastVisible, arrangement.lines[lastVisible].arrangement.runes.len)
 
-  if foundLine != -1 and cursorI < arrangement.cursors.len:
+
+proc selectToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2) =
+  if cursorI < 0 or cursorI >= arrangement.cursors.len: return
+
+  let (foundLine, foundCol) = arrangement.cellAt(mouseXy)
+  if foundLine != -1:
     arrangement.setSelection(
       cursorI,
       arrangement.cursors[cursorI].anchorLine, arrangement.cursors[cursorI].anchorCol,
       foundLine, foundCol,
     )
+
+
+proc selectWordsToPos*(
+  arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2,
+  wordLine, wordFirst, wordLast: int,
+) =
+  ## Extend the cursor's selection by whole words towards the mouse position
+  ## (double-click + drag). The word selected by the double click
+  ## (wordLine, wordFirst ..< wordLast) stays inside the selection when the
+  ## drag direction changes.
+  if cursorI < 0 or cursorI >= arrangement.cursors.len: return
+  let (lineI, col) = arrangement.cellAt(mouseXy)
+  if lineI == -1: return
+
+  let runes = arrangement.lines[lineI].runes
+  if lineI > wordLine or (lineI == wordLine and col >= wordFirst):
+    # dragging forward: end the selection after the word under the mouse
+    let endCol =
+      if col >= runes.len: runes.len
+      else: arrangement.wordRunAt(lineI, col).b + 1
+    arrangement.setSelection(cursorI, wordLine, wordFirst, lineI, endCol)
+  else:
+    # dragging backward: start the selection at the beginning of the word under the mouse
+    let startCol =
+      if col >= runes.len: runes.len
+      else: arrangement.wordRunAt(lineI, col).a
+    arrangement.setSelection(cursorI, lineI, startCol, wordLine, wordLast)
+
+
+proc selectLinesToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2, line: int) =
+  ## Extend the cursor's selection by whole lines towards the mouse position
+  ## (triple-click + drag).
+  if cursorI < 0 or cursorI >= arrangement.cursors.len: return
+  let (lineI, _) = arrangement.cellAt(mouseXy)
+  if lineI == -1: return
+
+  if lineI >= line:
+    if lineI < arrangement.lines.high:
+      arrangement.setSelection(cursorI, line, 0, lineI + 1, 0)
+    else:
+      arrangement.setSelection(cursorI, line, 0, lineI, arrangement.lines[lineI].runes.len)
+  else:
+    if line < arrangement.lines.high:
+      arrangement.setSelection(cursorI, lineI, 0, line + 1, 0)
+    else:
+      arrangement.setSelection(cursorI, lineI, 0, line, arrangement.lines[line].runes.len)
 
 
 proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false, prevWord: bool = false) =

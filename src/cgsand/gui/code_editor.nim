@@ -7,6 +7,21 @@ import ./[highlighted_text]
 
 
 type
+  DragSelectMode* = enum
+    ## what granularity an ongoing mouse drag selection uses
+    charDrag
+    wordDrag
+    lineDrag
+
+  ContextMenu* = ref object of MouseArea
+    ## fullscreen transparent area hosting the editor context menu panel.
+    ## It is created on first use, stays alive afterwards and is only shown
+    ## and hidden by toggling visibility, so it is never deleted while its
+    ## own event handlers are running.
+    editor: CodeEditorContent
+    menuX*, menuY*: Property[float32]
+    cutEnabled*, copyEnabled*, pasteEnabled*: Property[bool]
+
   CodeEditorContent* = ref object of Uiobj
     font*: Property[Font]
     breakpointBarWidth*: Property[float32] = 20'f32.property
@@ -18,8 +33,14 @@ type
 
     nonFoldedArrowsVisible: Property[bool]
 
-    arrangement: CodeArrangement
+    arrangement*: CodeArrangement
     dragingCursorI: int
+    dragSelectMode: DragSelectMode
+    wordDragLine: int
+    wordDragFirstCol: int
+    wordDragLastCol: int
+    lineDragLine: int
+    contextMenu*: ContextMenu
     modifierKeysDown: set[Key]
     mouseDownCount: int
     lastMouseDown: float
@@ -41,10 +62,14 @@ const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
 const CursorWordHighlightDelay = 0.5'f32
 const MaxUndoHistory = 15
+const ContextMenuItemH = 24'f32
+const ContextMenuWidth = 130'f32
+const ContextMenuHeight = 3'f32 * ContextMenuItemH
 
 
 registerComponent CodeEditor
 registerComponent CodeEditorContent
+registerComponent ContextMenu
 
 
 
@@ -264,6 +289,205 @@ proc scrollToLine(this: CodeEditor, line: int) =
       this.scrollArea.targetY[] = max(0'f32, y - this.scrollArea.h[] / 3)
 
 
+proc getClipboardText(this: CodeEditorContent): string =
+  ## clipboard read that survives platforms with no working clipboard
+  try:
+    result = this.root.clipboardText
+  except NilAccessDefect:
+    discard
+
+
+proc setClipboardText(this: CodeEditorContent, text: string) =
+  ## clipboard write that survives platforms with no working clipboard
+  try:
+    this.root.clipboardText = text
+  except NilAccessDefect:
+    discard
+
+
+proc copySelection(this: CodeEditorContent) =
+  let text = this.arrangement.selectedText()
+  if text.len > 0:
+    this.setClipboardText(text)
+
+
+proc cutSelection(this: CodeEditorContent) =
+  let text = this.arrangement.selectedText()
+  if text.len > 0:
+    this.setClipboardText(text)
+    this.pushUndoSnapshot()
+    deleteForward(this.arrangement)
+    this.discardUnchangedUndoSnapshot()
+    this.updateHeight()
+    redraw(this)
+    this.saveFile()
+
+
+proc pasteClipboard(this: CodeEditorContent) =
+  let text = this.getClipboardText()
+  if text.len > 0:
+    this.pushUndoSnapshot()
+    this.arrangement.insert(text)
+    this.discardUnchangedUndoSnapshot()
+    this.updateHeight()
+    redraw(this)
+    this.saveFile()
+
+
+proc contextMenuItemActivated(this: CodeEditorContent, itemI: int) =
+  case itemI
+  of 0: this.cutSelection()
+  of 1: this.copySelection()
+  of 2: this.pasteClipboard()
+  else: discard
+
+
+proc contextMenuOpen*(this: CodeEditorContent): bool =
+  this.contextMenu != nil and this.contextMenu.visibility[] == visible
+
+
+proc closeContextMenu(this: CodeEditorContent) =
+  if this.contextMenu != nil:
+    this.contextMenu.visibility[] = collapsed
+
+
+proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
+  if this.root == nil: return
+  if this.arrangement == nil: return
+
+  let menuPos = vec2(
+    globalPos.x.clamp(0'f32, max(this.root.w[] - ContextMenuWidth, 0'f32)),
+    globalPos.y.clamp(0'f32, max(this.root.h[] - ContextMenuHeight, 0'f32)),
+  )
+
+  if this.contextMenu == nil:
+    let menu = ContextMenu.new()
+    menu.editor = this
+    this.root.addChild(menu)
+    initIfNeeded(menu)
+    this.contextMenu = menu
+
+    menu.makeLayout:
+      x = 0
+      y = 0
+      w = binding: parent.w[]
+      h = binding: parent.h[]
+      visibility = collapsed
+
+      # invisible fullscreen area: closes the menu when the user clicks or
+      # scrolls outside of it, while letting the events reach other components
+      acceptedButtons = {MouseButton.left, MouseButton.middle, MouseButton.right}
+      allowEventFallthrough = true
+
+      on this.pressed[] == true:
+        let p = this.mouseXy[]
+        if not (p.x in root.menuX[] .. root.menuX[] + ContextMenuWidth and
+            p.y in root.menuY[] .. root.menuY[] + ContextMenuHeight):
+          root.editor.closeContextMenu()
+
+      on this.scrolled:
+        root.editor.closeContextMenu()
+
+      - UiRect.new:
+        x = binding: root.menuX[]
+        y = binding: root.menuY[]
+        w = ContextMenuWidth
+        h = ContextMenuHeight
+        radius = 4
+        color = colorTheme.bgExplorer
+
+      # menu items; enabled state is a property of the menu, so bindings
+      # built from it track its changes
+      - MouseArea.new:
+        x = binding: root.menuX[]
+        y = binding: root.menuY[]
+        w = ContextMenuWidth
+        h = ContextMenuItemH
+
+        - UiRect.new:
+          this.fill(parent)
+          radius = 2
+          color = binding:
+            if parent.hovered[] and root.cutEnabled[]: colorTheme.bgSelection
+            else: color(0'f32, 0'f32, 0'f32, 0'f32)
+
+        - UiText.new:
+          x = 10
+          centerY = parent.center
+          text = tr"Cut"
+          font = font_monospace.withSize(12)
+          color = binding:
+            if root.cutEnabled[]: colorTheme.sText
+            else: colorTheme.sLineNumber
+
+        on this.clicked:
+          if root.cutEnabled[]:
+            root.editor.contextMenuItemActivated(0)
+            root.editor.closeContextMenu()
+
+      - MouseArea.new:
+        x = binding: root.menuX[]
+        y = binding: root.menuY[] + ContextMenuItemH
+        w = ContextMenuWidth
+        h = ContextMenuItemH
+
+        - UiRect.new:
+          this.fill(parent)
+          radius = 2
+          color = binding:
+            if parent.hovered[] and root.copyEnabled[]: colorTheme.bgSelection
+            else: color(0'f32, 0'f32, 0'f32, 0'f32)
+
+        - UiText.new:
+          x = 10
+          centerY = parent.center
+          text = tr"Copy"
+          font = font_monospace.withSize(12)
+          color = binding:
+            if root.copyEnabled[]: colorTheme.sText
+            else: colorTheme.sLineNumber
+
+        on this.clicked:
+          if root.copyEnabled[]:
+            root.editor.contextMenuItemActivated(1)
+            root.editor.closeContextMenu()
+
+      - MouseArea.new:
+        x = binding: root.menuX[]
+        y = binding: root.menuY[] + 2 * ContextMenuItemH
+        w = ContextMenuWidth
+        h = ContextMenuItemH
+
+        - UiRect.new:
+          this.fill(parent)
+          radius = 2
+          color = binding:
+            if parent.hovered[] and root.pasteEnabled[]: colorTheme.bgSelection
+            else: color(0'f32, 0'f32, 0'f32, 0'f32)
+
+        - UiText.new:
+          x = 10
+          centerY = parent.center
+          text = tr"Paste"
+          font = font_monospace.withSize(12)
+          color = binding:
+            if root.pasteEnabled[]: colorTheme.sText
+            else: colorTheme.sLineNumber
+
+        on this.clicked:
+          if root.pasteEnabled[]:
+            root.editor.contextMenuItemActivated(2)
+            root.editor.closeContextMenu()
+
+  let menu = this.contextMenu
+  menu.menuX[] = menuPos.x
+  menu.menuY[] = menuPos.y
+  menu.cutEnabled[] = this.arrangement.selectedText().len > 0
+  menu.copyEnabled[] = menu.cutEnabled[]
+  menu.pasteEnabled[] = this.getClipboardText().len > 0
+  menu.visibility[] = visible
+
+
 method recieve*(this: CodeEditorContent, signal: Signal) =
   procCall this.super.recieve(signal)
 
@@ -347,7 +571,9 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         this.saveFile()
 
       of Key.escape:
-        if this.arrangement.cursors.len > 1:
+        if this.contextMenuOpen():
+          this.closeContextMenu()
+        elif this.arrangement.cursors.len > 1:
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
           redraw(this)
 
@@ -489,17 +715,26 @@ method init*(this: CodeEditorContent) =
               let anchorCol = if cursor.hasSelection: cursor.anchorCol else: cursor.col
               root.arrangement.cursors.setLen(1)
               root.arrangement.setSelection(0, anchorLine, anchorCol, i, col)
+              root.dragSelectMode = charDrag
               root.dragingCursorI = 0
             elif not append and root.mouseDownCount == 2:
               root.arrangement.cursors.setLen(1)
               root.arrangement.selectWordAt(0, i, col)
-              root.dragingCursorI = -1
+              let cursor = root.arrangement.cursors[0]
+              root.wordDragLine = cursor.anchorLine
+              root.wordDragFirstCol = cursor.anchorCol
+              root.wordDragLastCol = cursor.col
+              root.dragSelectMode = wordDrag
+              root.dragingCursorI = 0
             elif not append and root.mouseDownCount == 3:
               root.arrangement.cursors.setLen(1)
               root.arrangement.selectLineAt(0, i)
-              root.dragingCursorI = -1
+              root.lineDragLine = i
+              root.dragSelectMode = lineDrag
+              root.dragingCursorI = 0
             else:
               root.arrangement.setCursorPos(i, col, append)
+              root.dragSelectMode = charDrag
               root.dragingCursorI = root.arrangement.cursors.high
             redraw(root)
             break
@@ -507,8 +742,35 @@ method init*(this: CodeEditorContent) =
       on this.moved:
         if this.pressed[] and root.dragingCursorI >= 0:
           root.markCursorActivity()
-          root.arrangement.selectToPos(root.dragingCursorI, this.mouseXy[])
+          case root.dragSelectMode
+          of charDrag:
+            root.arrangement.selectToPos(root.dragingCursorI, this.mouseXy[])
+          of wordDrag:
+            root.arrangement.selectWordsToPos(
+              root.dragingCursorI, this.mouseXy[],
+              root.wordDragLine, root.wordDragFirstCol, root.wordDragLastCol,
+            )
+          of lineDrag:
+            root.arrangement.selectLinesToPos(root.dragingCursorI, this.mouseXy[], root.lineDragLine)
           redraw(root)
+
+      this.mouseButton.connectTo root, e:
+        if e.button == MouseButton.right and e.pressed:
+          setFocus root
+          root.markCursorActivity()
+          if root.arrangement != nil:
+            block foundLine:
+              for i, line in root.arrangement.lines:
+                if line.isHidden: continue
+                if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
+                  let col = line.posToCol(vec2(this.mouseX[], this.mouseY[] - line.rect.y))
+                  let sel = root.arrangement.selectionRangeForLine(0, i)
+                  if sel.len == 0 or col < sel.a or col > sel.b:
+                    # clicking outside of the selection moves the cursor to it
+                    root.arrangement.setCursorPos(i, col)
+                    redraw(root)
+                  break foundLine
+            root.openContextMenu(this.globalXy + this.mouseXy[])
 
 proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
@@ -561,6 +823,16 @@ method init*(this: CodeEditor) =
         w = binding: parent.w[] - ScrollBarWidth
 
       verticalScrollOverFit = binding: this.h[] - root.content.font[].size * 2
+
+    - MouseArea.new:
+      # right clicks anywhere in the editor open the context menu; the text
+      # MouseArea handles clicks on the text itself, this one covers the rest
+      this.fill(parent)
+      acceptedButtons = {MouseButton.right}
+
+      on this.pressed[] == true:
+        if root.content.arrangement != nil:
+          root.content.openContextMenu(this.globalXy + this.mouseXy[])
 
     root.open(Location(path: config.scriptFile[]))
     on this.w.changed: root.content.rearrange()
