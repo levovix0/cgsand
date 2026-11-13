@@ -2,7 +2,7 @@ import std/[os, math]
 import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
-import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter]
+import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, file_browser]
 import ./cgsand/logic/[configuration, scripts, file_openers]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -118,7 +118,7 @@ win.makeLayout:
         (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
       )
       this.fillVertical(parent)
-      top = titleBar.bottom
+      top = titleBar.bottom + 24
       bottom = parent.bottom
       visibility = if config.codeEditorVisible[]: Visibility.visible else: Visibility.collapsed
       
@@ -129,6 +129,15 @@ win.makeLayout:
       on this.content.path.changed:
         config.scriptFile[] = this.content.path[]
 
+    - FileBrowser(fillHorizontal(codeEditor)) as fileBrowser:
+      top = titleBar.bottom
+      bottom = codeEditor.top
+      visibility = binding:
+        if codeEditor.visibility[] == Visibility.visible: Visibility.visible
+        else: Visibility.collapsed
+      rootPath = getCurrentDir()
+      currentFile = binding: config.scriptFile[]
+      
 
     - Terminal.new as terminal:
       w = binding: round(
@@ -182,6 +191,7 @@ win.makeLayout:
     
   titleBar.fileOpener[] = fileOpener
   terminal.fileOpener = fileOpener
+  fileBrowser.fileOpener[] = fileOpener
 
 
   on DropEvent:

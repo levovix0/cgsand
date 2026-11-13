@@ -512,12 +512,25 @@ method init*(this: CodeEditorContent) =
 
 proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
+
+  # location lines/columns start from 1, the editor arrangement is 0-based
+  let line = max(target.line - 1, 0)
+  let col = max(target.col - 1, 0)
+
+  if this.content.arrangement != nil and
+      this.content.path[].absolutePath == target.path.absolutePath:
+    # already open — jump to the location without discarding the undo history
+    this.content.arrangement.setCursorPos(line, col)
+    this.scrollToLine(line)
+    redraw(this.content)
+    return
+
   this.content.undoHistory.setLen(0)
   try:
     this.content.path[] = target.path
     this.content.setArrangement(readFile(target.path))
-    this.content.arrangement.setCursorPos(target.line, target.col)
-    this.scrollToLine(target.line)
+    this.content.arrangement.setCursorPos(line, col)
+    this.scrollToLine(line)
   except CatchableError as exc:
     this.content.path[] = ""
     this.content.setArrangement("Unable to read file: " & target.path & "\n" & exc.msg)
