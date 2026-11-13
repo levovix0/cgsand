@@ -21,6 +21,17 @@
       "": "Заполни таблицу координатами центров"
     }
   },
+  "src/cgsand/gui/code_editor.nim": {
+    "Copy": {
+      "": "Копировать"
+    },
+    "Cut": {
+      "": "Вырезать"
+    },
+    "Paste": {
+      "": "Вставить"
+    }
+  },
   "src/cgsand/gui/document_view.nim": {
     "Theme: light": {
       "": "Тема: светлая"
