@@ -1,7 +1,8 @@
 import std/[json, os, macros]
 import pkg/[localize, chroma, jsony]
 import pkg/sigui/[events, properties, uiobj]
-import pkg/toscel/fonts
+import ./fonts
+export fonts
 export localize
 
 requireLocalesToBeTranslated ("ru", "")
@@ -137,6 +138,10 @@ genconfig Config:
   ## how many lines of scrollback history the terminal main screen keeps (0 disables history)
   terminalScrollbackLines: int = 1000
 
+  ## terminal and code editor font: a font file path or a font name
+  ## (e.g. "firacode"), empty = auto-detect a monospace system font
+  fontMonospace: string = ""
+
 
 
 proc parseHook*(s: string, i: var int, res: var Color) =
@@ -216,5 +221,5 @@ const vscodeThemeJson = staticRead("../../../themes/vscode.json")
 let colorTheme* = vscodeThemeJson.fromJson(ColorTheme)
 
 
-let font_monospace* = findSystemFont(@["firacode", "monospace", "consola"] & @["roboto", "ubuntu", "notosans", "arial", "adwaitasans"])
+let font_monospace* = findMonospaceTypeface(config.fontMonospace[])
 
