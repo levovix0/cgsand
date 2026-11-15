@@ -130,9 +130,11 @@ proc worldCenter3D*(w: World): Vec3 =
 
 
 method drawInner*(this: DocumentView, ctx: DrawContext) =
+  let s = this.root.uiScale
   let ctx = ctx.RiceDrawContext.raw
   if this.script[].hasWorldToDraw:
-    let efSize = ivec2(this.w[].ceil.int32, this.h[].ceil.int32)
+    # the document is rasterized at device resolution for sharpness
+    let efSize = ivec2((this.w[] * s).ceil.int32, (this.h[] * s).ceil.int32)
     if this.documentPixels == nil:
       this.documentPixels = ctx.newAntialiasedFramebuffer(efSize, depth = true)
     else:
@@ -142,8 +144,9 @@ method drawInner*(this: DocumentView, ctx: DrawContext) =
     try:
       let globals = this.script[].world[].documentGlobals
       let layout = this.script[].world[].documentLayout(globals)
-      let proj = projectionMatrix(layout.pageBounds, this.wh, globals.axisYDirection)
-      let pixelsPerUnit = pixelsPerUnit(layout.pageBounds.size.vec2, this.wh, this.viewport[])
+      let wh = this.wh * s  # framebuffer pixels
+      let proj = projectionMatrix(layout.pageBounds, wh, globals.axisYDirection)
+      let pixelsPerUnit = pixelsPerUnit(layout.pageBounds.size.vec2, wh, this.viewport[])
 
       glEnable(GlBlend)
       glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
@@ -197,10 +200,13 @@ method drawInner*(this: DocumentView, ctx: DrawContext) =
 
   if this.documentPixels != nil:
     glEnable(GlBlend)
+    # the framebuffer texture is in device pixels, while ctx.draw works in logical pixels;
+    # combine arguments are applied in order
     ctx.draw(
       this.documentPixels,
       transform = combine(
-        translate vec3(0, -this.documentPixels.size.y.float32, 0),
+        scale vec3(1/s, 1/s, 1),
+        translate vec3(0, -this.documentPixels.size.y.float32 / s, 0),
         scale vec3(1, -1, 1),
         translate (this.globalXy + ctx.offset).round.vec3(0),
       )

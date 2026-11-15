@@ -97,8 +97,10 @@ proc screenToWorld(window: Window): tuple[ok: bool, p: Point2] =
     return (false, point2(0, 0))
   # window pixel -> point on the component (its framebuffer), normalized to [0; 1]
   # (wb origin is the component's position inside the window)
-  let nx = (window.mouse.pos.x - wb.x) / wb.w
-  let ny = (window.mouse.pos.y - wb.y) / wb.h
+  # window.mouse.pos is in device pixels, wb is in logical pixels
+  let uiScale = window.uiScale
+  let nx = (window.mouse.pos.x / uiScale - wb.x) / wb.w
+  let ny = (window.mouse.pos.y / uiScale - wb.y) / wb.h
   # normalized framebuffer point -> GL clip space -> world
   let clip = vec4(nx * 2 - 1, 1 - ny * 2, 0, 1)
   let world = inverse(toGl) * clip

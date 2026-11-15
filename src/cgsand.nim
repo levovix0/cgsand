@@ -38,16 +38,18 @@ win.makeLayout:
   this.clearColor = "#00000000".color
 
   proc onWindowResize =
+    # siwin window title/border regions are in device pixels (see windowPartAt)
+    let uiScale = win.uiScale
     when defined(windows):
       let titleStartX = titleBar.titleRegionStartX[]
       let titleEndX = titleBar.w[] - titleBar.windowControlsWidth
       win.siwinWindow.setTitleRegion(
-        titleBar.globalXy + vec2(titleStartX, 0),
-        vec2(max(titleEndX - titleStartX, 0), titleBar.h[]),
+        (titleBar.globalXy + vec2(titleStartX, 0)) * uiScale,
+        vec2(max(titleEndX - titleStartX, 0), titleBar.h[]) * uiScale,
       )
     else:
-      win.siwinWindow.setTitleRegion(titleBar.globalXy, titleBar.wh)
-    win.siwinWindow.setBorderWidth(10, 0, 40)
+      win.siwinWindow.setTitleRegion(titleBar.globalXy * uiScale, titleBar.wh * uiScale)
+    win.siwinWindow.setBorderWidth(10 * uiScale, 0, 40 * uiScale)
 
   defer: onWindowResize()
   on this.w.changed:
@@ -58,6 +60,10 @@ win.makeLayout:
     onWindowResize()
     if not win.siwinWindow.minimized:
       config.window.h[] = this.h[].int
+  on ResizeEvent:
+    # also fired when only the UI scale changes (e.g. monitor change on Wayland),
+    # in which case w/h properties do not change
+    onWindowResize()
 
   proc normalizePortions =
     let scale = config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[]
