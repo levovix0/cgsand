@@ -7,14 +7,14 @@ import sigeo/sdf
 # a capsule slot and 4 mounting holes subtracted, then extruded thicker.
 
 
-# эскиз внешнего контура: замкнутая полилиния из 6 точек
+# outline sketch: a closed polyline consisting of 6 points
 let outerPts = [
   p2(-5, -2.4), p2(0, -3.4), p2(5, -2.4),
   p2(5, 2.4), p2(0, 3.4), p2(-5, 2.4),
 ]
 let outer = sdPolygon(outerPts).opRound(0.4)
 
-# внутренние контуры: паз-капсула и 4 крепёжных отверстия
+# internal contours: a capsule-shaped slot and 4 mounting holes
 let slot = sdCapsule(p2(-1.6, 0), p2(1.6, 0), 0.65)
 let mounting = sdCircle(p2(3.3, 1.4), 0.5).opSymX.opSymY
 

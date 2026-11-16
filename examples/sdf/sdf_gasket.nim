@@ -7,15 +7,15 @@ import sigeo/sdf
 # with the bore and 4 bolt holes subtracted, then extruded into a plate.
 
 
-# эскиз внешнего контура: замкнутая полилиния из 8 точек
+# outline sketch: a closed polyline consisting of 8 points
 var outerPts: seq[Point2] = @[]
 for i in 0..<8:
   let a = Pi/8 + i.Float * Pi/4
   outerPts.add (v2(a.cos, a.sin) * 5.0).toPoint
 let outer = sdPolygon(outerPts).opRound(0.35)
 
-# внутренние контуры: центральное отверстие и 4 болтовых отверстия
-# (одно отверстие + две симметрии дают 4 отверстия)
+# internal contours: central hole and 4 bolt holes
+# (one hole + two symmetries yield 4 holes)
 let bore = sdCircle(p2(0, 0), 1.6)
 let bolts = sdCircle(p2(3.2, 1.6), 0.45).opSymX.opSymY
 
