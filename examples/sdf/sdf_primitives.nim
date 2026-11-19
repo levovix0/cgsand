@@ -39,7 +39,7 @@ for i, (name, shape) in shapes:
     PositionAtCenter
     FontSize 0.45
 
-doc.add Text "SDF primitives - Inigo Quilez, \"Distance functions\"":
+doc.add Text "SDF primitives":
   Position2 point2(0, -1.6)
   PositionAtCenter
   FontSize 0.7

@@ -55,7 +55,7 @@ for i, (name, shape) in shapes:
     PositionAtCenter
     FontSize 0.38
 
-doc.add Text "2D SDF primitives - Inigo Quilez, \"2D distance functions\"":
+doc.add Text "2D SDF primitives":
   Position2 point2(0, -2.4)
   PositionAtCenter
   FontSize 0.7

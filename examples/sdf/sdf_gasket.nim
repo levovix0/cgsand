@@ -26,8 +26,3 @@ let gasket = outer
 
 doc.add polygonalSurface3(gasket.polygonize(step = 0.09)):
   Transform3 translate(v3(0, 0.6, 0))
-
-doc.add Text "gasket: polygon sketch - round - subtract bore and bolt holes - extrude":
-  Position2 point2(0, -4.6)
-  PositionAtCenter
-  FontSize 0.6

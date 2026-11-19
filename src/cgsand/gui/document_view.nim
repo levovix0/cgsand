@@ -130,7 +130,7 @@ proc worldCenter3D*(w: World): Vec3 =
 
 
 method drawInner*(this: DocumentView, ctx: DrawContext) =
-  let s = this.root.uiScale
+  let s = this.root.uiScale[]
   let ctx = ctx.RiceDrawContext.raw
   if this.script[].hasWorldToDraw:
     # the document is rasterized at device resolution for sharpness

@@ -25,8 +25,3 @@ let bracket = outer
 
 doc.add polygonalSurface3(bracket.polygonize(step = 0.1)):
   Transform3 translate(v3(0, 0.4, 0))
-
-doc.add Text "bracket: polygon sketch - subtract slot and mounting holes - extrude":
-  Position2 point2(0, -5.0)
-  PositionAtCenter
-  FontSize 0.6

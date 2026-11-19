@@ -61,7 +61,7 @@ place "twist", 2, 1:
   sdBox(p3(0, 1, 0), v3(0.85, 0.3, 0.3)).opTwist(2.2)
     .polygonize(bounds3(p3(-1.6, 0, -1.6), p3(1.6, 2, 1.6)), step = 0.025)
 
-doc.add Text "SDF operators - Inigo Quilez, \"Distance functions\"":
+doc.add Text "SDF operators":
   Position2 point2(0, -2.7)
   PositionAtCenter
   FontSize 0.7

@@ -39,7 +39,7 @@ win.makeLayout:
 
   proc onWindowResize =
     # siwin window title/border regions are in device pixels (see windowPartAt)
-    let uiScale = win.uiScale
+    let uiScale = win.uiScale[]
     when defined(windows):
       let titleStartX = titleBar.titleRegionStartX[]
       let titleEndX = titleBar.w[] - titleBar.windowControlsWidth

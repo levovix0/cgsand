@@ -25,7 +25,3 @@ doc.add polygonalSurface3(sdSphere(p3(4.6, 0.25, 2.4), 0.55)
   .polygonize(step = 0.04)):
   color(0.55, 0.55, 0.58)
 
-doc.add Text "SDF scene: smooth union, intersection, limited repetition":
-  Position2 point2(0, -1.4)
-  PositionAtCenter
-  FontSize 0.7
