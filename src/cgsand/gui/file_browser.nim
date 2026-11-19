@@ -1,6 +1,6 @@
 import std/[os, algorithm, strutils, enumerate]
 import pkg/sigui/[uibase, mouseArea, scrollArea, animations]
-import pkg/toscel/[fonts, icons, transitions]
+import pkg/toscel/[fonts, icons, transitions, colors]
 import ../logic/[file_openers, configuration]
 
 type
@@ -90,12 +90,17 @@ proc breadcrumbItems(rootPath, currentFile: string): seq[BrowserItem] =
   result.add BrowserItem(name: file.splitPath.tail, path: file, isDir: false)
 
 
-proc fileIconColor(path: string): Color =
+proc fileIconColor(path: string, accent: bool): Color =
   case path.splitFile.ext
-  of ".nim": "#e2b96c".color
+  of ".nim": (if accent: "#957347".color else: "#e2b96c".color)
   of ".md": "#6a9955".color
   of ".json", ".toml", ".cfg", ".yml": "#cbcb41".color
-  else: "#9da5b4".color
+  else: "#808080".color
+
+proc folderIconColor(path: string, accent: bool): Color =
+  case path.splitPath.tail
+  of "examples": "#57c76d".color
+  else: "#808080".color
 
 
 proc symbolColor(kind: SymbolKind): Color =
@@ -308,7 +313,7 @@ method init(this: FileBrowser) =
       this.fill(parent)
       color = colorTheme.bgTextArea
 
-    --- ClipRect.new:  # breadcrumbs row, recreated when the current file changes
+    --- ScrollArea.new:  # breadcrumbs row, recreated when the current file changes
       <--- {update}: root.rootPath[]; root.currentFile[]
 
       this.fill(parent)
@@ -325,10 +330,10 @@ method init(this: FileBrowser) =
             - UiText.new:
               x = sepX
               centerY = parent.center
-              text = "›"
+              text = "/"
               font = font
               color = "#6e6e6e".color
-            cursorX += font.layoutBounds("›").x + 8
+            cursorX += font.layoutBounds("/").x + 8
 
           let segX = cursorX
           let iconW = (if item.isDir: 0'f32 else: breadcrumbIconSize.float32 + 4)
@@ -356,7 +361,7 @@ method init(this: FileBrowser) =
                 w = breadcrumbIconSize
                 h = breadcrumbIconSize
                 image = "file".icon.svg
-                color = fileIconColor(item.path)
+                color = fileIconColor(item.path, false)
 
             - UiText.new:
               x = 4 + iconW
@@ -383,7 +388,7 @@ method init(this: FileBrowser) =
         - MouseArea.new:  # opens the list of symbols of the current file
           x = moreX
           this.fillVertical(parent)
-          w = 20
+          w = font.layoutBounds(tr"go to symbol...").x + 10
           cursor = pointingHand
 
           - UiRect.new:
@@ -397,11 +402,11 @@ method init(this: FileBrowser) =
           - UiText.new:
             centerX = parent.center
             centerY = parent.center
-            text = "..."
+            text = tr"go to symbol..."
             font = font
             color = binding:
               if parent.hovered[]: "#ffffff".color
-              else: "#b8b8b8".color
+              else: "#808080".color
             addTransition this.color
 
           on this.clicked:
@@ -449,16 +454,22 @@ method init(this: FileBrowser) =
             - MouseArea.new:
               x = 0
               y = rowY
-              w = parent.w[] - 5
+              w = parent.w[]
               h = rowH
               cursor = pointingHand
+              let accent = root.currentFile[].absolutePath.startsWith(it.path)
 
               - UiRect.new:
                 this.fill(parent)
                 color = binding:
-                  if it.path == root.currentFile[].absolutePath: "#37373d".color
-                  elif parent.hovered[]: "#303032".color
-                  else: "#00000000".color
+                  if accent:
+                    if parent.pressed[]: color_bg_accent_button_pressed
+                    elif parent.hovered[]: color_bg_accent_button_hovered
+                    else: color_bg_accent_button
+                  else:
+                    if parent.pressed[]: color_bg_button_pressed
+                    elif parent.hovered[]: color_bg_button_hovered
+                    else: color_bg_button
                 addTransition this.color
 
               - UiSvgImage.new:
@@ -467,7 +478,7 @@ method init(this: FileBrowser) =
                 w = iconW
                 h = iconW
                 image = (if it.isDir: "folder".icon.svg else: "file".icon.svg)
-                color = (if it.isDir: "#c5a059".color else: fileIconColor(it.path))
+                color = (if it.isDir: folderIconColor(it.path, accent) else: fileIconColor(it.path, accent))
 
               - UiText.new:
                 x = pad + iconW + 6
@@ -475,8 +486,9 @@ method init(this: FileBrowser) =
                 text = it.name
                 font = font
                 color = binding:
-                  if parent.hovered[] or it.path == root.currentFile[].absolutePath: "#ffffff".color
-                  else: "#c8c8c8".color
+                  if accent: color_fg_accent
+                  elif parent.pressed[] or parent.hovered[]: color_fg_active
+                  else: color_fg
                 addTransition this.color
 
               on this.clicked:
@@ -535,15 +547,16 @@ method init(this: FileBrowser) =
             - MouseArea.new:
               x = 0
               y = rowY
-              w = parent.w[] - 5
+              w = parent.w[]
               h = rowH
               cursor = pointingHand
 
               - UiRect.new:
                 this.fill(parent)
                 color = binding:
-                  if parent.hovered[]: "#303032".color
-                  else: "#00000000".color
+                  if parent.pressed[]: color_bg_button_pressed
+                  elif parent.hovered[]: color_bg_button_hovered
+                  else: color_bg_button
                 addTransition this.color
 
               - UiRect.new:
@@ -560,8 +573,8 @@ method init(this: FileBrowser) =
                 text = s.name
                 font = font
                 color = binding:
-                  if parent.hovered[]: "#ffffff".color
-                  else: "#c8c8c8".color
+                  if parent.pressed[] or parent.hovered[]: color_fg_active
+                  else: color_fg
                 addTransition this.color
 
               on this.clicked:

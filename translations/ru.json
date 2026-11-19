@@ -52,6 +52,11 @@
       "": "Сброс вида"
     }
   },
+  "src/cgsand/gui/file_browser.nim": {
+    "go to symbol...": {
+      "": "перейти к символу..."
+    }
+  },
   "src/cgsand/gui/title_bar.nim": {
     "Save as PDF": {
       "": "Сохранить как PDF"

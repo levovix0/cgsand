@@ -32,6 +32,7 @@ type
   TitleBar* = ref object of Uiobj
     codeEditor*: Uiobj
     terminal*: Uiobj
+    currentFile*: Property[string]
     doc*: Property[ptr World]
     fileOpener* {.unprintable.}: Property[seq[FileOpener]]
     titleRegionStartX*: Property[float32]
@@ -39,8 +40,6 @@ type
       ## the custom title region must start here so it does not steal clicks.
 
     saveFileDialogOpened: Property[bool]
-
-    fileBrowser: FileBrowser
 
 
 registerComponent TitleButton
@@ -200,10 +199,11 @@ method init*(this: TitleBar) =
         on this.activated:
           root.terminal.visibility[] = (if root.terminal.visibility[] == visible: collapsed else: visible)
 
-      - FileBrowser.new as root.fileBrowser:
-        w = 300
-        this.setCurrentPath("examples")
-        fileOpener = binding: root.fileOpener[]
+      when defined(showOldFileBrowser):
+        - FileBrowser.new:
+          w = 300
+          this.setCurrentPath("examples")
+          fileOpener = binding: root.fileOpener[]
 
       - Button.new:
         text = tr"Export PDF"
@@ -291,7 +291,7 @@ method init*(this: TitleBar) =
                 left = parent.left
                 centerY = file_type.bottom + 32
                 text = binding:
-                  root.fileBrowser.currentPath & "/" & filename.text[] & ".pdf"
+                  root.currentFile[].parentDir / (filename.text[] & ".pdf")
                 color = "#8c8c8c".color
                 fontSize = 14
               

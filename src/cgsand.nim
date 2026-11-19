@@ -168,6 +168,8 @@ win.makeLayout:
           documentView.script[].world
         else: nil
 
+      currentFile = binding: config.scriptFile[]
+
     on titleBar.titleRegionStartX.changed:
       onWindowResize()
     
