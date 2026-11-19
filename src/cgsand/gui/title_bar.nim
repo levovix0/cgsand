@@ -91,8 +91,8 @@ proc getDirItems*(dir: string): seq[BrowserItem] =
   result = @[]
   if parentDir(dir) != dir:
     result.add(BrowserItem(
-      name: "..", 
-      path: parentDir(dir.absolutePath).relativePath(getCurrentDir()), 
+      name: "..",
+      path: parentDir(dir.absolutePath).relativePath(getCurrentDir()),
       isDir: true
     ))
     
@@ -328,7 +328,7 @@ method init*(this: TitleBar) =
 
       pressedColor = "#ca3e3eff".color
       hoveredColor = "#ff5959ff".color
-      icon = closeIcon()
+      icon = binding: closeIcon(this.root.uiScale[])
 
       on this.activated:
         close this.parentWindow
@@ -340,7 +340,7 @@ method init*(this: TitleBar) =
 
       pressedColor = "#3a5270ff".color # Deep pastel blue
       hoveredColor = "#5c7ca6ff".color # Soft denim blue
-      icon = minimizeIcon()
+      icon = binding: minimizeIcon(this.root.uiScale[])
 
       on this.activated:
         this.parentWindow.minimized = true
@@ -352,7 +352,7 @@ method init*(this: TitleBar) =
 
       pressedColor = "#3b6146ff".color # Muted pine
       hoveredColor = "#609470ff".color # Soft sage
-      icon = maximizeIcon()
+      icon = binding: maximizeIcon(this.root.uiScale[])
 
       on this.activated:
         this.parentWindow.maximized = not this.parentWindow.maximized

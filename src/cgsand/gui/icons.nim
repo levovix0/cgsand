@@ -7,16 +7,16 @@ proc distanceToSegment(p, a, b: Vec2): float32 =
   let closestPoint = a + ab * t
   return dist(p, closestPoint)
 
-proc maximizeIcon*(): Image = 
-    let sz = 32
+proc maximizeIcon*(scale: float32): Image =
+    let sz = (32 * scale).round.int32
     let myImage = newImage(sz, sz)
     
-    let thickness = 1.5
-    let cornerRadius = 4.0
+    let thickness = 1.5 * scale
+    let cornerRadius = 4.0 * scale
 
     let center = vec2((sz.float - 1.0) / 2.0, (sz.float - 1.0) / 2.0)
     
-    let pad = 9.0
+    let pad = 9.0 * scale
     let halfWidth = (sz.float - 1.0) / 2.0 - pad
     let halfHeight = (sz.float - 1.0) / 2.0 - pad
     let boxHalfSizes = vec2(halfWidth, halfHeight)
@@ -46,12 +46,12 @@ proc maximizeIcon*(): Image =
             
     return myImage
 
-proc minimizeIcon*(): Image = 
-    let sz = 32
+proc minimizeIcon*(scale: float32): Image =
+    let sz = (32 * scale).round.int32
     let myImage = newImage(sz, sz)
     
-    let thickness: float = 1.5
-    let pad: float = 9.0
+    let thickness: float = 1.5 * scale
+    let pad: float = 9.0 * scale
     
     let centerY = (sz.float - 1.0) / 2.0
     let pointA = vec2(pad, centerY + sz / 6)
@@ -74,12 +74,12 @@ proc minimizeIcon*(): Image =
             
     return myImage
 
-proc closeIcon*(): Image = 
-    let sz = 32
+proc closeIcon*(scale: float32): Image =
+    let sz = (32 * scale).round.int32
     let myImage = newImage(sz, sz)
     
-    let thickness = 1.5
-    let pad = 9.0
+    let thickness = 1.5 * scale
+    let pad = 9.0 * scale
     let maxPos = sz.float - 1.0 - pad
 
     let a1 = vec2(pad, pad)

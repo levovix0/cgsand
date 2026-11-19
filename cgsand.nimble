@@ -21,7 +21,7 @@ requires "jsony"
 
 # --- unstable dependencies ---
 
-requires "sigui == 0.3.1"
+requires "https://github.com/levovix0/sigui#head"
   ## for GUI
 
 requires "https://github.com/levovix0/sigeo#head"
@@ -31,5 +31,8 @@ requires "https://github.com/levovix0/ecs#head"
   ## for communicating with scripts
 
 requires "https://github.com/levovix0/toscel#head"
+  ## for basic GUI widgets
+
+requires "https://github.com/levovix0/shady#head"
   ## for basic GUI widgets
 

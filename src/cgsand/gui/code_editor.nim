@@ -138,6 +138,8 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   let textOffsetX = this.textOffsetX
   let lineNumberBarOffsetX_r = this.lineNumberBarOffsetX + this.lineNumberBarWidth[]
   let arrowBarCenterX = this.arrowBarOffsetX + this.arrowBarWidth[] / 2
+  var scaledFont = copy this.font[]
+  scaledFont.size = scaledFont.size * this.root.uiScale[]
 
   var matchingSelections: seq[CursorPos]
   if this.arrangement.cursors.len > 0:
@@ -157,9 +159,9 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
     if this.globalY[] + line.rect.y > winRect.y + winRect.h: continue
 
     # line number
-    ctx.drawRasterText(
+    ctx.drawRasterText_physicalScale(
       this.globalXy + vec2(lineNumberBarOffsetX_r, line.rect.y),
-      typeset(this.font[], $(i + 1)),
+      typeset(scaledFont, $(i + 1)),
       colorTheme.sLineNumber,
       origin=vec2(1, 0),
     )
@@ -168,9 +170,9 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       let arrowChar = if i in this.arrangement.foldedLines: "▶" else: "▼"
       if i in this.arrangement.foldedLines or this.nonFoldedArrowsVisible[]:
         # fold arrow
-        ctx.drawRasterText(
+        ctx.drawRasterText_physicalScale(
           this.globalXy + vec2(arrowBarCenterX, line.rect.y),
-          typeset(this.font[], arrowChar),
+          typeset(scaledFont, arrowChar),
           colorTheme.sLineNumber,
           origin=vec2(0.5, 0),
         )
