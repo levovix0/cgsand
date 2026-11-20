@@ -2,7 +2,7 @@ import std/[sets, os, times]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
-import ../logic/[configuration, code_editor, asyncio, file_openers]
+import ../logic/[configuration, code_editor, asyncio, editor_state, file_openers]
 import ./[highlighted_text]
 
 
@@ -34,6 +34,16 @@ type
     nonFoldedArrowsVisible: Property[bool]
 
     arrangement*: CodeArrangement
+
+    # automatic reload of the file when it changes on disk
+    lastReloadCheck: float      ## epochTime of the last disk change check
+    lastKnownMtime: Time        ## last modification time seen on disk
+    lastKnownSize: BiggestInt   ## last file size seen on disk
+
+    # per-file cursor state recording
+    recordedPath: string
+    recordedState: FileEditorState
+
     dragingCursorI: int
     dragSelectMode: DragSelectMode
     wordDragLine: int
@@ -51,7 +61,7 @@ type
 
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
-    scrollArea: ScrollArea
+    scrollArea*: ScrollArea
 
   CodeEditorFileOpener* = ref object of FileOpener
     editor*: CodeEditor
@@ -61,6 +71,7 @@ const ScrollBarWidth = 5'f32
 const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
 const CursorWordHighlightDelay = 0.5'f32
+const FileReloadCheckInterval = 0.5'f32
 const MaxUndoHistory = 15
 const ContextMenuItemH = 24'f32
 const ContextMenuWidth = 130'f32
@@ -267,6 +278,139 @@ proc saveFile(this: CodeEditorContent) =
   if this.path[].len == 0: return
   if this.arrangement == nil: return
   scheduleFileSave(this.path[], this.arrangement.fileContent())
+
+
+proc setArrangement(this: CodeEditorContent, text: string)
+
+
+proc parentCodeEditor(this: CodeEditorContent): CodeEditor =
+  var obj: Uiobj = this
+  while obj != nil:
+    if obj of CodeEditor: return CodeEditor(obj)
+    obj = obj.parent
+
+
+proc maxScrollY(this: CodeEditorContent): float32 =
+  ## largest vertical scroll offset the ScrollArea allows for the current text
+  ## (scrollH = contentH + verticalScrollOverFit, so the max scroll is
+  ##  contentH + (editorH - 2*fontSize) - editorH)
+  max(this.arrangement.visibleHeight() - this.font[].size * 2, 0'f32)
+
+
+proc markOnDiskState(this: CodeEditorContent, path: string) =
+  ## remember the current on-disk state of `path`, so later polling of external
+  ## changes is relative to it
+  this.lastReloadCheck = epochTime()
+  this.lastKnownMtime = default(Time)
+  this.lastKnownSize = 0
+  try:
+    let info = getFileInfo(path)
+    this.lastKnownMtime = info.lastWriteTime
+    this.lastKnownSize = info.size
+  except CatchableError:
+    discard
+
+
+proc restoreViewState(
+  this: CodeEditorContent,
+  oldCursors: seq[CursorPos],
+  oldFoldedLines: HashSet[int],
+  prevScrollY: float32,
+) =
+  ## after the arrangement was replaced (reload or width change), put cursors,
+  ## selections, folds and scroll position back, clamped into the new text
+  var cursors = oldCursors
+  for c in cursors.mitems:
+    c.line = c.line.clamp(0, this.arrangement.lines.high)
+    c.anchorLine = c.anchorLine.clamp(0, this.arrangement.lines.high)
+    c.col = c.col.clamp(0, this.arrangement.lines[c.line].runes.len)
+    c.anchorCol = c.anchorCol.clamp(0, this.arrangement.lines[c.line].runes.len)
+    c.snapCol = c.col
+    c.hasSelection = c.hasSelection and (c.line != c.anchorLine or c.col != c.anchorCol)
+  this.arrangement.cursors = cursors
+  this.arrangement.collapseDuplicatedCursors()
+
+  this.arrangement.foldedLines = initHashSet[int]()
+  for lineI in oldFoldedLines:
+    if lineI >= 0 and lineI < this.arrangement.lines.len:
+      this.arrangement.foldedLines.incl lineI
+  this.arrangement.updateRects()
+
+  let editor = this.parentCodeEditor()
+  if editor != nil:
+    editor.scrollArea.targetY[] = prevScrollY.clamp(0, this.maxScrollY())
+
+
+proc reloadFromDisk(this: CodeEditorContent, text: string) =
+  ## replace the edited text with the version now on disk, keeping the cursor,
+  ## selections, folds and scroll position as close as the new text allows
+  let cursors = this.arrangement.cursors
+  let foldedLines = this.arrangement.foldedLines
+  let editor = this.parentCodeEditor()
+  let scrollY = if editor != nil: editor.scrollArea.targetY[] else: 0'f32
+
+  this.setArrangement(text)
+  # undoing across an externally rewritten text would silently revert the
+  # external change, so the old undo history is dropped
+  this.undoHistory.setLen(0)
+  this.restoreViewState(cursors, foldedLines, scrollY)
+
+
+proc checkExternalChanges(this: CodeEditorContent) =
+  ## reload the file if it was changed on disk by another program
+  var mtime: Time
+  var size: BiggestInt
+  try:
+    let info = getFileInfo(this.path[])
+    mtime = info.lastWriteTime
+    size = info.size
+  except CatchableError:
+    return  # file deleted or temporarily unavailable — keep the current text
+
+  if mtime == this.lastKnownMtime and size == this.lastKnownSize: return
+
+  var text: string
+  try: text = readFile(this.path[])
+  except CatchableError: return
+
+  # a write scheduled by this editor may be in flight right now (even racing
+  # with the read above); don't mistake its content for an external change —
+  # the next check will see it once the write is finished
+  if fileSavesPending(): return
+  this.lastKnownMtime = mtime
+  this.lastKnownSize = size
+
+  if text == this.arrangement.fileContent():
+    return  # this is our own write that just reached the disk
+  this.reloadFromDisk(text)
+
+
+proc recordCursorState(this: CodeEditorContent) =
+  ## remember the cursor position, so reopening this file restores it
+  let path = this.path[]
+  if path.len == 0 or this.arrangement == nil or this.arrangement.cursors.len == 0: return
+  let editor = this.parentCodeEditor()
+  let state = FileEditorState(
+    line: this.arrangement.cursors[0].line,
+    col: this.arrangement.cursors[0].col,
+    scrollY: if editor != nil: editor.scrollArea.targetY[] else: 0'f32,
+  )
+  if path == this.recordedPath and state == this.recordedState: return
+  this.recordedPath = path
+  this.recordedState = state
+  setEditorState(path, state)
+
+
+proc restoreSavedState(this: CodeEditorContent, state: FileEditorState) =
+  ## jump to a remembered cursor position and scroll offset
+  if this.arrangement == nil or this.arrangement.lines.len == 0: return
+  let line = state.line.clamp(0, this.arrangement.lines.high)
+  let col = state.col.clamp(0, this.arrangement.lines[line].runes.len)
+  this.arrangement.setCursorPos(line, col)
+  let editor = this.parentCodeEditor()
+  if editor != nil:
+    editor.scrollArea.targetY[] = state.scrollY.clamp(0, this.maxScrollY())
+  redraw(this)
 
 
 proc undo(this: CodeEditorContent): bool =
@@ -639,8 +783,14 @@ proc setArrangement(this: CodeEditorContent, text: string) =
 
 
 proc rearrange(this: CodeEditorContent) =
-  ## todo
+  ## re-typeset the text for a new width, keeping the cursor, folds and scroll
+  if this.arrangement == nil: return
+  let cursors = this.arrangement.cursors
+  let foldedLines = this.arrangement.foldedLines
+  let editor = this.parentCodeEditor()
+  let scrollY = if editor != nil: editor.scrollArea.targetY[] else: 0'f32
   this.setArrangement(this.arrangement.fileContent())
+  this.restoreViewState(cursors, foldedLines, scrollY)
 
 
 method init*(this: CodeEditorContent) =
@@ -657,6 +807,15 @@ method init*(this: CodeEditorContent) =
         epochTime() - this.cursorActivityAt >= CursorWordHighlightDelay:
       this.cursorWordHighlightsVisible = true
       redraw(this)
+
+    # automatic reload of the file when it is changed on disk by another program
+    if this.path[].len > 0 and this.arrangement != nil and
+        epochTime() - this.lastReloadCheck >= FileReloadCheckInterval:
+      this.lastReloadCheck = epochTime()
+      this.checkExternalChanges()
+
+    # remember the cursor position for each opened file
+    this.recordCursorState()
 
   this.makeLayout:
     - MouseArea.new:
@@ -784,17 +943,26 @@ proc open*(this: CodeEditor, target: Location) =
   if this.content.arrangement != nil and
       this.content.path[].absolutePath == target.path.absolutePath:
     # already open — jump to the location without discarding the undo history
-    this.content.arrangement.setCursorPos(line, col)
-    this.scrollToLine(line)
-    redraw(this.content)
+    if target.line > 0:
+      # an explicit location is given (e.g. an error link in the terminal)
+      this.content.arrangement.setCursorPos(line, col)
+      this.scrollToLine(line)
+      redraw(this.content)
+    # otherwise the cursor stays where the user left it
     return
 
   this.content.undoHistory.setLen(0)
   try:
     this.content.path[] = target.path
     this.content.setArrangement(readFile(target.path))
-    this.content.arrangement.setCursorPos(line, col)
-    this.scrollToLine(line)
+    this.content.markOnDiskState(target.path)
+    if target.line > 0:
+      # an explicit location is given (e.g. an error link in the terminal)
+      this.content.arrangement.setCursorPos(line, col)
+      this.scrollToLine(line)
+    else:
+      # restore where the user left off in this file last time
+      this.content.restoreSavedState(editorState(target.path))
   except CatchableError as exc:
     this.content.path[] = ""
     this.content.setArrangement("Unable to read file: " & target.path & "\n" & exc.msg)
