@@ -55,8 +55,7 @@ type
     mouseDownCount: int
     lastMouseDown: float
     lastMouseDownPos: Vec2
-    cursorActivityAt: float
-    cursorWordHighlightsVisible: bool
+    wordHighlightSuppressed: bool  ## true right after a text edit, until the cursor is moved freely
     undoHistory: seq[CodeArrangementSnapshot]
 
   CodeEditor* = ref object of Uiobj
@@ -70,7 +69,6 @@ const MinSelectionWidth = 6'f32
 const ScrollBarWidth = 5'f32
 const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
-const CursorWordHighlightDelay = 0.5'f32
 const FileReloadCheckInterval = 0.5'f32
 const MaxUndoHistory = 15
 const ContextMenuItemH = 24'f32
@@ -101,11 +99,6 @@ proc updateHeight(this: CodeEditorContent) =
     this.h[] = 0
     return
   this.h[] = this.arrangement.visibleHeight()
-
-
-proc markCursorActivity(this: CodeEditorContent) =
-  this.cursorActivityAt = epochTime()
-  this.cursorWordHighlightsVisible = false
 
 
 proc pushUndoSnapshot(this: CodeEditorContent) =
@@ -182,10 +175,12 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
     let selected = this.arrangement.selectedText(0)
     if selected.len > 0:
       matchingSelections = this.arrangement.matchingSelections(selected)
-    elif this.cursorWordHighlightsVisible and this.arrangement.cursors.len == 1:
+    elif this.arrangement.cursors.len == 1 and not this.wordHighlightSuppressed:
       let word = this.arrangement.wordAtCursor(0)
       if word.len > 0:
-        matchingSelections = this.arrangement.matchingSelections(word, wholeWord = true)
+        let matches = this.arrangement.matchingSelections(word, wholeWord = true)
+        if matches.len > 1:  # counting the word under the cursor itself
+          matchingSelections = matches
 
   let spaceW = typeset(this.font[], " ").layoutBounds.x
   for i, line in this.arrangement.lines:
@@ -416,8 +411,8 @@ proc restoreSavedState(this: CodeEditorContent, state: FileEditorState) =
 proc undo(this: CodeEditorContent): bool =
   if this.undoHistory.len == 0: return
   let previous = this.undoHistory.pop()
+  this.wordHighlightSuppressed = true
   this.arrangement = previous.toArrangement(this.font[], this.w[] - this.textOffsetX)
-  this.markCursorActivity()
   this.updateHeight()
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
   this.lineNumberBarWidth[] = lineNumberMaxWidth
@@ -462,6 +457,7 @@ proc cutSelection(this: CodeEditorContent) =
   if text.len > 0:
     this.setClipboardText(text)
     this.pushUndoSnapshot()
+    this.wordHighlightSuppressed = true
     deleteForward(this.arrangement)
     this.discardUnchangedUndoSnapshot()
     this.updateHeight()
@@ -473,6 +469,7 @@ proc pasteClipboard(this: CodeEditorContent) =
   let text = this.getClipboardText()
   if text.len > 0:
     this.pushUndoSnapshot()
+    this.wordHighlightSuppressed = true
     this.arrangement.insert(text)
     this.discardUnchangedUndoSnapshot()
     this.updateHeight()
@@ -642,7 +639,6 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       # Modifier key-up events can be swallowed by Alt+Tab on Windows.
       # Start with a clean state whenever the window focus changes.
       this.modifierKeysDown = {}
-      this.markCursorActivity()
 
   signal.match KeyEvent:
     if e.key in {Key.lshift, Key.rshift, Key.lcontrol, Key.rcontrol, Key.lalt, Key.ralt}:
@@ -659,8 +655,8 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
   signal.match TextInputEvent:
     if currentFocus[] == this and this.arrangement != nil and not e.repeated:
-      this.markCursorActivity()
       this.pushUndoSnapshot()
+      this.wordHighlightSuppressed = true
       this.arrangement.insert(e.text)
       this.discardUnchangedUndoSnapshot()
       this.updateHeight()
@@ -670,7 +666,6 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
   signal.match KeyEvent:
     if e.pressed and currentFocus[] == this and this.arrangement != nil:
-      this.markCursorActivity()
       let shift = (this.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
       let ctrl = (this.modifierKeysDown * {Key.lcontrol, Key.rcontrol}).len > 0
       let alt = (this.modifierKeysDown * {Key.lalt, Key.ralt}).len > 0
@@ -678,30 +673,37 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       case e.key
       of Key.left:
         this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
+        this.wordHighlightSuppressed = false
         redraw(this)
 
       of Key.right:
         this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
+        this.wordHighlightSuppressed = false
         redraw(this)
 
       of Key.up:
         this.arrangement.moveCursorUp(extend = shift)
+        this.wordHighlightSuppressed = false
         redraw(this)
 
       of Key.down:
         this.arrangement.moveCursorDown(extend = shift)
+        this.wordHighlightSuppressed = false
         redraw(this)
 
       of Key.home:
         this.arrangement.moveCursorHome(extend = shift)
+        this.wordHighlightSuppressed = false
         redraw(this)
 
       of Key.End:
         this.arrangement.moveCursorEnd(extend = shift)
+        this.wordHighlightSuppressed = false
         redraw(this)
 
       of Key.backspace:
         this.pushUndoSnapshot()
+        this.wordHighlightSuppressed = true
         deleteBack(this.arrangement)
         this.discardUnchangedUndoSnapshot()
         this.updateHeight()
@@ -710,6 +712,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
       of Key.del:
         this.pushUndoSnapshot()
+        this.wordHighlightSuppressed = true
         deleteForward(this.arrangement)
         this.discardUnchangedUndoSnapshot()
         this.updateHeight()
@@ -718,6 +721,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
       of Key.enter:
         this.pushUndoSnapshot()
+        this.wordHighlightSuppressed = true
         insertNewline(this.arrangement)
         this.discardUnchangedUndoSnapshot()
         this.updateHeight()
@@ -729,6 +733,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           this.closeContextMenu()
         elif this.arrangement.cursors.len > 1:
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
+          this.wordHighlightSuppressed = false
           redraw(this)
 
       of Key.b:
@@ -750,6 +755,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           let text = this.arrangement.selectedText()
           if text.len > 0:
             this.pushUndoSnapshot()
+            this.wordHighlightSuppressed = true
             this.root.clipboardText = text
             this.arrangement.deleteBack()
             this.updateHeight()
@@ -762,6 +768,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           let text = this.root.clipboardText
           if text.len > 0:
             this.pushUndoSnapshot()
+            this.wordHighlightSuppressed = true
             this.arrangement.insert(text)
             this.discardUnchangedUndoSnapshot()
             this.updateHeight()
@@ -776,6 +783,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           signal.handled = true
         elif ctrl:
           this.pushUndoSnapshot()
+          this.wordHighlightSuppressed = true
           this.arrangement.duplicateSelectionsOrLines()
           this.discardUnchangedUndoSnapshot()
           this.updateHeight()
@@ -794,7 +802,7 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 proc setArrangement(this: CodeEditorContent, text: string) =
   # todo: if only the width changed, update arrangement instead of regenerating it
   this.arrangement = text.toArrangement(this.font[], this.w[] - this.textOffsetX)
-  this.markCursorActivity()
+  this.wordHighlightSuppressed = false
   this.updateHeight()
 
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -817,17 +825,8 @@ method init*(this: CodeEditorContent) =
   procCall this.super.init()
 
   this.font{} = font_monospace.withSize(12)
-  this.markCursorActivity()
 
   this.root.onTick.connectTo this:
-    if currentFocus[] == this and this.arrangement != nil and
-        this.arrangement.cursors.len == 1 and
-        not this.arrangement.cursors[0].hasSelection and
-        not this.cursorWordHighlightsVisible and
-        epochTime() - this.cursorActivityAt >= CursorWordHighlightDelay:
-      this.cursorWordHighlightsVisible = true
-      redraw(this)
-
     # automatic reload of the file when it is changed on disk by another program
     if this.path[].len > 0 and this.arrangement != nil and
         epochTime() - this.lastReloadCheck >= FileReloadCheckInterval:
@@ -847,7 +846,6 @@ method init*(this: CodeEditorContent) =
 
       on this.pressed[] == true:
         setFocus root
-        root.markCursorActivity()
 
       on this.clicked:
         let clickY = this.mouseY[]
@@ -869,7 +867,7 @@ method init*(this: CodeEditorContent) =
 
       on this.pressed[] == true:
         setFocus root
-        root.markCursorActivity()
+        root.wordHighlightSuppressed = false
         for i, line in root.arrangement.lines:
           if line.isHidden: continue
           if this.mouseY[] >= line.rect.y and this.mouseY[] < line.rect.y + line.rect.h:
@@ -922,7 +920,7 @@ method init*(this: CodeEditorContent) =
 
       on this.moved:
         if this.pressed[] and root.dragingCursorI >= 0:
-          root.markCursorActivity()
+          root.wordHighlightSuppressed = false
           case root.dragSelectMode
           of charDrag:
             root.arrangement.selectToPos(root.dragingCursorI, this.mouseXy[])
@@ -938,7 +936,6 @@ method init*(this: CodeEditorContent) =
       this.mouseButton.connectTo root, e:
         if e.button == MouseButton.right and e.pressed:
           setFocus root
-          root.markCursorActivity()
           if root.arrangement != nil:
             block foundLine:
               for i, line in root.arrangement.lines:
