@@ -692,6 +692,14 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         this.arrangement.moveCursorDown(extend = shift)
         redraw(this)
 
+      of Key.home:
+        this.arrangement.moveCursorHome(extend = shift)
+        redraw(this)
+
+      of Key.End:
+        this.arrangement.moveCursorEnd(extend = shift)
+        redraw(this)
+
       of Key.backspace:
         this.pushUndoSnapshot()
         deleteBack(this.arrangement)
@@ -735,6 +743,18 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           let text = this.arrangement.selectedText()
           if text.len > 0:
             this.root.clipboardText = text
+          signal.handled = true
+
+      of Key.x:
+        if ctrl:
+          let text = this.arrangement.selectedText()
+          if text.len > 0:
+            this.pushUndoSnapshot()
+            this.root.clipboardText = text
+            this.arrangement.deleteBack()
+            this.updateHeight()
+            redraw(this)
+            this.saveFile()
           signal.handled = true
 
       of Key.v:

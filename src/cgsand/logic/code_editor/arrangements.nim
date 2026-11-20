@@ -387,8 +387,7 @@ proc selectLinesToPos*(arrangement: CodeArrangement, cursorI: int, mouseXy: Vec2
       arrangement.setSelection(cursorI, lineI, 0, line, arrangement.lines[line].runes.len)
 
 
-proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false, prevWord: bool = false) =
-  var c = arrangement.cursors[cursorIdx]
+proc prepareExtend(arrangement: CodeArrangement, c: var CursorPos, extend: bool) =
   if extend:
     if not c.hasSelection:
       c.anchorLine = c.line
@@ -396,6 +395,11 @@ proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool 
       c.hasSelection = true
   else:
     c.hasSelection = false
+
+proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false, prevWord: bool = false) =
+  var c = arrangement.cursors[cursorIdx]
+  prepareExtend(arrangement, c, extend)
+  
   if c.col > 0:
     dec c.col
     if prevWord:
@@ -411,13 +415,7 @@ proc moveCursorLeft*(arrangement: CodeArrangement, cursorIdx: int, extend: bool 
 
 proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false, nextWord: bool = false) =
   var c = arrangement.cursors[cursorIdx]
-  if extend:
-    if not c.hasSelection:
-      c.anchorLine = c.line
-      c.anchorCol = c.col
-      c.hasSelection = true
-  else:
-    c.hasSelection = false
+  prepareExtend(arrangement, c, extend)
 
   let lineLen = arrangement.lines[c.line].arrangement.runes.len
   if c.col < lineLen:
@@ -435,13 +433,7 @@ proc moveCursorRight*(arrangement: CodeArrangement, cursorIdx: int, extend: bool
 
 proc moveCursorUp*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false) =
   var c = arrangement.cursors[cursorIdx]
-  if extend:
-    if not c.hasSelection:
-      c.anchorLine = c.line
-      c.anchorCol = c.col
-      c.hasSelection = true
-  else:
-    c.hasSelection = false
+  prepareExtend(arrangement, c, extend)
 
   let prev = arrangement.prevVisibleLine(c.line)
   if prev != c.line:
@@ -452,19 +444,37 @@ proc moveCursorUp*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = 
 
 proc moveCursorDown*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false) =
   var c = arrangement.cursors[cursorIdx]
-  if extend:
-    if not c.hasSelection:
-      c.anchorLine = c.line
-      c.anchorCol = c.col
-      c.hasSelection = true
-  else:
-    c.hasSelection = false
+  prepareExtend(arrangement, c, extend)
 
   let next = arrangement.nextVisibleLine(c.line)
   if next != c.line:
     let nextLineLen = arrangement.lines[next].arrangement.runes.len
     c.line = next
     c.col = min(c.snapCol, nextLineLen)
+  arrangement.cursors[cursorIdx] = c
+
+proc moveCursorHome*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false) =
+  var c = arrangement.cursors[cursorIdx]
+  prepareExtend(arrangement, c, extend)
+
+  var indentEnd = 0
+  for c in arrangement.lines[c.line].runes:
+    if c.isWhiteSpace():
+      inc indentEnd
+    else: break
+  
+  if c.col > indentEnd:
+    c.col = indentEnd
+  else:
+    c.col = 0
+  
+  arrangement.cursors[cursorIdx] = c
+
+proc moveCursorEnd*(arrangement: CodeArrangement, cursorIdx: int, extend: bool = false) =
+  var c = arrangement.cursors[cursorIdx]
+  prepareExtend(arrangement, c, extend)
+
+  c.col = arrangement.lines[c.line].arrangement.runes.len
   arrangement.cursors[cursorIdx] = c
 
 
@@ -486,6 +496,16 @@ proc moveCursorUp*(arrangement: CodeArrangement, extend: bool = false) =
 proc moveCursorDown*(arrangement: CodeArrangement, extend: bool = false) =
   for i in 0..<arrangement.cursors.len:
     moveCursorDown(arrangement, i, extend)
+  arrangement.collapseDuplicatedCursors()
+
+proc moveCursorHome*(arrangement: CodeArrangement, extend: bool = false) =
+  for i in 0..<arrangement.cursors.len:
+    moveCursorHome(arrangement, i, extend)
+  arrangement.collapseDuplicatedCursors()
+
+proc moveCursorEnd*(arrangement: CodeArrangement, extend: bool = false) =
+  for i in 0..<arrangement.cursors.len:
+    moveCursorEnd(arrangement, i, extend)
   arrangement.collapseDuplicatedCursors()
 
 
