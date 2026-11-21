@@ -70,8 +70,8 @@
     }
   },
   "src/cgsand/gui/title_bar.nim": {
-    "About": {
-      "": "About"
+    "File": {
+      "": "File"
     },
     "Open": {
       "": "Open"
@@ -139,8 +139,8 @@
     "Cancel": {
       "": "Отмена"
     },
-    "File": {
-      "": "File"
+    "About": {
+      "": "About"
     }
   },
   "src/cgsand/gui/breadcrumbs.nim": {
@@ -176,6 +176,26 @@
     },
     "Text": {
       "": "Текст"
+    }
+  },
+  "src/cgsand/gui/settings.nim": {
+    "General": {
+      "": "General"
+    },
+    "System": {
+      "": "System"
+    },
+    "Language": {
+      "": "Language"
+    },
+    "Theme": {
+      "": "Theme"
+    },
+    "Dark": {
+      "": "Dark"
+    },
+    "Light": {
+      "": "Light"
     }
   },
   "src/cgsand/gui/file_tree.nim": {

@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import pkg/toscel/dialogs
-import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree]
+import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, settings]
 import ./cgsand/logic/[configuration, scripts, file_openers, shortcuts]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -163,6 +163,7 @@ win.makeLayout:
       rootPath = getCurrentDir()
       currentFile = binding: config.scriptFile[]
 
+
     - Terminal.new as terminal:
       w = binding: round(
         parent.w[] * config.terminalPortion[] /
@@ -210,7 +211,7 @@ win.makeLayout:
     - (shortcut(["F5"], "app.recompile", "Recompile")):
       on this.activated:
         documentView.recompileScript()
-    
+
 
     - Splitter.new:  # (codeEditor / document view)
       this.achor = codeEditor.right
@@ -219,7 +220,7 @@ win.makeLayout:
       on this.resized:
         config.codeEditorPortion[] = max(e, 0) / contentArea.w[]
         normalizePortions()
-    
+
 
     - Splitter.new:  # (document view / terminal)
       this.achor = terminal.left
@@ -230,11 +231,20 @@ win.makeLayout:
         normalizePortions()
 
 
+    # --- settings window, created last so that it is above everything ---
+
+    - SettingsWindow.new as settingsWindow:
+      visibility = binding:
+        if settingsWindow.opened[]: Visibility.visible else: Visibility.collapsed
+
+    titleBar.settingsOverlay = settingsWindow
+
+
   documentView.outputChannel[] = terminal.outputChannel
 
 
   let fileOpener = @[FileOpener CodeEditorFileOpener(editor: codeEditor)]
-    
+
   titleBar.fileOpener[] = fileOpener
   terminal.fileOpener = fileOpener
   breadcrumbs.fileOpener[] = fileOpener
