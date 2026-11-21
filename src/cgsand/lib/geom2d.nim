@@ -32,3 +32,19 @@ proc arc*(
     endAngle: angle.b,
     direction: direction,
   )
+
+
+# todo: move to sigeo
+
+proc polyline*(points: varargs[Point2]): Path2 =
+  for p in points: result.add p
+
+proc polygon*(points: varargs[Point2]): Path2 =
+  for p in points: result.add p
+  close result
+
+proc rectPath*(pos: Point2, size: V2): Path2 =
+  polygon(pos, pos + v2(size.x, 0), pos + v2(size.x, size.y), pos + v2(0, size.y))
+
+proc rectPath*(x, y: Float, w, h: Float): Path2 =
+  polygon(p2(x, y), p2(x + w, y), p2(x + w, y + h), p2(x, y + h))
