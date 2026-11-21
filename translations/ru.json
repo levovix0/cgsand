@@ -26,19 +26,19 @@
       "": "Копировать"
     },
     "Add cursor to next occurrence": {
-      "": "Add cursor to next occurrence"
+      "": "Добавить курсор к следующему совпадению"
     },
     "Cut": {
       "": "Вырезать"
     },
     "Toggle block selection": {
-      "": "Toggle block selection"
+      "": "Переключить блочное выделение"
     },
     "Undo": {
-      "": "Undo"
+      "": "Отменить"
     },
     "Duplicate line or selection": {
-      "": "Duplicate line or selection"
+      "": "Дублировать строку или выделение"
     },
     "Paste": {
       "": "Вставить"
@@ -70,11 +70,11 @@
     }
   },
   "src/cgsand/gui/title_bar.nim": {
-    "File": {
-      "": "File"
+    "About": {
+      "": "О программе"
     },
     "Open": {
-      "": "Open"
+      "": "Открыть"
     },
     "Save as PDF": {
       "": "Сохранить как PDF"
@@ -83,19 +83,19 @@
       "": "Название:"
     },
     "View": {
-      "": "View"
+      "": "Вид"
     },
     "Libraries:": {
-      "": "Libraries:"
+      "": "Библиотеки:"
     },
     "Open file": {
-      "": "Open file"
+      "": "Открыть файл"
     },
     "Application": {
-      "": "Application"
+      "": "Приложение"
     },
     "Save as": {
-      "": "Save as"
+      "": "Сохранить как"
     },
     "Code": {
       "": "Код"
@@ -107,64 +107,70 @@
       "": "Экспорт PDF"
     },
     "Edit": {
-      "": "Edit"
+      "": "Правка"
     },
     "Terminal": {
       "": "Терминал"
     },
     "Help": {
-      "": "Help"
+      "": "Справка"
     },
     "Save file as": {
-      "": "Save file as"
+      "": "Сохранить файл как"
     },
     "Maintainers:": {
-      "": "Maintainers:"
+      "": "Мейнтейнеры:"
     },
     "File tree": {
-      "": "File tree"
+      "": "Дерево файлов"
     },
     "Key combinations": {
-      "": "Key combinations"
+      "": "Комбинации клавиш"
     },
     "Save": {
       "": "Сохранить"
     },
     "Exit": {
-      "": "Exit"
+      "": "Выход"
     },
     "Options": {
-      "": "Options"
+      "": "Параметры"
     },
     "Cancel": {
       "": "Отмена"
     },
-    "About": {
-      "": "About"
+    "File": {
+      "": "Файл"
     }
   },
   "src/cgsand/gui/breadcrumbs.nim": {
     "go to symbol...": {
-      "": "go to symbol..."
+      "": "перейти к символу..."
     }
   },
   "src/cgsand/gui/terminal.nim": {
+    "Copy": {
+      "": "Копировать"
+    },
     "[process exited]": {
       "": "[процесс завершён]"
+    },
+    "Paste": {
+      "": "Вставить"
     }
   },
   "src/cgsand.nim": {
     "Open": {
-      "": "Open"
+      "": "Открыть"
     },
     "Recompile": {
-      "": "Recompile"
+      "": "Пересобрать"
     },
     "Save as": {
-      "": "Save as"
+      "": "Сохранить как"
     },
     "Save": {
-      "": "Save"
+      "": "Сохранить"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {
@@ -180,27 +186,27 @@
   },
   "src/cgsand/gui/settings.nim": {
     "General": {
-      "": "General"
+      "": "Общие"
     },
     "System": {
-      "": "System"
+      "": "Системный"
     },
     "Language": {
-      "": "Language"
+      "": "Язык"
     },
     "Theme": {
-      "": "Theme"
+      "": "Тема"
     },
     "Dark": {
-      "": "Dark"
+      "": "Тёмная"
     },
     "Light": {
-      "": "Light"
+      "": "Светлая"
     }
   },
   "src/cgsand/gui/file_tree.nim": {
     "Files": {
-      "": "Files"
+      "": "Файлы"
     }
   }
 }
