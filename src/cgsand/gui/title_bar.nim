@@ -140,7 +140,7 @@ method init(this: FileBrowser) =
         this.selectedOption[] = -1
         this.dropdownOpened[] = true
 
-        this.lineEdit.border.color[] = color_border_lineEdit
+        this.lineEdit.border.color[] = color_border_lineEdit[]
         this.text[] = root.currentPath
         
       else:
@@ -148,7 +148,7 @@ method init(this: FileBrowser) =
         let path = foundItem.path
         root.fileOpener[].open(Location(path: path.absolutePath))
         
-        this.lineEdit.border.color[] = color_border_accent_lineEdit
+        this.lineEdit.border.color[] = color_border_accent_lineEdit[]
         this.text[] = path
 
     on KeyEvent:
@@ -162,7 +162,7 @@ method init(this: FileBrowser) =
       if kind == ClickSelection:
         fileChangeConfirmHandler(selectedOptionText)
       else:
-        this.lineEdit.border.color[] = color_border_lineEdit
+        this.lineEdit.border.color[] = color_border_lineEdit[]
 
 
 method init*(this: TitleBar) =

@@ -1,6 +1,7 @@
 import std/[json, os, macros]
 import pkg/[localize, chroma, jsony]
 import pkg/sigui/[events, properties, uiobj]
+import pkg/toscel/[colors]
 import ./fonts
 export fonts
 export localize
@@ -24,6 +25,13 @@ type
     bgSelection*: Color
     bgTitleBar*: Color
     bgTitleBarSelect*: Color
+
+    bgOverlay*: Color
+      ## background of dropdown menus, popovers and dialogs
+    borderOverlay*: Color
+      ## border of dropdown menus, popovers and dialogs
+    fgMuted*: Color
+      ## dimmed foreground text (separators, hints)
 
     sKeyword*: Color
     sOperatorWord*: Color
@@ -118,6 +126,12 @@ macro genconfig(typename, body: untyped) =
 
 genconfig Config:
   scriptFile: string = "examples/tutorial_use.nim"
+
+  ## interface language: "en", "ru", "" = system language
+  language: string = ""
+
+  ## interface theme: "dark" or "light"
+  uiTheme: string = "dark"
 
   window:
     w: int = 1280
@@ -217,8 +231,45 @@ subscribe config
 
 
 const vscodeThemeJson = staticRead("../../../themes/vscode.json")
+const lightThemeJson = staticRead("../../../themes/light.json")
 
-let colorTheme* = vscodeThemeJson.fromJson(ColorTheme)
+let darkColorTheme = vscodeThemeJson.fromJson(ColorTheme)
+let lightColorTheme = lightThemeJson.fromJson(ColorTheme)
+
+var colorTheme* = darkColorTheme.property
+  ## current color theme of the editor and app chrome;
+  ## read as `colorTheme.field` (bindings track it automatically),
+  ## switched by `applyUiTheme`
+
+
+var configEvents: EventHandler
+  ## global event handler for reacting to config property changes
+
+
+proc applyLanguage*() =
+  ## applies the language selected in the config to the global locale
+  if config.language[].len > 0:
+    globalLocale[0] = (config.language[], "")
+  else:
+    globalLocale[0] = systemLocale()
+
+
+proc applyUiTheme*() =
+  ## switches the whole interface (toscel widgets + editor + terminal) to the
+  ## theme selected in the config
+  if config.uiTheme[] == "light":
+    colorTheme[] = lightColorTheme
+    setToscelTheme(ttkLight)
+  else:
+    colorTheme[] = darkColorTheme
+    setToscelTheme(ttkDark)
+
+
+applyLanguage()
+applyUiTheme()
+
+config.language.changed.connectTo configEvents: applyLanguage()
+config.uiTheme.changed.connectTo configEvents: applyUiTheme()
 
 
 let font_monospace* = findMonospaceTypeface(config.fontMonospace[])

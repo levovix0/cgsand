@@ -10,8 +10,6 @@ when defined(inspector):
   import pkg/sigui/inspector
 
 
-globalLocale[0] = systemLocale()
-
 when defined(useX11):
   let win = newSiwinGlobals(x11).newOpenglWindow(
     size = ivec2(config.window.w[].int32, config.window.h[].int32),
@@ -104,7 +102,7 @@ win.makeLayout:
 
     - UiRect.new:
       this.fill(parent)
-      color = "#202020".color
+      color = binding: colorTheme[].bgTextArea
 
 
     - DocumentView.new as documentView:

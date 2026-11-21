@@ -1,5 +1,6 @@
 import std/[unicode, streams]
 import pkg/[chroma]
+import pkg/sigui/properties
 import ../[configuration]
 
 # todo: use tree-splitter
@@ -40,33 +41,33 @@ type
 proc color*(sk: CodeKind): Color =
   case sk
   of sKeyword:
-    colorTheme.sKeyword
+    colorTheme[].sKeyword
   of sOperatorWord:
-    colorTheme.sOperatorWord
+    colorTheme[].sOperatorWord
   of sBuiltinType:
-    colorTheme.sBuiltinType
+    colorTheme[].sBuiltinType
   of sControlFlow:
-    colorTheme.sControlFlow
+    colorTheme[].sControlFlow
   of sType:
-    colorTheme.sType
+    colorTheme[].sType
   of sStringLit, sCharLit:
-    colorTheme.sStringLit
+    colorTheme[].sStringLit
   of sStringLitEscape, sCharLitEscape:
-    colorTheme.sStringLitEscape
+    colorTheme[].sStringLitEscape
   of sNumberLit:
-    colorTheme.sNumberLit
+    colorTheme[].sNumberLit
   of sFunction:
-    colorTheme.sFunction
+    colorTheme[].sFunction
   of sComment:
-    colorTheme.sComment
+    colorTheme[].sComment
   of sTodoComment:
-    colorTheme.sTodoComment
+    colorTheme[].sTodoComment
   of sLineNumber:
-    colorTheme.sLineNumber
+    colorTheme[].sLineNumber
   of sError:
-    colorTheme.sError
+    colorTheme[].sError
   else:
-    colorTheme.sText
+    colorTheme[].sText
 
 
 

@@ -359,7 +359,7 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       if x1 < x0: continue
       ctx.fillRect(
         rect(origin + vec2(x0.float32 * cell.x, y.float32 * cell.y), vec2((x1 - x0 + 1).float32 * cell.x, cell.y)),
-        colorTheme.bgSelection,
+        colorTheme[].bgSelection,
       )
 
   # hovered file path: underlined like a link (ctrl+click opens it)
@@ -581,7 +581,7 @@ method init*(this: Terminal) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme.bgTextArea
+      color = colorTheme[].bgTextArea
 
     - TerminalContent.new as root.content:
       this.fill(parent, 4)
@@ -589,8 +589,8 @@ method init*(this: Terminal) =
     root.content.terminal = root
 
     # colors reported to the shell in OSC 10/11 queries (e.g. for fish light/dark syntax themes)
-    root.content.arrangement.queryForegroundColor = colorTheme.sText
-    root.content.arrangement.queryBackgroundColor = colorTheme.bgTextArea
+    root.content.arrangement.queryForegroundColor = colorTheme[].sText
+    root.content.arrangement.queryBackgroundColor = colorTheme[].bgTextArea
 
     root.content.updateGridSize()
     on this.w.changed: root.content.updateGridSize()

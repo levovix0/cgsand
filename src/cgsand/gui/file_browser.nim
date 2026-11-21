@@ -311,7 +311,7 @@ method init(this: FileBrowser) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme.bgTextArea
+      color = colorTheme[].bgTextArea
 
     --- ScrollArea.new:  # breadcrumbs row, recreated when the current file changes
       <--- {update}: root.rootPath[]; root.currentFile[]
@@ -463,13 +463,13 @@ method init(this: FileBrowser) =
                 this.fill(parent)
                 color = binding:
                   if accent:
-                    if parent.pressed[]: color_bg_accent_button_pressed
-                    elif parent.hovered[]: color_bg_accent_button_hovered
-                    else: color_bg_accent_button
+                    if parent.pressed[]: color_bg_accent_button_pressed[]
+                    elif parent.hovered[]: color_bg_accent_button_hovered[]
+                    else: color_bg_accent_button[]
                   else:
-                    if parent.pressed[]: color_bg_button_pressed
-                    elif parent.hovered[]: color_bg_button_hovered
-                    else: color_bg_button
+                    if parent.pressed[]: color_bg_button_pressed[]
+                    elif parent.hovered[]: color_bg_button_hovered[]
+                    else: color_bg_button[]
                 addTransition this.color
 
               - UiSvgImage.new:
@@ -486,9 +486,9 @@ method init(this: FileBrowser) =
                 text = it.name
                 font = font
                 color = binding:
-                  if accent: color_fg_accent
-                  elif parent.pressed[] or parent.hovered[]: color_fg_active
-                  else: color_fg
+                  if accent: color_fg_accent[]
+                  elif parent.pressed[] or parent.hovered[]: color_fg_active[]
+                  else: color_fg[]
                 addTransition this.color
 
               on this.clicked:
@@ -554,9 +554,9 @@ method init(this: FileBrowser) =
               - UiRect.new:
                 this.fill(parent)
                 color = binding:
-                  if parent.pressed[]: color_bg_button_pressed
-                  elif parent.hovered[]: color_bg_button_hovered
-                  else: color_bg_button
+                  if parent.pressed[]: color_bg_button_pressed[]
+                  elif parent.hovered[]: color_bg_button_hovered[]
+                  else: color_bg_button[]
                 addTransition this.color
 
               - UiRect.new:
@@ -573,8 +573,8 @@ method init(this: FileBrowser) =
                 text = s.name
                 font = font
                 color = binding:
-                  if parent.pressed[] or parent.hovered[]: color_fg_active
-                  else: color_fg
+                  if parent.pressed[] or parent.hovered[]: color_fg_active[]
+                  else: color_fg[]
                 addTransition this.color
 
               on this.clicked:

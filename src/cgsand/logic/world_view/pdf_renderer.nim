@@ -3,6 +3,7 @@ import pkg/[ecs, vmath]
 import pkg/pixie/[paths, fonts]
 import pkg/sigui/rendering/rice_backend
 import pkg/toscel/[colors]
+import pkg/sigui/properties
 import ../../lib/[sandbox, geom2d, text]
 import ./[doclayout, document_globals, dashing]
 import ../fileformats/[pdf]
@@ -360,7 +361,7 @@ proc renderPdf*(r: PdfRenerer, o: var PdfWriter) =
     yDown: globals.axisYDirection == AxisYDown,
   )
 
-  let backgroundColor = blendColor(globals.background, color_bg)
+  let backgroundColor = blendColor(globals.background, color_bg[])
   o.pages[pi].fillRect(0, 0, pageWidthPt, pageHeightPt, backgroundColor)
 
   renderWorld(o, ctx, r.doc[], globals, dmat4())

@@ -187,7 +187,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
     ctx.drawRasterText_physicalScale(
       this.globalXy + vec2(lineNumberBarOffsetX_r, line.rect.y),
       typeset(scaledFont, $(i + 1)),
-      colorTheme.sLineNumber,
+      colorTheme[].sLineNumber,
       origin=vec2(1, 0),
     )
 
@@ -198,7 +198,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         ctx.drawRasterText_physicalScale(
           this.globalXy + vec2(arrowBarCenterX, line.rect.y),
           typeset(scaledFont, arrowChar),
-          colorTheme.sLineNumber,
+          colorTheme[].sLineNumber,
           origin=vec2(0.5, 0),
         )
 
@@ -396,7 +396,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
         w = ContextMenuWidth
         h = ContextMenuHeight
         radius = 4
-        color = colorTheme.bgExplorer
+        color = colorTheme[].bgExplorer
 
       # menu items; enabled state is a property of the menu, so bindings
       # built from it track its changes
@@ -410,7 +410,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           this.fill(parent)
           radius = 2
           color = binding:
-            if parent.hovered[] and root.cutEnabled[]: colorTheme.bgSelection
+            if parent.hovered[] and root.cutEnabled[]: colorTheme[].bgSelection
             else: color(0'f32, 0'f32, 0'f32, 0'f32)
 
         - UiText.new:
@@ -419,8 +419,8 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           text = tr"Cut"
           font = font_monospace.withSize(12)
           color = binding:
-            if root.cutEnabled[]: colorTheme.sText
-            else: colorTheme.sLineNumber
+            if root.cutEnabled[]: colorTheme[].sText
+            else: colorTheme[].sLineNumber
 
         on this.clicked:
           if root.cutEnabled[]:
@@ -437,7 +437,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           this.fill(parent)
           radius = 2
           color = binding:
-            if parent.hovered[] and root.copyEnabled[]: colorTheme.bgSelection
+            if parent.hovered[] and root.copyEnabled[]: colorTheme[].bgSelection
             else: color(0'f32, 0'f32, 0'f32, 0'f32)
 
         - UiText.new:
@@ -446,8 +446,8 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           text = tr"Copy"
           font = font_monospace.withSize(12)
           color = binding:
-            if root.copyEnabled[]: colorTheme.sText
-            else: colorTheme.sLineNumber
+            if root.copyEnabled[]: colorTheme[].sText
+            else: colorTheme[].sLineNumber
 
         on this.clicked:
           if root.copyEnabled[]:
@@ -464,7 +464,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           this.fill(parent)
           radius = 2
           color = binding:
-            if parent.hovered[] and root.pasteEnabled[]: colorTheme.bgSelection
+            if parent.hovered[] and root.pasteEnabled[]: colorTheme[].bgSelection
             else: color(0'f32, 0'f32, 0'f32, 0'f32)
 
         - UiText.new:
@@ -473,8 +473,8 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           text = tr"Paste"
           font = font_monospace.withSize(12)
           color = binding:
-            if root.pasteEnabled[]: colorTheme.sText
-            else: colorTheme.sLineNumber
+            if root.pasteEnabled[]: colorTheme[].sText
+            else: colorTheme[].sLineNumber
 
         on this.clicked:
           if root.pasteEnabled[]:
@@ -814,12 +814,12 @@ method init*(this: CodeEditor) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme.bgTextArea
+      color = colorTheme[].bgTextArea
 
     - ScrollArea.new as root.scrollArea:
       this.fill(parent)
 
-      color = colorTheme.bgScrollBar
+      color = colorTheme[].bgScrollBar
 
       - CodeEditorContent.new as root.content:
         w = binding: parent.w[] - ScrollBarWidth
