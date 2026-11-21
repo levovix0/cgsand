@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import pkg/toscel/dialogs
-import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, file_browser]
+import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree]
 import ./cgsand/logic/[configuration, scripts, file_openers, shortcuts]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -120,24 +120,41 @@ win.makeLayout:
       bottom = parent.bottom
 
 
+    - FileTree.new as fileTree:
+      this.left = parent.left
+      top = titleBar.bottom
+      bottom = parent.bottom
+      w = binding:
+        (if config.fileTreeVisible[]: 220'f32 else: 0'f32)
+      visibility = binding:
+        if config.fileTreeVisible[] and codeEditor.visibility[] == Visibility.visible:
+          Visibility.visible
+        else: Visibility.collapsed
+
+      rootPath = getCurrentDir()
+      currentFile = binding: config.scriptFile[]
+
+
     - CodeEditor.new as codeEditor:
       w = binding: round(
         parent.w[] * config.codeEditorPortion[] /
         (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
-      )
+      ) - (if config.fileTreeVisible[]: fileTree.w[] else: 0'f32)
+      this.left = binding:
+        (if config.fileTreeVisible[]: parent.left + fileTree.w[] else: parent.left)
       this.fillVertical(parent)
       top = titleBar.bottom + 24
       bottom = parent.bottom
       visibility = if config.codeEditorVisible[]: Visibility.visible else: Visibility.collapsed
-      
+
       on this.visibility.changed:
         config.codeEditorVisible[] = this.visibility[] == visible
         save(config)
-      
+
       on this.content.path.changed:
         config.scriptFile[] = this.content.path[]
 
-    - FileBrowser(fillHorizontal(codeEditor)) as fileBrowser:
+    - Breadcrumbs(fillHorizontal(codeEditor)) as breadcrumbs:
       top = titleBar.bottom
       bottom = codeEditor.top
       visibility = binding:
@@ -145,7 +162,6 @@ win.makeLayout:
         else: Visibility.collapsed
       rootPath = getCurrentDir()
       currentFile = binding: config.scriptFile[]
-      
 
     - Terminal.new as terminal:
       w = binding: round(
@@ -221,7 +237,8 @@ win.makeLayout:
     
   titleBar.fileOpener[] = fileOpener
   terminal.fileOpener = fileOpener
-  fileBrowser.fileOpener[] = fileOpener
+  breadcrumbs.fileOpener[] = fileOpener
+  fileTree.fileOpener[] = fileOpener
 
 
   on DropEvent:
