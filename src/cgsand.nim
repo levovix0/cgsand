@@ -225,7 +225,9 @@ proc setupApp*(win: UiWindow): CgsandApp =
 
       - Splitter.new:  # (codeEditor / document view)
         this.achor = app.codeEditor.right
-        anchorGlobalX = binding: app.codeEditor.globalX[]
+        anchorGlobalX = binding: 
+          if config.fileTreeVisible[]: app.codeEditor.globalX[] - 220'f32 
+          else: app.codeEditor.globalX[]
 
         on this.resized:
           config.codeEditorPortion[] = max(e, 0) / contentArea.w[]
