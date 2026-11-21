@@ -7,6 +7,9 @@
   "bgLineNumbers": "F8F8F8",
   "bgLineNumbersSelect": "E8E8E8",
   "bgTextArea": "F8F8F8",
+  "bgCanvasHatch1": "ECECEC",
+  "bgCanvasHatch2": "E8E8E8",
+  "bgWorld": "EFEFEF",
   "bgStatusBar": "E9E9E9",
   "bgExplorer": "EFEFEF",
   "bgSelectionLabel": "38AFFF",
@@ -29,5 +32,7 @@
   "sTodoComment": "FF8C00",
   "sError": "E51400",
   "sLineNumber": "237893",
+  "sSelection": "ADD6FF",
+  "sWordHighlight": "E2EDFA",
   "sText": "3B3B3B"
 }

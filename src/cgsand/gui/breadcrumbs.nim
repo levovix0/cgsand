@@ -311,7 +311,7 @@ method init(this: Breadcrumbs) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme[].bgTextArea
+      color = binding: colorTheme[].bgTextArea
 
     --- ScrollArea.new:  # breadcrumbs row, recreated when the current file changes
       <--- {update}: root.rootPath[]; root.currentFile[]
@@ -332,7 +332,7 @@ method init(this: Breadcrumbs) =
               centerY = parent.center
               text = "/"
               font = font
-              color = "#6e6e6e".color
+              color = binding: colorTheme[].fgMuted
             cursorX += font.layoutBounds("/").x + 8
 
           let segX = cursorX
@@ -350,8 +350,8 @@ method init(this: Breadcrumbs) =
               this.fill(parent)
               radius = 4
               color = binding:
-                if parent.hovered[]: "#ffffff14".color
-                else: "#00000000".color
+                if parent.hovered[]: colorTheme[].bgSelection
+                else: color(0'f32, 0'f32, 0'f32, 0'f32)
               addTransition this.color
 
             if not item.isDir:
@@ -369,10 +369,10 @@ method init(this: Breadcrumbs) =
               text = item.name
               font = font
               color = binding:
-                if parent.hovered[]: "#ffffff".color
+                if parent.hovered[]: colorTheme[].cActive
                 else:
-                  if item.isDir: "#b8b8b8".color
-                  else: "#cfcfcf".color
+                  if item.isDir: colorTheme[].fgMuted
+                  else: colorTheme[].sText
               addTransition this.color
 
             on this.clicked:
@@ -395,8 +395,8 @@ method init(this: Breadcrumbs) =
             this.fill(parent)
             radius = 4
             color = binding:
-              if parent.hovered[]: "#ffffff14".color
-              else: "#00000000".color
+              if parent.hovered[]: colorTheme[].bgSelection
+              else: color(0'f32, 0'f32, 0'f32, 0'f32)
             addTransition this.color
 
           - UiText.new:
@@ -405,8 +405,8 @@ method init(this: Breadcrumbs) =
             text = tr"go to symbol..."
             font = font
             color = binding:
-              if parent.hovered[]: "#ffffff".color
-              else: "#808080".color
+              if parent.hovered[]: colorTheme[].cActive
+              else: colorTheme[].fgMuted
             addTransition this.color
 
           on this.clicked:
@@ -441,11 +441,11 @@ method init(this: Breadcrumbs) =
         - UiRect.new:
           this.fill(parent)
           radius = 5
-          color = "#252526".color
+          color = binding: colorTheme[].bgOverlay
 
         - ScrollArea.new:
           this.fill(parent)
-          color = "#505050".color
+          color = binding: colorTheme[].bgScrollBar
           radius = 5
 
           for itemI, item in items:
@@ -503,7 +503,7 @@ method init(this: Breadcrumbs) =
           this.fill(parent)
           radius = 4
           borderWidth = 1
-          color = "#454545".color
+          color = binding: colorTheme[].borderOverlay
 
     --- Uiobj.new:  # dropdown with the symbols of the current file
       <--- {update}: root.showSymbols[]; root.currentFile[]
@@ -533,11 +533,11 @@ method init(this: Breadcrumbs) =
         - UiRect.new:
           this.fill(parent)
           radius = 5
-          color = "#252526".color
+          color = binding: colorTheme[].bgOverlay
 
         - ScrollArea.new:
           this.fill(parent)
-          color = "#505050".color
+          color = binding: colorTheme[].bgScrollBar
           radius = 5
 
           for symI, sym in symbols:
@@ -590,4 +590,4 @@ method init(this: Breadcrumbs) =
           this.fill(parent)
           radius = 4
           borderWidth = 1
-          color = "#454545".color
+          color = binding: colorTheme[].borderOverlay

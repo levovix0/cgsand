@@ -212,7 +212,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       let guideX = textOffsetX + offset.float32 * spaceW
       ctx.fillRect(
         rect(this.globalXy + vec2(guideX, line.rect.y), vec2(1'f32, line.rect.h)),
-        color(0.3'f32, 0.3'f32, 0.3'f32),
+        colorTheme[].bgVerticalLine,
       )
 
     for matchSelection in matchingSelections:
@@ -222,7 +222,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         i,
         matchSelection,
         this.arrangement.selectionRangeForLine(matchSelection, i),
-        color(0.24'f32, 0.30'f32, 0.38'f32),
+        colorTheme[].sWordHighlight,
       )
 
     for c_idx in 0..<this.arrangement.cursors.len:
@@ -233,7 +233,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         i,
         this.arrangement.cursors[c_idx],
         this.arrangement.selectionRangeForLine(c_idx, i),
-        color(0.2'f32, 0.4'f32, 0.7'f32),
+        colorTheme[].sSelection,
       )
 
     # the code
@@ -252,7 +252,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
           # text cursor
           ctx.fillRect(
             rect(this.globalXy + pos, vec2(cursorW, this.font[].lineHeightPixels)),
-            color(1'f32, 1'f32, 1'f32),
+            colorTheme[].sText,
           )
 
     if line.foldable and i in this.arrangement.foldedLines:
@@ -265,7 +265,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
           this.globalXy + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
           vec2(rect.w, lineH),
         ),
-        color(0.3'f32, 0.6'f32, 1.0'f32),
+        colorTheme[].bgSelectionLabel,
       )
 
 
@@ -987,12 +987,12 @@ method init*(this: CodeEditor) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme[].bgTextArea
+      color = binding: colorTheme[].bgTextArea
 
     - ScrollArea.new as root.scrollArea:
       this.fill(parent)
 
-      color = colorTheme[].bgScrollBar
+      color = binding: colorTheme[].bgScrollBar
 
       - CodeEditorContent.new as root.content:
         w = binding: parent.w[] - ScrollBarWidth

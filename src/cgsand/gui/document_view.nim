@@ -172,7 +172,7 @@ method drawInner*(this: DocumentView, ctx: DrawContext) =
         glDisable(GL_DEPTH_TEST)
         ctx.fillHatchingRect(
           vec2(-1, -1 * this.h[] / this.w[]), vec2(2, 2 * this.h[] / this.w[]),
-          "#252525".color, "#232323".color,
+          colorTheme[].bgCanvasHatch1, colorTheme[].bgCanvasHatch2,
           vec2(1, 1),
           100 / this.w[], 100 / this.w[],
           transform = scale vec3(1, this.w[] / this.h[], 1)
@@ -293,7 +293,7 @@ method init*(this: DocumentView) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = "#282828".color
+      color = binding: colorTheme[].bgWorld
       layer = before root
 
     - MouseArea.new:

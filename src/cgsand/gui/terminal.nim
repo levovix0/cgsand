@@ -383,9 +383,9 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
     let rect = rect(origin + vec2(arr.cursor.x.float32 * cell.x, arr.cursor.y.float32 * cell.y), cell)
     if currentFocus[] == this:
       if this.cursorBlink[]:
-        ctx.fillRect(rect, "#c1c1c1".color)
+        ctx.fillRect(rect, colorTheme[].sText)
     else:
-      ctx.drawRect(rect, "#c1c1c1".color, thickness = 1)
+      ctx.drawRect(rect, colorTheme[].sText, thickness = 1)
 
   # text
   # note: rune quads take a position in gl coordinates, unlike fillRect
@@ -561,6 +561,19 @@ proc drainOutput(this: Terminal) =
     this.content.feed("\r\n\x1b[90m" & tr"[process exited]" & "\x1b[0m\r\n")
 
 
+proc applyTerminalTheme(this: Terminal) =
+  ## applies the current ui theme colors to the terminal text: recolors the
+  ## already written cells and updates the colors of future ones
+  let arr = this.content.arrangement
+  if arr == nil: return
+  let oldFg = arr.defaultForegroundColor
+  arr.defaultForegroundColor = colorTheme[].sText
+  arr.recolorDefaults(oldFg, colorTheme[].sText)
+  arr.queryForegroundColor = colorTheme[].sText
+  arr.queryBackgroundColor = colorTheme[].bgTextArea
+  redraw(this.content)
+
+
 method init*(this: Terminal) =
   procCall this.super.init()
 
@@ -577,17 +590,20 @@ method init*(this: Terminal) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme[].bgTextArea
+      color = binding: colorTheme[].bgTextArea
 
     - TerminalContent.new as root.content:
       this.fill(parent, 4)
 
     root.content.terminal = root
 
-    # colors reported to the shell in OSC 10/11 queries (e.g. for fish light/dark syntax themes)
-    root.content.arrangement.queryForegroundColor = colorTheme[].sText
-    root.content.arrangement.queryBackgroundColor = colorTheme[].bgTextArea
-
     root.content.updateGridSize()
     on this.w.changed: root.content.updateGridSize()
     on this.h.changed: root.content.updateGridSize()
+
+  this.applyTerminalTheme()
+
+  # when the ui theme switches, recolor the text and report the new colors to
+  # newly started shells (fish picks its syntax theme from the OSC 11 answer)
+  colorTheme.changed.connectTo this:
+    this.applyTerminalTheme()

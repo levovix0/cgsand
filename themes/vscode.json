@@ -7,6 +7,9 @@
   "bgLineNumbers": "202020",
   "bgLineNumbersSelect": "0F0F0F",
   "bgTextArea": "202020",
+  "bgCanvasHatch1": "252525",
+  "bgCanvasHatch2": "232323",
+  "bgWorld": "262626",
   "bgStatusBar": "161616",
   "bgExplorer": "262626",
   "bgSelectionLabel": "38AFFF",
@@ -29,5 +32,7 @@
   "sTodoComment": "FF8C00",
   "sError": "FF4040",
   "sLineNumber": "858585",
+  "sSelection": "3366B3",
+  "sWordHighlight": "3D4D61",
   "sText": "D4D4D4"
 }

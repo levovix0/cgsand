@@ -19,6 +19,10 @@ type
     bgLineNumbers*: Color
     bgLineNumbersSelect*: Color
     bgTextArea*: Color
+    bgCanvasHatch1*: Color
+      ## the two alternating stripe colors of the document view canvas around the page
+    bgCanvasHatch2*: Color
+    bgWorld*: Color
     bgStatusBar*: Color
     bgExplorer*: Color
     bgSelectionLabel*: Color
@@ -47,6 +51,11 @@ type
     sError*: Color
 
     sLineNumber*: Color
+
+    sSelection*: Color
+      ## fill of the selected text in the code editor
+    sWordHighlight*: Color
+      ## fill under all occurrences of the word or selection under the cursor
 
     sText*: Color
 
