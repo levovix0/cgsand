@@ -1,7 +1,7 @@
 import std/[locks, math]
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
-import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
+import pkg/sigui/[uibase, mouseArea, layouts]
 import pkg/sigui/rendering/rice_backend
 import pkg/toscel/[button]
 import pkg/rice/contexts as riceContexts except DrawContext
@@ -376,9 +376,6 @@ method init*(this: DocumentView) =
           )
           prevDragPos = currentMousePos
 
-    - (globalKeybinding({Key.f5})):
-      on this.activated: root.recompileScript()
-    
     - Layout.row:
       gap = 10
       centerX = parent.center

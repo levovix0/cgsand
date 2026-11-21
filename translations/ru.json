@@ -70,11 +70,32 @@
     }
   },
   "src/cgsand/gui/title_bar.nim": {
+    "File": {
+      "": "File"
+    },
+    "Open": {
+      "": "Open"
+    },
     "Save as PDF": {
       "": "Сохранить как PDF"
     },
     "Name:": {
       "": "Название:"
+    },
+    "View": {
+      "": "View"
+    },
+    "Libraries:": {
+      "": "Libraries:"
+    },
+    "Open file": {
+      "": "Open file"
+    },
+    "Application": {
+      "": "Application"
+    },
+    "Save as": {
+      "": "Save as"
     },
     "Code": {
       "": "Код"
@@ -85,19 +106,60 @@
     "Export PDF": {
       "": "Экспорт PDF"
     },
+    "Edit": {
+      "": "Edit"
+    },
     "Terminal": {
       "": "Терминал"
+    },
+    "Help": {
+      "": "Help"
+    },
+    "Save file as": {
+      "": "Save file as"
+    },
+    "Maintainers:": {
+      "": "Maintainers:"
+    },
+    "File tree": {
+      "": "File tree"
+    },
+    "Key combinations": {
+      "": "Key combinations"
     },
     "Save": {
       "": "Сохранить"
     },
+    "Exit": {
+      "": "Exit"
+    },
+    "Options": {
+      "": "Options"
+    },
     "Cancel": {
       "": "Отмена"
+    },
+    "About": {
+      "": "About"
     }
   },
   "src/cgsand/gui/terminal.nim": {
     "[process exited]": {
       "": "[процесс завершён]"
+    }
+  },
+  "src/cgsand.nim": {
+    "Open": {
+      "": "Open"
+    },
+    "Recompile": {
+      "": "Recompile"
+    },
+    "Save as": {
+      "": "Save as"
+    },
+    "Save": {
+      "": "Save"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {

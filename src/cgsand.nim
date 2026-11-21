@@ -2,8 +2,9 @@ import std/[os, math]
 import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
+import pkg/toscel/dialogs
 import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, file_browser]
-import ./cgsand/logic/[configuration, scripts, file_openers]
+import ./cgsand/logic/[configuration, scripts, file_openers, shortcuts]
 import ./cgsand/logic/world_view/[renderer]
 
 when defined(inspector):
@@ -25,6 +26,9 @@ else:
     transparent = true,
   )
 win.siwinWindow.maximized = config.window.maximized[]
+
+# results of system file dialogs (opened from the menu) are delivered on tick
+win.installFileDialogPolling()
 
 
 scripts.scriptEntityBounds = renderer.entityBoundsCallback
@@ -159,7 +163,7 @@ win.makeLayout:
 
     - TitleBar(codeEditor: codeEditor, terminal: terminal) as titleBar:
       this.fillHorizontal(parent)
-      h = 60
+      h = 40
 
       doc = binding:
         if documentView.scriptStage[] == Idle and documentView.script[] != nil:
@@ -170,6 +174,26 @@ win.makeLayout:
 
     on titleBar.titleRegionStartX.changed:
       onWindowResize()
+
+
+    # --- application shortcuts (also listed in the "Key combinations" dialog
+    # and shown as hints in the menubar) ---
+
+    - (shortcut(["Ctrl+O"], "file.open", "Open")):
+      on this.activated:
+        titleBar.openScript()
+
+    - (shortcut(["Ctrl+S"], "file.save", "Save")):
+      on this.activated:
+        titleBar.saveScript()
+
+    - (shortcut(["Ctrl+Shift+S"], "file.saveAs", "Save as")):
+      on this.activated:
+        titleBar.saveScriptAs()
+
+    - (shortcut(["F5"], "app.recompile", "Recompile")):
+      on this.activated:
+        documentView.recompileScript()
     
 
     - Splitter.new:  # (codeEditor / document view)
