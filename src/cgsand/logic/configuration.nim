@@ -141,6 +141,9 @@ genconfig Config:
   codeEditorVisible: bool = true
   terminalVisible: bool = true
 
+  ## show the file tree panel to the left of the code editor
+  fileTreeVisible: bool = true
+
   # todo: make proper attachable and floating panels in toscel
   codeEditorPortion: float = 1
   previewPortion: float = 1
