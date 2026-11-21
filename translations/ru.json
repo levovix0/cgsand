@@ -25,8 +25,20 @@
     "Copy": {
       "": "Копировать"
     },
+    "Add cursor to next occurrence": {
+      "": "Add cursor to next occurrence"
+    },
     "Cut": {
       "": "Вырезать"
+    },
+    "Toggle block selection": {
+      "": "Toggle block selection"
+    },
+    "Undo": {
+      "": "Undo"
+    },
+    "Duplicate line or selection": {
+      "": "Duplicate line or selection"
     },
     "Paste": {
       "": "Вставить"

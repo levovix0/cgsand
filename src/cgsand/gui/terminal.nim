@@ -2,7 +2,7 @@ import std/[unicode, terminal, times, strutils]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, window, mouseArea, animations, rendering]
-import ../logic/[configuration, terminal, file_openers]
+import ../logic/[configuration, terminal, file_openers, shortcuts]
 
 
 type
@@ -458,28 +458,15 @@ method recieve*(this: TerminalContent, signal: Signal) =
         signal.handled = true
 
   signal.match KeyEvent:
-    if e.pressed and currentFocus[] == this and this.terminal != nil:
-      # terminal-local clipboard shortcuts; they must not reach the shell
-      let kb = e.window.keyboard
-      let ctrl = kb.modifiers.contains(control)
-      let shift = kb.modifiers.contains(shift)
-
-      if ctrl and shift and e.key == Key.c:
-        this.copySelection()
+    # shortcuts (registered below in init) consume their keys before this,
+    # so a `handled` key must not reach the shell
+    if e.pressed and not signal.handled and currentFocus[] == this and this.terminal != nil:
+      let seq = keyToSequence(e[])
+      if seq.len > 0:
+        this.terminal.sendInput(seq)
+        this.arrangement.scrollToBottom()
+        this.lastActivity = getTime()
         signal.handled = true
-      elif ctrl and shift and e.key == Key.v:
-        this.pasteClipboard()
-        signal.handled = true
-      elif e.key == Key.insert and (ctrl xor shift):
-        if ctrl: this.copySelection() else: this.pasteClipboard()
-        signal.handled = true
-      else:
-        let seq = keyToSequence(e[])
-        if seq.len > 0:
-          this.terminal.sendInput(seq)
-          this.arrangement.scrollToBottom()
-          this.lastActivity = getTime()
-          signal.handled = true
 
 
 method init*(this: TerminalContent) =
@@ -549,6 +536,15 @@ method init*(this: TerminalContent) =
             # scroll through the history
             arr.scrollView(if delta.y < 0: lines else: -lines)
             redraw root
+
+    # --- terminal shortcuts (active only when the terminal is focused, also
+    # listed in the "Key combinations" dialog) ---
+
+    - (shortcut(["Ctrl+Shift+C", "Ctrl+Ins"], "terminal.copy", "Copy", context = scWidgetWithChildren)):
+      on this.activated: root.copySelection()
+
+    - (shortcut(["Ctrl+Shift+V", "Shift+Ins"], "terminal.paste", "Paste", context = scWidgetWithChildren)):
+      on this.activated: root.pasteClipboard()
 
 
 proc drainOutput(this: Terminal) =

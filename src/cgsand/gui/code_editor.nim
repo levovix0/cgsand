@@ -2,7 +2,7 @@ import std/[sets, os, times]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, scrollArea, mouseArea]
-import ../logic/[configuration, code_editor, asyncio, file_openers]
+import ../logic/[configuration, code_editor, asyncio, file_openers, shortcuts]
 import ./[highlighted_text]
 
 
@@ -263,7 +263,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       )
 
 
-proc saveFile(this: CodeEditorContent) =
+proc saveFile*(this: CodeEditorContent) =
   if this.path[].len == 0: return
   if this.arrangement == nil: return
   scheduleFileSave(this.path[], this.arrangement.fileContent())
@@ -525,11 +525,12 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       signal.handled = true
 
   signal.match KeyEvent:
-    if e.pressed and currentFocus[] == this and this.arrangement != nil:
+    # shortcuts (registered below in init) consume their keys before this,
+    # so a `handled` key must not be processed here
+    if e.pressed and not signal.handled and currentFocus[] == this and this.arrangement != nil:
       this.markCursorActivity()
       let shift = (this.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
       let ctrl = (this.modifierKeysDown * {Key.lcontrol, Key.rcontrol}).len > 0
-      let alt = (this.modifierKeysDown * {Key.lalt, Key.ralt}).len > 0
       
       case e.key
       of Key.left:
@@ -579,51 +580,6 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
           redraw(this)
 
-      of Key.b:
-        if ctrl:
-          this.arrangement.selectionMode = case this.arrangement.selectionMode
-            of LineSelection: BlockSelection
-            of BlockSelection: LineSelection
-          redraw(this)
-
-      of Key.c:
-        if ctrl:
-          let text = this.arrangement.selectedText()
-          if text.len > 0:
-            this.root.clipboardText = text
-          signal.handled = true
-
-      of Key.v:
-        if ctrl:
-          let text = this.root.clipboardText
-          if text.len > 0:
-            this.pushUndoSnapshot()
-            this.arrangement.insert(text)
-            this.discardUnchangedUndoSnapshot()
-            this.updateHeight()
-            redraw(this)
-            this.saveFile()
-          signal.handled = true
-
-      of Key.d:
-        if ctrl and alt:
-          if this.arrangement.addSelectionToNextMatch():
-            redraw(this)
-          signal.handled = true
-        elif ctrl:
-          this.pushUndoSnapshot()
-          this.arrangement.duplicateSelectionsOrLines()
-          this.discardUnchangedUndoSnapshot()
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-          signal.handled = true
-
-      of Key.z:
-        if ctrl:
-          discard this.undo()
-          signal.handled = true
-
       else: discard
 
 
@@ -641,6 +597,28 @@ proc setArrangement(this: CodeEditorContent, text: string) =
 proc rearrange(this: CodeEditorContent) =
   ## todo
   this.setArrangement(this.arrangement.fileContent())
+
+
+proc undoLast(this: CodeEditorContent) =
+  discard this.undo()
+
+proc duplicateSelections(this: CodeEditorContent) =
+  this.pushUndoSnapshot()
+  this.arrangement.duplicateSelectionsOrLines()
+  this.discardUnchangedUndoSnapshot()
+  this.updateHeight()
+  redraw(this)
+  this.saveFile()
+
+proc addSelectionToNextMatch(this: CodeEditorContent) =
+  if this.arrangement.addSelectionToNextMatch():
+    redraw(this)
+
+proc toggleSelectionMode(this: CodeEditorContent) =
+  this.arrangement.selectionMode = case this.arrangement.selectionMode
+    of LineSelection: BlockSelection
+    of BlockSelection: LineSelection
+  redraw(this)
 
 
 method init*(this: CodeEditorContent) =
@@ -773,6 +751,27 @@ method init*(this: CodeEditorContent) =
                     redraw(root)
                   break foundLine
             root.openContextMenu(this.globalXy + this.mouseXy[])
+
+    # --- editor shortcuts (active only when the editor is focused, also
+    # listed in the "Key combinations" dialog) ---
+
+    - (shortcut(["Ctrl+C"], "edit.copy", "Copy", context = scWidgetWithChildren)):
+      on this.activated: root.copySelection()
+
+    - (shortcut(["Ctrl+V"], "edit.paste", "Paste", context = scWidgetWithChildren)):
+      on this.activated: root.pasteClipboard()
+
+    - (shortcut(["Ctrl+Z"], "edit.undo", "Undo", context = scWidgetWithChildren)):
+      on this.activated: root.undoLast()
+
+    - (shortcut(["Ctrl+D"], "edit.duplicate", "Duplicate line or selection", context = scWidgetWithChildren)):
+      on this.activated: root.duplicateSelections()
+
+    - (shortcut(["Ctrl+Alt+D"], "edit.addCursorToNextMatch", "Add cursor to next occurrence", context = scWidgetWithChildren)):
+      on this.activated: root.addSelectionToNextMatch()
+
+    - (shortcut(["Ctrl+B"], "edit.toggleBlockSelection", "Toggle block selection", context = scWidgetWithChildren)):
+      on this.activated: root.toggleSelectionMode()
 
 proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
