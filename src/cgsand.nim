@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import pkg/toscel/dialogs
-import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, settings]
+import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, scene_tree, activity_bar, settings]
 import ./cgsand/logic/[configuration, scripts, file_openers, shortcuts]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -16,12 +16,19 @@ scripts.scriptWorldBounds = renderer.worldBoundsCallback
 scripts.scriptTextSize = renderer.textSizeCallback
 
 
+const
+  activityBarWidth = 40'f32
+  fileTreePanelWidth = 220'f32
+
+
 type
   CgsandApp* = ref object
     window*: UiWindow
     documentView*: DocumentView
     codeEditor*: CodeEditor
     fileTree*: FileTree
+    sceneTree*: SceneTree
+    activityBar*: ActivityBar
     breadcrumbs*: Breadcrumbs
     settingsWindow*: SettingsWindow
     terminal*: Terminal
@@ -130,14 +137,22 @@ proc setupApp*(win: UiWindow): CgsandApp =
         bottom = parent.bottom
 
 
-      - FileTree.new as app.fileTree:
+      - ActivityBar.new as app.activityBar:
         this.left = parent.left
         top = app.titleBar.bottom
         bottom = parent.bottom
+        w = activityBarWidth
+
+
+      - FileTree.new as app.fileTree:
+        this.left = parent.left + activityBarWidth
+        top = app.titleBar.bottom
+        bottom = parent.bottom
         w = binding:
-          (if config.fileTreeVisible[]: 220'f32 else: 0'f32)
+          (if config.fileTreeVisible[] and config.leftPanelView[] == "files": fileTreePanelWidth else: 0'f32)
         visibility = binding:
-          if config.fileTreeVisible[] and app.codeEditor.visibility[] == Visibility.visible:
+          if config.fileTreeVisible[] and config.leftPanelView[] == "files" and
+              app.codeEditor.visibility[] == Visibility.visible:
             Visibility.visible
           else: Visibility.collapsed
 
@@ -145,13 +160,29 @@ proc setupApp*(win: UiWindow): CgsandApp =
         currentFile = binding: config.scriptFile[]
 
 
+      - SceneTree.new as app.sceneTree:
+        this.left = parent.left + activityBarWidth
+        top = app.titleBar.bottom
+        bottom = parent.bottom
+        w = binding:
+          (if config.fileTreeVisible[] and config.leftPanelView[] == "scene": fileTreePanelWidth else: 0'f32)
+        visibility = binding:
+          if config.fileTreeVisible[] and config.leftPanelView[] == "scene" and
+              app.codeEditor.visibility[] == Visibility.visible:
+            Visibility.visible
+          else: Visibility.collapsed
+
+        script = binding: app.documentView.script[]
+        scriptStage = binding: app.documentView.scriptStage[]
+
+
       - CodeEditor.new as app.codeEditor:
         w = binding: round(
           parent.w[] * config.codeEditorPortion[] /
           (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
-        ) - (if config.fileTreeVisible[]: app.fileTree.w[] else: 0'f32)
+        ) - activityBarWidth - app.fileTree.w[] - app.sceneTree.w[]
         this.left = binding:
-          (if config.fileTreeVisible[]: parent.left + app.fileTree.w[] else: parent.left)
+          parent.left + activityBarWidth + app.fileTree.w[] + app.sceneTree.w[]
         this.fillVertical(parent)
         top = app.titleBar.bottom + 24
         bottom = parent.bottom
@@ -225,9 +256,8 @@ proc setupApp*(win: UiWindow): CgsandApp =
 
       - Splitter.new:  # (codeEditor / document view)
         this.achor = app.codeEditor.right
-        anchorGlobalX = binding: 
-          if config.fileTreeVisible[]: app.codeEditor.globalX[] - 220'f32 
-          else: app.codeEditor.globalX[]
+        anchorGlobalX = binding:
+          app.codeEditor.globalX[] - activityBarWidth - app.fileTree.w[] - app.sceneTree.w[]
 
         on this.resized:
           config.codeEditorPortion[] = max(e, 0) / contentArea.w[]
@@ -261,6 +291,7 @@ proc setupApp*(win: UiWindow): CgsandApp =
     app.terminal.fileOpener = fileOpener
     app.breadcrumbs.fileOpener[] = fileOpener
     app.fileTree.fileOpener[] = fileOpener
+    app.sceneTree.fileOpener[] = fileOpener
 
 
     on DropEvent:

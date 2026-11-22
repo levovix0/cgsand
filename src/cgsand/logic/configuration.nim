@@ -153,6 +153,9 @@ genconfig Config:
   ## show the file tree panel to the left of the code editor
   fileTreeVisible: bool = true
 
+  ## which view the activity bar shows in the left panel: "files" or "scene"
+  leftPanelView: string = "files"
+
   # todo: make proper attachable and floating panels in toscel
   codeEditorPortion: float = 1
   previewPortion: float = 1

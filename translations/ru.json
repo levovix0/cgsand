@@ -44,6 +44,17 @@
       "": "Вставить"
     }
   },
+  "src/cgsand/gui/scene_tree.nim": {
+    "Script is not running": {
+      "": "Скрипт не запущен"
+    },
+    "Scene": {
+      "": "Сцена"
+    },
+    "Scene is empty": {
+      "": "Сцена пуста"
+    }
+  },
   "src/cgsand/gui/document_view.nim": {
     "Theme: light": {
       "": "Тема: светлая"

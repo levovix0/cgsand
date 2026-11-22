@@ -274,8 +274,13 @@ method init*(this: DocumentView) =
   this.root.onTick.connectTo this, e:
     let script = this.script[]
     if script != nil:
+      # the assignment must happen outside of the lock: it emits
+      # scriptStage.changed, whose handlers may re-enter the script world
+      # (e.g. the scene tree rebuilds its rows and takes the lock again)
+      var stage: ScriptStage
       withLock script.lock:
-        this.scriptStage[] = script.stage
+        stage = script.stage
+      this.scriptStage[] = stage
       if script.canSendEvents and script.systems.windowEvent_TickEvent != nil:
         let prevActive = activeDocumentView
         activeDocumentView = this
