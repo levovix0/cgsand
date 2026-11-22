@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import pkg/toscel/dialogs
-import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, scene_tree, activity_bar, settings]
+import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, scene_tree, activity_bar, settings, find_replace]
 import ./cgsand/logic/[configuration, scripts, file_openers, shortcuts]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -26,6 +26,7 @@ type
     window*: UiWindow
     documentView*: DocumentView
     codeEditor*: CodeEditor
+    findPanel*: FindReplacePanel
     fileTree*: FileTree
     sceneTree*: SceneTree
     activityBar*: ActivityBar
@@ -292,6 +293,10 @@ proc setupApp*(win: UiWindow): CgsandApp =
     app.breadcrumbs.fileOpener[] = fileOpener
     app.fileTree.fileOpener[] = fileOpener
     app.sceneTree.fileOpener[] = fileOpener
+
+    # find & replace panel for the code editor, reacts to the editor
+    # Ctrl+F / Ctrl+H / F3 / Shift+F3 shortcuts
+    app.findPanel = connectFindReplace(app.codeEditor)
 
 
     on DropEvent:

@@ -56,6 +56,8 @@ type
       ## fill of the selected text in the code editor
     sWordHighlight*: Color
       ## fill under all occurrences of the word or selection under the cursor
+    sSearchHighlight*: Color
+      ## fill under all matches of the find/replace search in the code editor
 
     sText*: Color
 

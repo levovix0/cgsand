@@ -1,7 +1,7 @@
 import std/[sets, os, times]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
-import pkg/sigui/[uibase, scrollArea, mouseArea]
+import pkg/sigui/[uibase, events, scrollArea, mouseArea]
 import ../logic/[configuration, code_editor, asyncio, editor_state, file_openers, shortcuts]
 import ./[highlighted_text]
 
@@ -58,9 +58,19 @@ type
     wordHighlightSuppressed: bool  ## true right after a text edit, until the cursor is moved freely
     undoHistory: seq[CodeArrangementSnapshot]
 
+    search*: SearchState
+      ## state of the find/replace search; managed together with the
+      ## find/replace panel (gui/find_replace.nim)
+
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
     scrollArea*: ScrollArea
+    findRequested*: Event[void]
+      ## the "edit.find" (Ctrl+F) shortcut activated
+    replaceRequested*: Event[void]
+      ## the "edit.replace" (Ctrl+H) shortcut activated
+    findNavigateRequested*: Event[bool]
+      ## the "edit.findNext"/"edit.findPrev" shortcuts activated, true = backwards
 
   CodeEditorFileOpener* = ref object of FileOpener
     editor*: CodeEditor
@@ -94,24 +104,97 @@ proc arrowBarOffsetX(this: CodeEditorContent): float32 =
 
 
 
-proc updateHeight(this: CodeEditorContent) =
+proc updateHeight*(this: CodeEditorContent) =
   if this.arrangement == nil:
     this.h[] = 0
     return
   this.h[] = this.arrangement.visibleHeight()
 
 
-proc pushUndoSnapshot(this: CodeEditorContent) =
+proc pushUndoSnapshot*(this: CodeEditorContent) =
   if this.arrangement == nil: return
+  this.search.dirty = true
   if this.undoHistory.len >= MaxUndoHistory:
     this.undoHistory.delete(0)
   this.undoHistory.add this.arrangement.snapshot()
 
 
-proc discardUnchangedUndoSnapshot(this: CodeEditorContent) =
+proc discardUnchangedUndoSnapshot*(this: CodeEditorContent) =
   if this.undoHistory.len > 0 and this.arrangement != nil and
       this.undoHistory[^1].text == this.arrangement.fileContent():
     this.undoHistory.setLen(this.undoHistory.len - 1)
+
+
+proc nearestMatchAfterCursor(arr: CodeArrangement, matches: seq[CursorPos]): int =
+  ## index of the first match starting at or after the cursor position,
+  ## 0 (the first match) when there is no match after it
+  if arr.cursors.len == 0: return 0
+  let c = arr.cursors[0]
+  let cursorPos = (c.line, c.col)
+  for i, m in matches:
+    if (m.anchorLine, m.anchorCol) >= cursorPos: return i
+  return 0
+
+
+proc recomputeSearch*(this: CodeEditorContent) =
+  ## recomputes search matches after the text or the search settings changed.
+  ## Updates only the search state — the current match selection and scrolling
+  ## are handled by the find panel, so this is also safe to call from drawInner
+  this.search.dirty = false
+  if not this.search.active[] or this.arrangement == nil:
+    this.search.matches.setLen(0)
+    this.search.currentI = -1
+    return
+
+  let query = this.search.query[]
+  if query.len == 0:
+    this.search.matches.setLen(0)
+    this.search.currentI = -1
+    this.search.resultsCount[] = 0
+    this.search.status[] = ""
+    return
+
+  let options = searchOptions(this.search.caseSensitive[], this.search.wholeWord[], this.search.regex[])
+  var matches: seq[CursorPos]
+  var status: string
+  try:
+    matches = this.arrangement.findMatches(query, options)
+  except ValueError:
+    status = tr"Invalid regular expression"
+
+  if status.len == 0 and matches.len == 0:
+    status = tr"No results"
+
+  # keep the current match when it still exists in the new text, otherwise
+  # take the nearest match at or after the cursor position
+  let oldCurrentI = this.search.currentI
+  let oldMatches = this.search.matches
+  var newCurrentI = -1
+  if matches.len > 0:
+    if oldCurrentI >= 0 and oldCurrentI < oldMatches.len:
+      let oldMatch = oldMatches[oldCurrentI]
+      for i, m in matches:
+        if m.sameSelection(oldMatch):
+          newCurrentI = i
+          break
+    if newCurrentI < 0:
+      newCurrentI = this.arrangement.nearestMatchAfterCursor(matches)
+
+  this.search.matches = matches
+  this.search.currentI = newCurrentI
+  this.search.resultsCount[] = matches.len
+  this.search.status[] =
+    if status.len > 0: status
+    else: $(newCurrentI + 1) & "/" & $matches.len
+
+
+proc closeSearch*(this: CodeEditorContent) =
+  ## closes the find/replace search, hiding the panel and match highlights
+  if not this.search.active[]: return
+  this.search.active[] = false
+  this.search.dirty = true
+  setFocus this
+  redraw(this)
 
 
 proc drawSelectionRange(
@@ -170,8 +253,13 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   var scaledFont = copy this.font[]
   scaledFont.size = scaledFont.size * this.root.uiScale[]
 
+  # recompute stale search matches (text or search settings changed);
+  # data-only — the current match selection/scrolling is handled by the panel
+  if this.search.dirty:
+    this.recomputeSearch()
+
   var matchingSelections: seq[CursorPos]
-  if this.arrangement.cursors.len > 0:
+  if this.arrangement.cursors.len > 0 and not this.search.active[]:
     let selected = this.arrangement.selectedText(0)
     if selected.len > 0:
       matchingSelections = this.arrangement.matchingSelections(selected)
@@ -224,6 +312,20 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         this.arrangement.selectionRangeForLine(matchSelection, i),
         colorTheme[].sWordHighlight,
       )
+
+    if this.search.active[]:
+      # highlights of all search matches except the current one — the current
+      # match is the real editor selection, drawn below in the selection color
+      for matchI, matchSelection in this.search.matches:
+        if matchI == this.search.currentI: continue
+        this.drawSelectionRange(
+          ctx,
+          line,
+          i,
+          matchSelection,
+          this.arrangement.selectionRangeForLine(matchSelection, i),
+          colorTheme[].sSearchHighlight,
+        )
 
     for c_idx in 0..<this.arrangement.cursors.len:
       if this.arrangement.cursors[c_idx].isDuplicate: continue
@@ -348,6 +450,7 @@ proc reloadFromDisk(this: CodeEditorContent, text: string) =
   # undoing across an externally rewritten text would silently revert the
   # external change, so the old undo history is dropped
   this.undoHistory.setLen(0)
+  this.search.dirty = true
   this.restoreViewState(cursors, foldedLines, scrollY)
 
 
@@ -412,6 +515,7 @@ proc undo(this: CodeEditorContent): bool =
   if this.undoHistory.len == 0: return
   let previous = this.undoHistory.pop()
   this.wordHighlightSuppressed = true
+  this.search.dirty = true
   this.arrangement = previous.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.updateHeight()
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -420,7 +524,7 @@ proc undo(this: CodeEditorContent): bool =
   this.saveFile()
   result = true
 
-proc scrollToLine(this: CodeEditor, line: int) =
+proc scrollToLine*(this: CodeEditor, line: int) =
   if this.content.arrangement.lines.len == 0:
     this.scrollArea.targetY[] = 0
   else:
@@ -730,7 +834,9 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         this.saveFile()
 
       of Key.escape:
-        if this.contextMenuOpen():
+        if this.search.active[]:
+          this.closeSearch()
+        elif this.contextMenuOpen():
           this.closeContextMenu()
         elif this.arrangement.cursors.len > 1:
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
@@ -762,7 +868,7 @@ proc rearrange(this: CodeEditorContent) =
   this.restoreViewState(cursors, foldedLines, scrollY)
 
 
-proc undoLast(this: CodeEditorContent) =
+proc undoLast*(this: CodeEditorContent) =
   discard this.undo()
 
 proc duplicateSelections(this: CodeEditorContent) =
@@ -1008,6 +1114,22 @@ method init*(this: CodeEditor) =
       on this.pressed[] == true:
         if root.content.arrangement != nil:
           root.content.openContextMenu(this.globalXy + this.mouseXy[])
+
+    # --- find & replace shortcuts (active anywhere in the editor, including
+    # the find/replace panel itself; the panel is connected in setupApp, see
+    # gui/find_replace.nim; also listed in the "Key combinations" dialog) ---
+
+    - (shortcut(["Ctrl+F"], "edit.find", "Find", context = scWidgetWithChildren)):
+      on this.activated: root.findRequested.emit()
+
+    - (shortcut(["Ctrl+H"], "edit.replace", "Replace", context = scWidgetWithChildren)):
+      on this.activated: root.replaceRequested.emit()
+
+    - (shortcut(["F3"], "edit.findNext", "Find next", context = scWidgetWithChildren)):
+      on this.activated: root.findNavigateRequested.emit(false)
+
+    - (shortcut(["Shift+F3"], "edit.findPrev", "Find previous", context = scWidgetWithChildren)):
+      on this.activated: root.findNavigateRequested.emit(true)
 
     root.open(Location(path: config.scriptFile[]))
     on this.w.changed: root.content.rearrange()

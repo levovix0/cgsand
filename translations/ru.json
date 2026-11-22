@@ -22,6 +22,12 @@
     }
   },
   "src/cgsand/gui/code_editor.nim": {
+    "Find": {
+      "": "Поиск"
+    },
+    "Replace": {
+      "": "Замена"
+    },
     "Copy": {
       "": "Копировать"
     },
@@ -34,14 +40,26 @@
     "Toggle block selection": {
       "": "Переключить блочное выделение"
     },
+    "Invalid regular expression": {
+      "": "Некорректное регулярное выражение"
+    },
+    "Find next": {
+      "": "Следующее совпадение"
+    },
     "Undo": {
       "": "Отменить"
     },
     "Duplicate line or selection": {
       "": "Дублировать строку или выделение"
     },
+    "No results": {
+      "": "Нет результатов"
+    },
     "Paste": {
       "": "Вставить"
+    },
+    "Find previous": {
+      "": "Предыдущее совпадение"
     }
   },
   "src/cgsand/gui/scene_tree.nim": {
@@ -87,6 +105,9 @@
     "Open": {
       "": "Открыть"
     },
+    "Find": {
+      "": "Найти"
+    },
     "Save as PDF": {
       "": "Сохранить как PDF"
     },
@@ -95,6 +116,9 @@
     },
     "View": {
       "": "Вид"
+    },
+    "Replace": {
+      "": "Заменить"
     },
     "Libraries:": {
       "": "Библиотеки:"
@@ -213,6 +237,20 @@
     },
     "Light": {
       "": "Светлая"
+    }
+  },
+  "src/cgsand/gui/find_replace.nim": {
+    "Find": {
+      "": "Найти"
+    },
+    "Replace": {
+      "": "Заменить"
+    },
+    "Close find or replace": {
+      "": "Закрыть поиск и замену"
+    },
+    "All": {
+      "": "Всё"
     }
   },
   "src/cgsand/gui/file_tree.nim": {

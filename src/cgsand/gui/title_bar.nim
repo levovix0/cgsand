@@ -199,6 +199,21 @@ proc rebuildMenuBar(this: TitleBar) =
     ),
   ])
 
+  menuBar.addMenu(tr"Edit", @[
+    MenuEntry(
+      text: tr"Find",
+      shortcut: shortcutDisplay("edit.find"),
+      disabled: proc(): bool = not config.codeEditorVisible[],
+      action: proc() = this.codeEditor.findRequested.emit(),
+    ),
+    MenuEntry(
+      text: tr"Replace",
+      shortcut: shortcutDisplay("edit.replace"),
+      disabled: proc(): bool = not config.codeEditorVisible[],
+      action: proc() = this.codeEditor.replaceRequested.emit(),
+    ),
+  ])
+
   menuBar.addMenu(tr"View", @[
     MenuEntry(
       text: tr"Code",
