@@ -99,6 +99,9 @@ type
       ## the "edit.replace" (Ctrl+H) shortcut activated
     findNavigateRequested*: Event[bool]
       ## the "edit.findNext"/"edit.findPrev" shortcuts activated, true = backwards
+    openedFile*: Event[void]
+      ## emitted when a file is opened in this editor (used to switch the
+      ## editor pane between the code editor and the hex editor)
 
   CodeEditorFileOpener* = ref object of FileOpener
     editor*: CodeEditor
@@ -1408,6 +1411,7 @@ proc open*(this: CodeEditor, target: Location) =
       this.scrollToLine(line)
       redraw(this.content)
     # otherwise the cursor stays where the user left it
+    this.openedFile.emit()
     return
 
   this.content.undoHistory.setLen(0)
@@ -1425,6 +1429,9 @@ proc open*(this: CodeEditor, target: Location) =
   except CatchableError as exc:
     this.content.path[] = ""
     this.content.setArrangement("Unable to read file: " & target.path & "\n" & exc.msg)
+
+  # emitted after the file is loaded, so handlers see the final content.path
+  this.openedFile.emit()
 
 
 method canOpen(this: CodeEditorFileOpener, target: Location): bool =
@@ -1479,5 +1486,4 @@ method init*(this: CodeEditor) =
     - (shortcut(["Shift+F3"], "edit.findPrev", "Find previous", context = scWidgetWithChildren)):
       on this.activated: root.findNavigateRequested.emit(true)
 
-    root.open(Location(path: config.scriptFile[]))
     on this.w.changed: root.content.rearrange()

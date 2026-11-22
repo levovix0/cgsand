@@ -99,6 +99,9 @@
     }
   },
   "src/cgsand/gui/title_bar.nim": {
+    "Options": {
+      "": "Параметры"
+    },
     "File": {
       "": "Файл"
     },
@@ -132,9 +135,6 @@
     "Save as": {
       "": "Сохранить как"
     },
-    "Code": {
-      "": "Код"
-    },
     "Select location": {
       "": "Выберите расположение"
     },
@@ -146,6 +146,9 @@
     },
     "Terminal": {
       "": "Терминал"
+    },
+    "Editor": {
+      "": "Редактор"
     },
     "Help": {
       "": "Справка"
@@ -168,14 +171,19 @@
     "Exit": {
       "": "Выход"
     },
-    "Options": {
-      "": "Параметры"
+    "Unable to read file:": {
+      "": "Не удалось открыть файл:"
     },
     "Cancel": {
       "": "Отмена"
     },
     "About": {
       "": "О программе"
+    }
+  },
+  "src/cgsand/gui/hex_editor.nim": {
+    "Unable to read file:": {
+      "": "Unable to read file:"
     }
   },
   "src/cgsand/gui/breadcrumbs.nim": {
@@ -220,8 +228,8 @@
     }
   },
   "src/cgsand/gui/settings.nim": {
-    "Dark": {
-      "": "Тёмная"
+    "Diagnostics": {
+      "": "Диагностика"
     },
     "nimsuggest": {
       "": "nimsuggest"
@@ -244,11 +252,11 @@
     "Theme": {
       "": "Тема"
     },
+    "Dark": {
+      "": "Тёмная"
+    },
     "Light": {
       "": "Светлая"
-    },
-    "Diagnostics": {
-      "": "Диагностика"
     }
   },
   "src/cgsand/gui/find_replace.nim": {

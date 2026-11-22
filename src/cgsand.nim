@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin
 import pkg/sigui/[uibase, window, mouseArea, animations, windowCreation]
 import pkg/toscel/dialogs
-import ./cgsand/gui/[code_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, scene_tree, activity_bar, settings, find_replace]
+import ./cgsand/gui/[code_editor, hex_editor, document_view, title_bar, terminal, splitter, breadcrumbs, file_tree, scene_tree, activity_bar, settings, find_replace]
 import ./cgsand/logic/[configuration, scripts, file_openers, shortcuts]
 import ./cgsand/logic/world_view/[renderer]
 
@@ -26,6 +26,7 @@ type
     window*: UiWindow
     documentView*: DocumentView
     codeEditor*: CodeEditor
+    hexEditor*: HexEditor
     findPanel*: FindReplacePanel
     fileTree*: FileTree
     sceneTree*: SceneTree
@@ -53,6 +54,10 @@ proc setupApp*(win: UiWindow): CgsandApp =
   ##   win.frame()
   var app = CgsandApp(window: win)
   result = app
+
+  # whether the editor pane currently shows the hex editor (a binary file)
+  # instead of the code editor; switched by the file openers
+  var hexShown = false.property
 
   win.makeLayout:
     this.clearColor = "#00000000".color
@@ -128,9 +133,13 @@ proc setupApp*(win: UiWindow): CgsandApp =
 
 
       - DocumentView.new as app.documentView:
+        # the editor pane edge; anchors are used instead of the code editor's
+        # visibility because the collapsed code editor resolves its `right`
+        # anchor to zero size (while the hex editor may still be shown)
         this.left = binding:
-          if app.codeEditor.visibility[] == collapsed: parent.left
-          else: app.codeEditor.right
+          if config.codeEditorVisible[]:
+            (if hexShown[]: app.hexEditor.right else: app.codeEditor.right)
+          else: parent.left
         this.right = binding:
           if app.terminal.visibility[] == collapsed: parent.right
           else: app.terminal.left
@@ -153,7 +162,7 @@ proc setupApp*(win: UiWindow): CgsandApp =
           (if config.fileTreeVisible[] and config.leftPanelView[] == "files": fileTreePanelWidth else: 0'f32)
         visibility = binding:
           if config.fileTreeVisible[] and config.leftPanelView[] == "files" and
-              app.codeEditor.visibility[] == Visibility.visible:
+              config.codeEditorVisible[]:
             Visibility.visible
           else: Visibility.collapsed
 
@@ -169,7 +178,7 @@ proc setupApp*(win: UiWindow): CgsandApp =
           (if config.fileTreeVisible[] and config.leftPanelView[] == "scene": fileTreePanelWidth else: 0'f32)
         visibility = binding:
           if config.fileTreeVisible[] and config.leftPanelView[] == "scene" and
-              app.codeEditor.visibility[] == Visibility.visible:
+              config.codeEditorVisible[]:
             Visibility.visible
           else: Visibility.collapsed
 
@@ -187,20 +196,39 @@ proc setupApp*(win: UiWindow): CgsandApp =
         this.fillVertical(parent)
         top = app.titleBar.bottom + 24
         bottom = parent.bottom
-        visibility = if config.codeEditorVisible[]: Visibility.visible else: Visibility.collapsed
-
-        on this.visibility.changed:
-          config.codeEditorVisible[] = this.visibility[] == visible
-          save(config)
-
-        on this.content.path.changed:
-          config.scriptFile[] = this.content.path[]
-
-      - Breadcrumbs(fillHorizontal(app.codeEditor)) as app.breadcrumbs:
-        top = app.titleBar.bottom
-        bottom = app.codeEditor.top
         visibility = binding:
-          if app.codeEditor.visibility[] == Visibility.visible: Visibility.visible
+          if config.codeEditorVisible[] and not hexShown[]: Visibility.visible
+          else: Visibility.collapsed
+
+
+      - HexEditor.new as app.hexEditor:
+        # the same area of the editor pane as the code editor, so only one of
+        # the two editors is visible at a time (see hexShown below)
+        w = binding: round(
+          parent.w[] * config.codeEditorPortion[] /
+          (config.codeEditorPortion[] + config.previewPortion[] + config.terminalPortion[])
+        ) - activityBarWidth - app.fileTree.w[] - app.sceneTree.w[]
+        this.left = binding:
+          parent.left + activityBarWidth + app.fileTree.w[] + app.sceneTree.w[]
+        this.fillVertical(parent)
+        top = app.titleBar.bottom + 24
+        bottom = parent.bottom
+        visibility = binding:
+          if config.codeEditorVisible[] and hexShown[]: Visibility.visible
+          else: Visibility.collapsed
+
+      - Breadcrumbs() as app.breadcrumbs:
+        # the same horizontal span as the editor pane; anchored to the editor
+        # that is currently shown, because the collapsed one resolves its
+        # anchors to zero size
+        this.left = binding:
+          (if hexShown[]: app.hexEditor.left else: app.codeEditor.left)
+        this.right = binding:
+          (if hexShown[]: app.hexEditor.right else: app.codeEditor.right)
+        top = app.titleBar.bottom
+        bottom = app.titleBar.bottom + 24
+        visibility = binding:
+          if config.codeEditorVisible[]: Visibility.visible
           else: Visibility.collapsed
         rootPath = getCurrentDir()
         currentFile = binding: config.scriptFile[]
@@ -220,7 +248,7 @@ proc setupApp*(win: UiWindow): CgsandApp =
           config.terminalVisible[] = this.visibility[] == visible
 
 
-      - TitleBar(codeEditor: app.codeEditor, terminal: app.terminal) as app.titleBar:
+      - TitleBar(codeEditor: app.codeEditor, hexEditor: app.hexEditor, terminal: app.terminal) as app.titleBar:
         this.fillHorizontal(parent)
         h = 40
 
@@ -256,7 +284,15 @@ proc setupApp*(win: UiWindow): CgsandApp =
 
 
       - Splitter.new:  # (codeEditor / document view)
-        this.achor = app.codeEditor.right
+        # hugs the editor pane edge; anchored to the editor that is currently
+        # shown, because the collapsed one resolves its anchors to zero size
+        this.fillVertical(parent)
+        this.left = binding:
+          (if hexShown[]: app.hexEditor.right else: app.codeEditor.right) - 2
+        this.right = binding:
+          (if hexShown[]: app.hexEditor.right else: app.codeEditor.right) + 2
+        visibility = binding:
+          (if config.codeEditorVisible[]: Visibility.visible else: Visibility.collapsed)
         anchorGlobalX = binding:
           app.codeEditor.globalX[] - activityBarWidth - app.fileTree.w[] - app.sceneTree.w[]
 
@@ -286,7 +322,10 @@ proc setupApp*(win: UiWindow): CgsandApp =
     app.documentView.outputChannel[] = app.terminal.outputChannel
 
 
-    let fileOpener = @[FileOpener CodeEditorFileOpener(editor: app.codeEditor)]
+    let fileOpener = @[
+      FileOpener HexEditorFileOpener(editor: app.hexEditor),
+      FileOpener CodeEditorFileOpener(editor: app.codeEditor),
+    ]
 
     app.titleBar.fileOpener[] = fileOpener
     app.terminal.fileOpener = fileOpener
@@ -294,9 +333,34 @@ proc setupApp*(win: UiWindow): CgsandApp =
     app.fileTree.fileOpener[] = fileOpener
     app.sceneTree.fileOpener[] = fileOpener
 
+    # the editor pane shows the hex editor while the opened file is binary
+    # and the code editor otherwise; the current file of the app follows
+    # whichever editor opened a file last
+    app.hexEditor.openedFile.connectTo app.hexEditor:
+      hexShown[] = true
+      config.scriptFile[] = app.hexEditor.content.path[]
+    app.codeEditor.openedFile.connectTo app.codeEditor:
+      hexShown[] = false
+      config.scriptFile[] = app.codeEditor.content.path[]
+
     # find & replace panel for the code editor, reacts to the editor
     # Ctrl+F / Ctrl+H / F3 / Shift+F3 shortcuts
     app.findPanel = connectFindReplace(app.codeEditor)
+
+
+    # the startup file (the current script) goes through the opener chain too,
+    # so a binary file opens in the hex editor like any other
+    block openStartupFile:
+      let target = Location(path: config.scriptFile[])
+      var opened = false
+      for opener in fileOpener:
+        if opener.canOpen(target):
+          opener.open(target)
+          opened = true
+          break
+      if not opened:
+        # no opener accepted it — show the reason in the code editor
+        app.codeEditor.open(target)
 
 
     on DropEvent:

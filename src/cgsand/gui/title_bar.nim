@@ -6,7 +6,7 @@ import pkg/sigui/[uibase, mouseArea, animations, scrollArea, windowCreation]
 import pkg/toscel/[colors, fonts, comboBox, lineEdit, button, panel, label, listWidget, menuBar, modalOverlay, dialogs]
 import ../logic/[configuration, file_openers, shortcuts, appinfo]
 import ../logic/world_view/[pdf_renderer]
-import ./[icons, code_editor]
+import ./[icons, code_editor, hex_editor]
 
 type
   BrowserItem = object
@@ -25,6 +25,9 @@ type
 
   TitleBar* = ref object of Uiobj
     codeEditor*: CodeEditor
+    hexEditor*: HexEditor
+      ## shown in the editor pane instead of the code editor while the opened
+      ## file is binary
     terminal*: Uiobj
     currentFile*: Property[string]
     doc*: Property[ptr World]
@@ -142,22 +145,41 @@ proc openScript*(this: TitleBar) =
   )
 
 
+proc hexEditorShown*(this: TitleBar): bool =
+  ## whether the editor pane currently shows the hex editor
+  this.hexEditor != nil and this.hexEditor.visibility[] == visible
+
+
 proc saveScriptAs*(this: TitleBar) =
   let editor = this.codeEditor
   if editor == nil: return
 
   let defaultPath =
-    if editor.content.path[].len > 0: editor.content.path[]
+    if this.hexEditorShown() and this.hexEditor.content.path[].len > 0:
+      this.hexEditor.content.path[]
+    elif editor.content.path[].len > 0: editor.content.path[]
     else: getCurrentDir() / "document.nim"
 
   saveFilePanel(tr"Save file as", defaultPath,
     proc(path: string) =
-      editor.content.path[] = path
-      editor.content.saveFile(),
+      if this.hexEditorShown():
+        this.hexEditor.content.path[] = path
+        this.hexEditor.content.saveFile()
+      else:
+        editor.content.path[] = path
+        editor.content.saveFile(),
   )
 
 
 proc saveScript*(this: TitleBar) =
+  if this.hexEditorShown():
+    # the binary file shown in the hex editor is what needs saving
+    if this.hexEditor.content.path[].len > 0:
+      this.hexEditor.content.saveFile()
+    else:
+      this.saveScriptAs()
+    return
+
   let editor = this.codeEditor
   if editor == nil: return
 
@@ -209,25 +231,24 @@ proc rebuildMenuBar(this: TitleBar) =
     MenuEntry(
       text: tr"Find",
       shortcut: shortcutDisplay("edit.find"),
-      disabled: proc(): bool = not config.codeEditorVisible[],
+      disabled: proc(): bool = not config.codeEditorVisible[] or this.hexEditorShown(),
       action: proc() = this.codeEditor.findRequested.emit(),
     ),
     MenuEntry(
       text: tr"Replace",
       shortcut: shortcutDisplay("edit.replace"),
-      disabled: proc(): bool = not config.codeEditorVisible[],
+      disabled: proc(): bool = not config.codeEditorVisible[] or this.hexEditorShown(),
       action: proc() = this.codeEditor.replaceRequested.emit(),
     ),
   ])
 
   menuBar.addMenu(tr"View", @[
     MenuEntry(
-      text: tr"Code",
+      text: tr"Editor",
       checkable: true,
       checked: proc(): bool = config.codeEditorVisible[],
       action: proc() =
-        this.codeEditor.visibility[] =
-          (if config.codeEditorVisible[]: Visibility.collapsed else: Visibility.visible),
+        config.codeEditorVisible[] = not config.codeEditorVisible[]
     ),
     MenuEntry(
       text: tr"Terminal",
