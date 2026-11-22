@@ -86,7 +86,13 @@ method init(this: TitleButton) =
 
 
 proc getDirItems*(dir: string): seq[BrowserItem] =
+  ## items of `dir`: ".." (when there is a parent), then folders first,
+  ## then files, sorted by name
   result = @[]
+
+  let parent = dir.parentDir
+  if parent.len > 0 and parent != dir:
+    result.add(BrowserItem(name: "../", path: parent, isDir: true))
 
   var folders: seq[BrowserItem] = @[]
   var files: seq[BrowserItem] = @[]
@@ -295,8 +301,9 @@ method init*(this: TitleBar) =
       pdfDialog.content.w[] = 500
       pdfDialog.content.h[] = 400
 
-      --- Uiobj.new:  # recreated on language change
-        <--- {update}: config.language[]
+      --- Uiobj.new:  # recreated on language change and on open, so the file
+        # browser is built when the document is already loaded
+        <--- {update}: config.language[]; root.saveFileDialogOpened[]
 
         this.fill(parent.content)
 
@@ -313,8 +320,12 @@ method init*(this: TitleBar) =
           color = binding: colorTheme[].borderOverlay
 
         if root.doc[] != nil:
-          var currentExportDir = getCurrentDir()
-          var currentExportItems = getDirItems(currentExportDir)
+          var exportDir = (
+            if root.currentFile[].len > 0: root.currentFile[].parentDir
+            else: getCurrentDir()
+          ).property
+          var currentExportItems = getDirItems(exportDir[])
+          let fileRowH = (padding_default_vertical * 2 + fontSize_default).float32
 
           - Label.new:
             left = parent.left + 14
@@ -329,23 +340,28 @@ method init*(this: TitleBar) =
             color = binding: colorTheme[].fgMuted
             fontSize = 14
 
-          - ListWidget.new as file_list:
-              left = parent.left + 14
-              right = parent.right - 14
-              top = parent.top + 50
-              bottom = parent.bottom - 100
+          - ScrollArea.new as file_scroll:
+            left = parent.left + 14
+            right = parent.right - 14
+            top = parent.top + 50
+            bottom = parent.bottom - 100
 
+            - ListWidget.new as file_list:
+              this.fillHorizontal(parent)
+              # exact rows height when it overflows the area (so it scrolls),
+              # otherwise the full area height (like a non-scrollable list)
+              h = binding: max(parent.h[], file_list.items[].len.float32 * fileRowH)
               items = currentExportItems.mapIt(it.name)
 
           - Label.new as title_label:
             left = parent.left + 14
-            centerY = file_list.bottom + 32
+            centerY = file_scroll.bottom + 28
             text = tr"Name:"
             fontSize = 14
 
           - ComboBox.new as file_type:
             right = parent.right - 14
-            centerY = file_list.bottom + 32
+            centerY = file_scroll.bottom + 28
             w = 100
             otherTextCanBeEntered = false
             fitOptionsWidth = false
@@ -357,49 +373,58 @@ method init*(this: TitleBar) =
             if idx >= 0 and idx < currentExportItems.len:
               let item = currentExportItems[idx]
               if item.isDir:
-                currentExportDir = item.path
-                currentExportItems = getDirItems(currentExportDir)
+                exportDir[] = item.path
+                currentExportItems = getDirItems(exportDir[])
                 file_list.items[] = currentExportItems.mapIt(it.name)
                 file_list.selectedItem[] = -1
+                file_scroll.scrollY.setWithoutTransition 0
+                file_scroll.targetY[] = 0
               else:
                 filename.text[] = item.name.changeFileExt("")
 
           - LineEdit.new as filename:
             right = file_type.left - 10
             left = title_label.right + 10
-            centerY = file_list.bottom + 32
+            centerY = file_scroll.bottom + 28
             text = "document" # Default name
-
-          - Label.new as fullpath:
-            left = parent.left + 14
-            centerY = file_type.bottom + 32
-            text = binding:
-              root.currentFile[].parentDir / (filename.text[] & ".pdf")
-            color = binding: colorTheme[].fgMuted
-            fontSize = 14
 
           - Button.new as save_button:
             right = parent.right - 14
-            centerY = file_type.bottom + 32
+            centerY = file_scroll.bottom + 66
             text = tr"Save"
             accent = true
 
             on this.activated:
               if root.doc[] == nil or root.doc[][] == nil: return
-              let r = PdfRenerer(doc: root.doc[])
-              let targetPath = fullpath.text[]
-              if targetPath != "":
-                writePdf targetPath, r
-                root.saveFileDialogOpened[] = false
+              if filename.text[].len == 0: return
+              let targetPath = exportDir[] / filename.text[].addFileExt("pdf")
+              writePdf targetPath, PdfRenerer(doc: root.doc[])
+              root.saveFileDialogOpened[] = false
 
 
           - Button.new as cancel_button:
             right = save_button.left - 10
-            centerY = file_type.bottom + 32
+            centerY = file_scroll.bottom + 66
             text = tr"Cancel"
 
             on this.activated:
               root.saveFileDialogOpened[] = false
+
+
+          - ClipRect.new:  # full path, clipped from the left so the file name
+            # (the tail of the path) always stays visible
+            left = parent.left + 14
+            right = cancel_button.left - 10
+            centerY = file_scroll.bottom + 66
+            h = binding: fullpath.h[]
+
+            - Label.new as fullpath:
+              right = parent.right
+              centerY = parent.center
+              text = binding:
+                exportDir[] / filename.text[].addFileExt("pdf")
+              color = binding: colorTheme[].fgMuted
+              fontSize = 14
 
 
     # --- Key combinations dialog ---

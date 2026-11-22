@@ -99,8 +99,8 @@
     }
   },
   "src/cgsand/gui/title_bar.nim": {
-    "About": {
-      "": "О программе"
+    "File": {
+      "": "Файл"
     },
     "Open": {
       "": "Открыть"
@@ -174,8 +174,8 @@
     "Cancel": {
       "": "Отмена"
     },
-    "File": {
-      "": "Файл"
+    "About": {
+      "": "О программе"
     }
   },
   "src/cgsand/gui/breadcrumbs.nim": {
