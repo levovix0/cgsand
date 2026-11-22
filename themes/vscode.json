@@ -31,6 +31,8 @@
   "sComment": "6A9955",
   "sTodoComment": "FF8C00",
   "sError": "FF4040",
+  "sErrorSquiggle": "F14C4C",
+  "sWarningSquiggle": "CCA700",
   "sLineNumber": "858585",
   "sSelection": "3366B3",
   "sWordHighlight": "3D4D61",

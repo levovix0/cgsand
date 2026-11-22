@@ -95,6 +95,30 @@ proc buildGeneralPage(page: Uiobj) =
       on this.optionSelected:
         config.uiTheme[] = (if this.selectedOption[] == 1: "light" else: "dark")
 
+    # code editor diagnostics backend
+    - Label.new:
+      left = parent.left
+      centerY = parent.top + 108
+      text = tr"Diagnostics"
+
+    - ComboBox.new as diagnosticsCombo:
+      right = parent.right
+      centerY = parent.top + 108
+      w = 160
+      otherTextCanBeEntered = false
+      fitOptionsWidth = false
+      options = @[tr"Off", tr"nimsuggest", tr"nim check"]
+      selectedOption = (case config.diagnosticsBackend[]
+        of "off": 0
+        of "nimCheck": 2
+        else: 1)
+
+      on this.optionSelected:
+        config.diagnosticsBackend[] = (case this.selectedOption[]
+          of 0: "off"
+          of 2: "nimCheck"
+          else: "nimsuggest")
+
 
 registerSettingsPage("general", generalPageTitle, buildGeneralPage)
 

@@ -1,8 +1,10 @@
-import std/[sets, os, times]
+import std/[sets, os, strutils, times]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, events, scrollArea, mouseArea]
-import ../logic/[configuration, code_editor, asyncio, editor_state, file_openers, shortcuts]
+import pkg/sigui/rendering/rice_backend
+import pkg/rice/[paths, contextutils]
+import ../logic/[configuration, code_editor, asyncio, diagnostics, editor_state, file_openers, shortcuts]
 import ./[highlighted_text]
 
 
@@ -21,6 +23,13 @@ type
     editor: CodeEditorContent
     menuX*, menuY*: Property[float32]
     cutEnabled*, copyEnabled*, pasteEnabled*: Property[bool]
+
+  ShownDiagnostic* = object
+    ## a compiler diagnostic prepared for rendering in the editor
+    line*: int              ## 0-based editor line index
+    range*: Slice[int]      ## rune range to underline
+    severity*: DiagnosticSeverity
+    message*: string        ## full message of the diagnostic
 
   CodeEditorContent* = ref object of Uiobj
     font*: Property[Font]
@@ -62,6 +71,25 @@ type
       ## state of the find/replace search; managed together with the
       ## find/replace panel (gui/find_replace.nim)
 
+    # compiler diagnostics highlighting (see logic/diagnostics.nim)
+    diagnostics*: seq[Diagnostic]
+      ## all messages of the last completed check
+    diagnosticsShown*: seq[ShownDiagnostic]
+      ## messages for the current file, converted into editor coordinates
+    diagnosticsDirty: bool
+      ## the text changed since the last requested check
+    diagnosticsAwaiting: bool
+      ## a check is running and its results have not been received yet
+    lastDiagnosticsEdit: float
+      ## epochTime of the last text change
+    nimsuggest: NimsuggestClient
+    nimsuggestPath: string
+      ## project file the current nimsuggest process was started for
+    lastNimsuggestStart: float
+      ## epochTime of the last nimsuggest spawn, so a crashing process is
+      ## not restarted on every frame
+    nimCheckRun: NimCheckRun
+
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
     scrollArea*: ScrollArea
@@ -80,6 +108,11 @@ const ScrollBarWidth = 5'f32
 const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
 const FileReloadCheckInterval = 0.5'f32
+const DiagnosticsDebounce = 0.5'f32
+  ## delay between a text edit and running the diagnostics backend
+const NimsuggestRestartCooldown = 3.0'f32
+  ## minimum time between nimsuggest spawns, so a crashing process is not
+  ## restarted on every frame
 const MaxUndoHistory = 15
 const ContextMenuItemH = 24'f32
 const ContextMenuWidth = 130'f32
@@ -94,6 +127,10 @@ registerComponent ContextMenu
 
 proc textOffsetX(this: CodeEditorContent): float32 =
   this.breakpointBarWidth[] + this.lineNumberBarWidth[] + this.changesBarWidth[] + this.arrowBarWidth[]
+
+
+proc markDiagnosticsStale(this: CodeEditorContent)
+  ## remembers that the text changed and the diagnostics should be rechecked
 
 proc lineNumberBarOffsetX(this: CodeEditorContent): float32 =
   this.breakpointBarWidth[]
@@ -114,6 +151,7 @@ proc updateHeight*(this: CodeEditorContent) =
 proc pushUndoSnapshot*(this: CodeEditorContent) =
   if this.arrangement == nil: return
   this.search.dirty = true
+  this.markDiagnosticsStale()
   if this.undoHistory.len >= MaxUndoHistory:
     this.undoHistory.delete(0)
   this.undoHistory.add this.arrangement.snapshot()
@@ -197,6 +235,144 @@ proc closeSearch*(this: CodeEditorContent) =
   redraw(this)
 
 
+# ----- compiler diagnostics (see logic/diagnostics.nim) -----
+
+proc markDiagnosticsStale(this: CodeEditorContent) =
+  ## remember that the text changed and the diagnostics should be rechecked
+  this.diagnosticsDirty = true
+  this.lastDiagnosticsEdit = epochTime()
+
+
+proc clearDiagnostics(this: CodeEditorContent) =
+  this.diagnostics.setLen(0)
+  this.diagnosticsShown.setLen(0)
+
+
+proc updateShownDiagnostics(this: CodeEditorContent) =
+  ## filters the latest check results for the current file and converts their
+  ## positions into editor arrangement coordinates
+  this.diagnosticsShown.setLen(0)
+  if this.arrangement == nil: return
+  let currentPath = this.path[].absolutePath
+  for d in this.diagnostics:
+    if d.file.absolutePath != currentPath: continue
+    if d.line < 0 or d.line >= this.arrangement.lines.len: continue
+    this.diagnosticsShown.add ShownDiagnostic(
+      line: d.line,
+      range: diagnosticRange(this.arrangement.lines[d.line].runes, d.col),
+      severity: d.severity,
+      message: d.message,
+    )
+
+
+proc applyDiagnostics(this: CodeEditorContent, results: seq[Diagnostic]) =
+  this.diagnostics = results
+  this.updateShownDiagnostics()
+  redraw(this)
+
+
+proc stopDiagnosticsTools(this: CodeEditorContent) =
+  ## stops the running diagnostics backend, if any
+  if this.nimsuggest != nil:
+    this.nimsuggest.stop()
+    this.nimsuggest = nil
+  if this.nimCheckRun != nil:
+    this.nimCheckRun.stop()
+    this.nimCheckRun = nil
+  this.nimsuggestPath = ""
+
+
+proc updateNimsuggestDiagnostics(this: CodeEditorContent) =
+  ## polls the nimsuggest process and requests a new check after the debounce
+  if this.diagnosticsAwaiting:
+    let (done, results) = this.nimsuggest.pollResults()
+    if done:
+      this.diagnosticsAwaiting = false
+      if this.nimsuggest.finished() and results.len == 0:
+        # the process died before answering — check again after its restart
+        this.diagnosticsDirty = true
+      else:
+        this.applyDiagnostics(results)
+
+  if this.diagnosticsDirty and not this.diagnosticsAwaiting and
+      epochTime() - this.lastDiagnosticsEdit >= DiagnosticsDebounce and
+      not fileSavesPending():
+    this.diagnosticsDirty = false
+    this.diagnosticsAwaiting = true
+    this.nimsuggest.requestCheck(this.path[].absolutePath)
+
+
+proc updateNimCheckDiagnostics(this: CodeEditorContent) =
+  ## polls the nim check process and starts a new one after the debounce
+  if this.nimCheckRun != nil:
+    let (done, results) = this.nimCheckRun.pollResults()
+    if done:
+      this.nimCheckRun.stop()
+      this.nimCheckRun = nil
+      this.diagnosticsAwaiting = false
+      this.applyDiagnostics(results)
+
+  if this.diagnosticsDirty and this.nimCheckRun == nil and
+      epochTime() - this.lastDiagnosticsEdit >= DiagnosticsDebounce and
+      not fileSavesPending():
+    this.diagnosticsDirty = false
+    this.diagnosticsAwaiting = true
+    this.nimCheckRun = startNimCheck(this.path[].absolutePath)
+    if this.nimCheckRun == nil:
+      this.diagnosticsAwaiting = false
+
+
+proc updateDiagnostics(this: CodeEditorContent) =
+  ## drives the diagnostics backend: (re)starts it, polls the results and
+  ## applies them to the editor (called on every frame tick)
+  let backend = config.diagnosticsBackend[]
+  if backend == "off" or this.path[].len == 0 or this.arrangement == nil or
+      this.path[].splitFile.ext != ".nim":
+    if this.nimsuggest != nil or this.nimCheckRun != nil:
+      this.stopDiagnosticsTools()
+    if this.diagnostics.len > 0:
+      this.clearDiagnostics()
+      redraw(this)
+    return
+
+  let absPath = this.path[].absolutePath
+
+  if backend == "nimsuggest":
+    if this.nimCheckRun != nil:
+      this.nimCheckRun.stop()
+      this.nimCheckRun = nil
+
+    if this.nimsuggest != nil and
+        (this.nimsuggest.finished() or this.nimsuggestPath != absPath):
+      # the process died, or another file was opened — restart it
+      this.nimsuggest.stop()
+      this.nimsuggest = nil
+      this.nimsuggestPath = ""
+      this.diagnosticsAwaiting = false
+
+    if this.nimsuggest == nil and
+        epochTime() - this.lastNimsuggestStart >= NimsuggestRestartCooldown:
+      this.nimsuggest = newNimsuggestClient(absPath)
+      this.nimsuggestPath = absPath
+      this.lastNimsuggestStart = epochTime()
+      if this.nimsuggest == nil:
+        # nimsuggest is not installed — fall back to nim check
+        this.updateNimCheckDiagnostics()
+        return
+
+    if this.nimsuggest != nil:
+      this.updateNimsuggestDiagnostics()
+    return
+
+  # backend == "nimCheck"
+  if this.nimsuggest != nil:
+    this.nimsuggest.stop()
+    this.nimsuggest = nil
+    this.nimsuggestPath = ""
+    this.diagnosticsAwaiting = false
+  this.updateNimCheckDiagnostics()
+
+
 proc drawSelectionRange(
   this: CodeEditorContent,
   ctx: DrawContext,
@@ -243,6 +419,117 @@ proc drawSelectionRange(
       ),
       fill,
     )
+
+
+proc drawSquiggle(
+  this: CodeEditorContent,
+  ctx: DrawContext,
+  line: CodeArrangementLine,
+  selection: Slice[int],
+  color: Color,
+) =
+  ## wavy underline under the given rune range, following wrapped sub-rows
+  let textOffsetX = this.textOffsetX
+  let scale = this.root.uiScale[]
+  let lineH = this.font[].lineHeightPixels
+  let text = line.arrangement
+
+  let last = min(selection.b, text.runes.len)
+  let first = min(selection.a, last)
+  if last - first <= 0: return
+
+  let amplitude = 1.4'f32 * scale
+  let period = 5'f32 * scale
+  let thickness = 1.2'f32 * scale
+  let bottomGap = 1.2'f32 * scale
+  let waveTopY = lineH - (amplitude * 2 + bottomGap)
+
+  # the mesh is mapped through the projection directly (unlike fillRect,
+  # which applies the clip rect offset), so the origin of the enclosing
+  # clip rect must be subtracted here
+  let riceCtx = RiceDrawContext(ctx)
+  let clipOrigin =
+    if riceCtx.clipStack.len > 0: riceCtx.clipStack[^1].pos
+    else: vec2(0'f32, 0'f32)
+
+  for span in text.lines:
+    let rowFirst = span[0]
+    let rowLast = span[1]
+    if rowFirst > rowLast: continue
+    if first > rowLast: continue
+    if last <= rowFirst: continue
+    let subRowY = line.rect.y + text.selectionRects[rowFirst].y
+    let leftRune = max(first, rowFirst)
+    let startX = text.selectionRects[leftRune].x
+    let rightRune = min(last - 1, rowLast)
+    let endX = text.selectionRects[rightRune].x + text.selectionRects[rightRune].w
+    let w = endX - startX
+    if w <= 1'f32: continue
+
+    var path = newPath()
+    path.moveTo(vec2(0, amplitude))
+    var x = 0'f32
+    var up = true
+    while x < w:
+      let nx = min(x + period / 2, w)
+      path.lineTo(vec2(nx, if up: 0'f32 else: amplitude * 2))
+      up = not up
+      x = nx
+
+    let pos = this.globalXy + vec2(textOffsetX + startX, subRowY + waveTopY) - clipOrigin
+    riceCtx.raw.withPushPopIf blendRgbx, true:
+      riceCtx.raw.fill2dMeshFlat(
+        path.toStrokeMesh(thickness, ButtCap),
+        color,
+        translate(vec3(pos.x, pos.y, 0)),
+      )
+
+
+proc drawDiagnosticMessage(
+  this: CodeEditorContent,
+  ctx: DrawContext,
+  line: CodeArrangementLine,
+  scaledFont: Font,
+  spaceW: float32,
+  message: string,
+  color: Color,
+) =
+  ## the diagnostic message in the severity color at the end of the line,
+  ## over a translucent band of the same color; only the first line of a
+  ## multi-line message is shown, the rest is cut off by the editor edge
+  let text = message.splitLines()
+  if text.len == 0 or text[0].len == 0: return
+
+  let textOffsetX = this.textOffsetX
+  let scale = this.root.uiScale[]
+  let lineH = this.font[].lineHeightPixels
+  let arr = line.arrangement
+
+  # after the end of the line content, on its last wrapped sub-row
+  var endX = 0'f32
+  var subRowY = 0'f32
+  if arr.runes.len > 0:
+    endX = arr.selectionRects[^1].x + arr.selectionRects[^1].w
+    subRowY = arr.selectionRects[arr.lines[^1][0]].y
+
+  let bandW = this.w[] - textOffsetX - endX
+  if bandW > 0:
+    var bandColor = color
+    bandColor.a = bandColor.a * 0.15'f32
+    ctx.fillRect(
+      rect(
+        this.globalXy + vec2(textOffsetX + endX, line.rect.y + subRowY),
+        vec2(bandW, lineH),
+      ),
+      bandColor,
+    )
+
+  ctx.drawRasterText_physicalScale(
+    this.globalXy + vec2(textOffsetX + endX + spaceW * 3, line.rect.y + subRowY),
+    typeset(scaledFont, text[0]),
+    color,
+    origin = vec2(0, 0),
+  )
 
 
 method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
@@ -345,6 +632,58 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       line.arrangement,
       line.kinds,
     )
+
+    # compiler diagnostics: a mark in the left gutter, a squiggle underline
+    # and the message text at the end of the line
+    var primaryDiagI = -1  # the most severe diagnostic of this line
+    block findPrimaryDiagnostic:
+      var firstWarningI = -1
+      for diagI, diag in this.diagnosticsShown:
+        if diag.line != i: continue
+        if diag.severity == dsError:
+          primaryDiagI = diagI
+          break findPrimaryDiagnostic
+        if firstWarningI < 0: firstWarningI = diagI
+      primaryDiagI = firstWarningI
+
+    if primaryDiagI >= 0:
+      let diagColor = case this.diagnosticsShown[primaryDiagI].severity
+        of dsError: colorTheme[].sErrorSquiggle
+        of dsWarning: colorTheme[].sWarningSquiggle
+
+      let lineH = this.font[].lineHeightPixels
+      let markH = min(lineH * 0.6, 10'f32 * this.root.uiScale[])
+      ctx.fillRect(
+        rect(
+          this.globalXy + vec2(3'f32, line.rect.y + (lineH - markH) / 2),
+          vec2(3'f32, markH),
+        ),
+        diagColor,
+      )
+
+    for diag in this.diagnosticsShown:
+      if diag.line != i: continue
+      this.drawSquiggle(
+        ctx,
+        line,
+        diag.range,
+        case diag.severity
+        of dsError: colorTheme[].sErrorSquiggle
+        of dsWarning: colorTheme[].sWarningSquiggle,
+      )
+
+    if primaryDiagI >= 0:
+      let diag = this.diagnosticsShown[primaryDiagI]
+      this.drawDiagnosticMessage(
+        ctx,
+        line,
+        scaledFont,
+        spaceW,
+        diag.message,
+        case diag.severity
+        of dsError: colorTheme[].sErrorSquiggle
+        of dsWarning: colorTheme[].sWarningSquiggle,
+      )
 
     if currentFocus[] == this:
       for cursor in this.arrangement.cursors:
@@ -516,6 +855,7 @@ proc undo(this: CodeEditorContent): bool =
   let previous = this.undoHistory.pop()
   this.wordHighlightSuppressed = true
   this.search.dirty = true
+  this.markDiagnosticsStale()
   this.arrangement = previous.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.updateHeight()
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -850,6 +1190,7 @@ proc setArrangement(this: CodeEditorContent, text: string) =
   # todo: if only the width changed, update arrangement instead of regenerating it
   this.arrangement = text.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.wordHighlightSuppressed = false
+  this.markDiagnosticsStale()
   this.updateHeight()
 
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -896,12 +1237,19 @@ method init*(this: CodeEditorContent) =
 
   this.font{} = font_monospace.withSize(12)
 
+  # diagnostics of one file must not be shown for another one
+  this.path.changed.connectTo this:
+    this.clearDiagnostics()
+
   this.root.onTick.connectTo this:
     # automatic reload of the file when it is changed on disk by another program
     if this.path[].len > 0 and this.arrangement != nil and
         epochTime() - this.lastReloadCheck >= FileReloadCheckInterval:
       this.lastReloadCheck = epochTime()
       this.checkExternalChanges()
+
+    # compiler diagnostics: run the backend and apply its results
+    this.updateDiagnostics()
 
     # remember the cursor position for each opened file
     this.recordCursorState()

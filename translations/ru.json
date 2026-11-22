@@ -220,6 +220,15 @@
     }
   },
   "src/cgsand/gui/settings.nim": {
+    "Dark": {
+      "": "Тёмная"
+    },
+    "nimsuggest": {
+      "": "nimsuggest"
+    },
+    "Off": {
+      "": "Выкл"
+    },
     "General": {
       "": "Общие"
     },
@@ -229,14 +238,17 @@
     "Language": {
       "": "Язык"
     },
+    "nim check": {
+      "": "nim check"
+    },
     "Theme": {
       "": "Тема"
     },
-    "Dark": {
-      "": "Тёмная"
-    },
     "Light": {
       "": "Светлая"
+    },
+    "Diagnostics": {
+      "": "Диагностика"
     }
   },
   "src/cgsand/gui/find_replace.nim": {

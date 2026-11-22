@@ -50,6 +50,11 @@ type
     sTodoComment*: Color
     sError*: Color
 
+    sErrorSquiggle*: Color
+      ## squiggle underline under lines with errors in the code editor
+    sWarningSquiggle*: Color
+      ## squiggle underline under lines with warnings in the code editor
+
     sLineNumber*: Color
 
     sSelection*: Color
@@ -172,6 +177,9 @@ genconfig Config:
   ## terminal and code editor font: a font file path or a font name
   ## (e.g. "firacode"), empty = auto-detect a monospace system font
   fontMonospace: string = ""
+
+  ## code editor diagnostics backend: "off", "nimsuggest" or "nimCheck"
+  diagnosticsBackend: string = "nimCheck"
 
 
 
