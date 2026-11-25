@@ -17,7 +17,7 @@
 ## pages are rebuilt when the selected page or the language changes.
 
 import pkg/sigui/[uibase, mouseArea, scrollArea, animations]
-import pkg/toscel/[colors, fonts, comboBox, label, menuBar, modalOverlay, transitions]
+import pkg/toscel/[colors, fonts, comboBox, label, modalOverlay, transitions]
 import ../logic/[configuration]
 
 type

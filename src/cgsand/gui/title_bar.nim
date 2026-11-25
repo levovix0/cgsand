@@ -3,7 +3,7 @@ import pkg/[ecs]
 import pkg/siwin/platforms/any/window
 import pkg/pixie/images
 import pkg/sigui/[uibase, mouseArea, animations, scrollArea, windowCreation]
-import pkg/toscel/[colors, fonts, comboBox, lineEdit, button, panel, label, listWidget, menuBar, modalOverlay, dialogs]
+import pkg/toscel/[colors, fonts, comboBox, lineEdit, button, label, listWidget, menuBar, modalOverlay, dialogs]
 import ../logic/[configuration, file_openers, shortcuts, appinfo]
 import ../logic/world_view/[pdf_renderer]
 import ./[icons, code_editor, hex_editor]

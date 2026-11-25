@@ -3,7 +3,6 @@
 
 import pkg/pixie
 import pkg/sigui/[uibase, mouseArea, animations]
-import pkg/toscel/[colors, transitions]
 import ../logic/configuration
 import ./icons
 

@@ -165,13 +165,6 @@ proc updateHeight*(this: HexEditorContent) =
   this.h[] = this.rowCount().float32 * this.rowHeightPx()
 
 
-proc clampCursor(this: HexEditorContent) =
-  if this.data.len == 0:
-    this.cursor = 0
-  else:
-    this.cursor = this.cursor.clamp(0, this.data.high)
-
-
 proc selectionRange*(this: HexEditorContent): Slice[int] =
   ## selected byte offsets (inclusive), an empty slice when there is none
   if this.anchor < 0 or this.anchor == this.cursor: return 1 .. 0

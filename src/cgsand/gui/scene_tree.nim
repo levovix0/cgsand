@@ -3,11 +3,11 @@
 ## the `doc.add` statement that generated it; clicking an entry moves the code
 ## editor cursor to that location
 
-import std/[strutils, locks]
+import std/[locks]
 import pkg/[ecs]
 import pkg/sigeo/[curves2d]
 import pkg/sigui/[uibase, mouseArea, scrollArea, animations]
-import pkg/toscel/[fonts, transitions, colors, label]
+import pkg/toscel/[fonts, colors, label]
 import ../logic/[configuration, file_openers, scripts]
 import ../lib/[sandbox]
 

@@ -504,7 +504,6 @@ proc drawDiagnosticMessage(
   if text.len == 0 or text[0].len == 0: return
 
   let textOffsetX = this.textOffsetX
-  let scale = this.root.uiScale[]
   let lineH = this.font[].lineHeightPixels
   let arr = line.arrangement
 
