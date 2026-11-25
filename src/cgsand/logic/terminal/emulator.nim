@@ -78,6 +78,11 @@ type
     queryForegroundColor*: Color = ColorDimWhite
     queryBackgroundColor*: Color = ColorDimBlack
 
+    ## color given to text written with the default foreground (plain cells,
+    ## SGR 0 and SGR 39). Switched together with the ui theme by the caller,
+    ## which also applies the switch to already written text via `recolorDefaults`
+    defaultForegroundColor*: Color = ColorDimWhite
+
     ## the inactive screen buffer, swapped with `data` on a switch to/from
     ## the alternate screen (CSI ?47/?1047/?1049, used by vim, nano, ...)
     altData: seq[TerminalCell]
@@ -118,6 +123,23 @@ proc clear*(this: TerminalArrangement) =
   for c in this.data.mitems: c = TerminalCell()
   if not this.usingAltScreen:
     for y in this.rowWrapped.mitems: y = false
+
+
+proc recolorDefaults*(this: TerminalArrangement, oldFg, newFg: Color) =
+  ## replaces the old default foreground color in already written text with a
+  ## new one, leaving colors chosen by the program itself untouched.
+  ## `oldFg` is exactly the color cells get for the default foreground
+  ## (CellFlags default and SGR 39/0), no program can reference it explicitly
+  template recolor(flags: var CellFlags) =
+    if flags.fg == oldFg: flags.fg = newFg
+
+  for c in this.data.mitems: recolor c.flags
+  for c in this.altData.mitems: recolor c.flags
+  for line in this.history.lines.mitems:
+    for c in line.mitems: recolor c.flags
+  recolor this.cursorFlags
+  recolor this.savedCursor.main[1]
+  recolor this.savedCursor.alt[1]
 
 
 proc isBlank(c: TerminalCell): bool =
@@ -690,7 +712,7 @@ proc applySgr(this: TerminalArrangement, params: openArray[int]) =
     let p = params[i]
 
     case p
-    of 0: this.cursorFlags = CellFlags()
+    of 0: this.cursorFlags = CellFlags(fg: this.defaultForegroundColor)
     of 1 .. 9: this.cursorFlags.style.incl SgrStyleOn[p]
     of 22 .. 29: this.cursorFlags.style.excl SgrStyleOff[p]
 
@@ -707,7 +729,7 @@ proc applySgr(this: TerminalArrangement, params: openArray[int]) =
         if p == 38: this.cursorFlags.fg = c
         else: this.cursorFlags.bg = c
         inc i, 4
-    of 39: this.cursorFlags.fg = ColorDimWhite
+    of 39: this.cursorFlags.fg = this.defaultForegroundColor
     of 40..47: this.cursorFlags.bg = AnsiDimColors[p - 40]
     of 49: this.cursorFlags.bg = ColorDimBlack
     of 90..97: this.cursorFlags.fg = AnsiBrightColors[p - 90]

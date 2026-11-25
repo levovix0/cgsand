@@ -1,12 +1,26 @@
 {.used.}
-import pkg/[ecs, sigeo/core, chroma]
+import std/macros
+import pkg/ecs except add
+import pkg/[sigeo/core, chroma]
 import pkg/sigeo/surfaces/[grids]
-export ecs, core, chroma
+export ecs except add
+export core, chroma
 
 when defined(script):
   import std/os
   static: retainTypeIds(currentSourcePath().parentDir / "typeids.txt")
 
+
+
+type
+  SourceLocation* = object
+    ## hidden component, attached to every entity created with `doc.add`:
+    ## the source location of the statement that generated the entity,
+    ## used by the app to jump from the scene tree to the generating code
+
+    file*: string
+    line*: int
+    col*: int
 
 
 type
@@ -116,6 +130,14 @@ converter polygonalSurface3*(grid: Grid3): PolygonalSurface3 =
   result[] = grid
 
 
+template add*(w: World, bodies: varargs[untyped]) =
+  ## same as `ecs.add`, but attaches a hidden `SourceLocation` component
+  ## with the place in the source code that generated the entity
+  ## (replaces `ecs.add` for scripts: `doc.add ...` calls this)
+  let src = instantiationInfo(fullPaths = true)
+  discard ecs.spawn(w, bodies, SourceLocation(file: src.filename, line: src.line, col: src.column))
+
+
 when defined(script) or defined(nimcheck):
   var textSizeImpl* {.exportc: "sandbox_textSizeImpl", dynlib.}: proc(text: string, fontSize: FontSize): vmath.Vec2 {.cdecl.}
   var entityBoundsImpl* {.exportc: "sandbox_entityBoundsImpl", dynlib.}: proc(world: World, eid: EntityId): Bounds2 {.cdecl.}
@@ -190,7 +212,7 @@ proc `[]`*[T](w: World, t: typedesc[T]): var T =
   w.forEach (singletonValue: var T):
     res = singletonValue.addr
   if res == nil:
-    w.add T.default
+    ecs.add(w, T.default)
     w.forEach (singletonValue: var T):
       res = singletonValue.addr
   res[]
@@ -201,7 +223,7 @@ proc `[]=`*[T](w: World, t: typedesc[T], v: T) =
     singletonValue = v
     got = true
   if not got:
-    w.add v
+    ecs.add(w, v)
 
 proc getOrDefault*[T](w: World, t: typedesc[T], v: T): T =
   var res: ptr T
@@ -217,7 +239,7 @@ proc mgetOrPut*[T](w: World, t: typedesc[T], v: T): var T =
   w.forEach (singletonValue: var T):
     res = singletonValue.addr
   if res == nil:
-    w.add v
+    ecs.add(w, v)
     w.forEach (singletonValue: var T):
       res = singletonValue.addr
   res[]

@@ -1,8 +1,10 @@
-import std/[sets, os, times]
+import std/[sets, os, strutils, times]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
-import pkg/sigui/[uibase, scrollArea, mouseArea]
-import ../logic/[configuration, code_editor, asyncio, editor_state, file_openers]
+import pkg/sigui/[uibase, events, scrollArea, mouseArea]
+import pkg/sigui/rendering/rice_backend
+import pkg/rice/[paths, contextutils]
+import ../logic/[configuration, code_editor, asyncio, diagnostics, editor_state, file_openers, shortcuts]
 import ./[highlighted_text]
 
 
@@ -21,6 +23,13 @@ type
     editor: CodeEditorContent
     menuX*, menuY*: Property[float32]
     cutEnabled*, copyEnabled*, pasteEnabled*: Property[bool]
+
+  ShownDiagnostic* = object
+    ## a compiler diagnostic prepared for rendering in the editor
+    line*: int              ## 0-based editor line index
+    range*: Slice[int]      ## rune range to underline
+    severity*: DiagnosticSeverity
+    message*: string        ## full message of the diagnostic
 
   CodeEditorContent* = ref object of Uiobj
     font*: Property[Font]
@@ -58,9 +67,41 @@ type
     wordHighlightSuppressed: bool  ## true right after a text edit, until the cursor is moved freely
     undoHistory: seq[CodeArrangementSnapshot]
 
+    search*: SearchState
+      ## state of the find/replace search; managed together with the
+      ## find/replace panel (gui/find_replace.nim)
+
+    # compiler diagnostics highlighting (see logic/diagnostics.nim)
+    diagnostics*: seq[Diagnostic]
+      ## all messages of the last completed check
+    diagnosticsShown*: seq[ShownDiagnostic]
+      ## messages for the current file, converted into editor coordinates
+    diagnosticsDirty: bool
+      ## the text changed since the last requested check
+    diagnosticsAwaiting: bool
+      ## a check is running and its results have not been received yet
+    lastDiagnosticsEdit: float
+      ## epochTime of the last text change
+    nimsuggest: NimsuggestClient
+    nimsuggestPath: string
+      ## project file the current nimsuggest process was started for
+    lastNimsuggestStart: float
+      ## epochTime of the last nimsuggest spawn, so a crashing process is
+      ## not restarted on every frame
+    nimCheckRun: NimCheckRun
+
   CodeEditor* = ref object of Uiobj
     content*: CodeEditorContent
     scrollArea*: ScrollArea
+    findRequested*: Event[void]
+      ## the "edit.find" (Ctrl+F) shortcut activated
+    replaceRequested*: Event[void]
+      ## the "edit.replace" (Ctrl+H) shortcut activated
+    findNavigateRequested*: Event[bool]
+      ## the "edit.findNext"/"edit.findPrev" shortcuts activated, true = backwards
+    openedFile*: Event[void]
+      ## emitted when a file is opened in this editor (used to switch the
+      ## editor pane between the code editor and the hex editor)
 
   CodeEditorFileOpener* = ref object of FileOpener
     editor*: CodeEditor
@@ -70,6 +111,11 @@ const ScrollBarWidth = 5'f32
 const MultiClickTime = 0.4'f32
 const MultiClickRadius = 6'f32
 const FileReloadCheckInterval = 0.5'f32
+const DiagnosticsDebounce = 0.5'f32
+  ## delay between a text edit and running the diagnostics backend
+const NimsuggestRestartCooldown = 3.0'f32
+  ## minimum time between nimsuggest spawns, so a crashing process is not
+  ## restarted on every frame
 const MaxUndoHistory = 15
 const ContextMenuItemH = 24'f32
 const ContextMenuWidth = 130'f32
@@ -85,6 +131,10 @@ registerComponent ContextMenu
 proc textOffsetX(this: CodeEditorContent): float32 =
   this.breakpointBarWidth[] + this.lineNumberBarWidth[] + this.changesBarWidth[] + this.arrowBarWidth[]
 
+
+proc markDiagnosticsStale(this: CodeEditorContent)
+  ## remembers that the text changed and the diagnostics should be rechecked
+
 proc lineNumberBarOffsetX(this: CodeEditorContent): float32 =
   this.breakpointBarWidth[]
 
@@ -94,24 +144,236 @@ proc arrowBarOffsetX(this: CodeEditorContent): float32 =
 
 
 
-proc updateHeight(this: CodeEditorContent) =
+proc updateHeight*(this: CodeEditorContent) =
   if this.arrangement == nil:
     this.h[] = 0
     return
   this.h[] = this.arrangement.visibleHeight()
 
 
-proc pushUndoSnapshot(this: CodeEditorContent) =
+proc pushUndoSnapshot*(this: CodeEditorContent) =
   if this.arrangement == nil: return
+  this.search.dirty = true
+  this.markDiagnosticsStale()
   if this.undoHistory.len >= MaxUndoHistory:
     this.undoHistory.delete(0)
   this.undoHistory.add this.arrangement.snapshot()
 
 
-proc discardUnchangedUndoSnapshot(this: CodeEditorContent) =
+proc discardUnchangedUndoSnapshot*(this: CodeEditorContent) =
   if this.undoHistory.len > 0 and this.arrangement != nil and
       this.undoHistory[^1].text == this.arrangement.fileContent():
     this.undoHistory.setLen(this.undoHistory.len - 1)
+
+
+proc nearestMatchAfterCursor(arr: CodeArrangement, matches: seq[CursorPos]): int =
+  ## index of the first match starting at or after the cursor position,
+  ## 0 (the first match) when there is no match after it
+  if arr.cursors.len == 0: return 0
+  let c = arr.cursors[0]
+  let cursorPos = (c.line, c.col)
+  for i, m in matches:
+    if (m.anchorLine, m.anchorCol) >= cursorPos: return i
+  return 0
+
+
+proc recomputeSearch*(this: CodeEditorContent) =
+  ## recomputes search matches after the text or the search settings changed.
+  ## Updates only the search state — the current match selection and scrolling
+  ## are handled by the find panel, so this is also safe to call from drawInner
+  this.search.dirty = false
+  if not this.search.active[] or this.arrangement == nil:
+    this.search.matches.setLen(0)
+    this.search.currentI = -1
+    return
+
+  let query = this.search.query[]
+  if query.len == 0:
+    this.search.matches.setLen(0)
+    this.search.currentI = -1
+    this.search.resultsCount[] = 0
+    this.search.status[] = ""
+    return
+
+  let options = searchOptions(this.search.caseSensitive[], this.search.wholeWord[], this.search.regex[])
+  var matches: seq[CursorPos]
+  var status: string
+  try:
+    matches = this.arrangement.findMatches(query, options)
+  except ValueError:
+    status = tr"Invalid regular expression"
+
+  if status.len == 0 and matches.len == 0:
+    status = tr"No results"
+
+  # keep the current match when it still exists in the new text, otherwise
+  # take the nearest match at or after the cursor position
+  let oldCurrentI = this.search.currentI
+  let oldMatches = this.search.matches
+  var newCurrentI = -1
+  if matches.len > 0:
+    if oldCurrentI >= 0 and oldCurrentI < oldMatches.len:
+      let oldMatch = oldMatches[oldCurrentI]
+      for i, m in matches:
+        if m.sameSelection(oldMatch):
+          newCurrentI = i
+          break
+    if newCurrentI < 0:
+      newCurrentI = this.arrangement.nearestMatchAfterCursor(matches)
+
+  this.search.matches = matches
+  this.search.currentI = newCurrentI
+  this.search.resultsCount[] = matches.len
+  this.search.status[] =
+    if status.len > 0: status
+    else: $(newCurrentI + 1) & "/" & $matches.len
+
+
+proc closeSearch*(this: CodeEditorContent) =
+  ## closes the find/replace search, hiding the panel and match highlights
+  if not this.search.active[]: return
+  this.search.active[] = false
+  this.search.dirty = true
+  setFocus this
+  redraw(this)
+
+
+# ----- compiler diagnostics (see logic/diagnostics.nim) -----
+
+proc markDiagnosticsStale(this: CodeEditorContent) =
+  ## remember that the text changed and the diagnostics should be rechecked
+  this.diagnosticsDirty = true
+  this.lastDiagnosticsEdit = epochTime()
+
+
+proc clearDiagnostics(this: CodeEditorContent) =
+  this.diagnostics.setLen(0)
+  this.diagnosticsShown.setLen(0)
+
+
+proc updateShownDiagnostics(this: CodeEditorContent) =
+  ## filters the latest check results for the current file and converts their
+  ## positions into editor arrangement coordinates
+  this.diagnosticsShown.setLen(0)
+  if this.arrangement == nil: return
+  let currentPath = this.path[].absolutePath
+  for d in this.diagnostics:
+    if d.file.absolutePath != currentPath: continue
+    if d.line < 0 or d.line >= this.arrangement.lines.len: continue
+    this.diagnosticsShown.add ShownDiagnostic(
+      line: d.line,
+      range: diagnosticRange(this.arrangement.lines[d.line].runes, d.col),
+      severity: d.severity,
+      message: d.message,
+    )
+
+
+proc applyDiagnostics(this: CodeEditorContent, results: seq[Diagnostic]) =
+  this.diagnostics = results
+  this.updateShownDiagnostics()
+  redraw(this)
+
+
+proc stopDiagnosticsTools(this: CodeEditorContent) =
+  ## stops the running diagnostics backend, if any
+  if this.nimsuggest != nil:
+    this.nimsuggest.stop()
+    this.nimsuggest = nil
+  if this.nimCheckRun != nil:
+    this.nimCheckRun.stop()
+    this.nimCheckRun = nil
+  this.nimsuggestPath = ""
+
+
+proc updateNimsuggestDiagnostics(this: CodeEditorContent) =
+  ## polls the nimsuggest process and requests a new check after the debounce
+  if this.diagnosticsAwaiting:
+    let (done, results) = this.nimsuggest.pollResults()
+    if done:
+      this.diagnosticsAwaiting = false
+      if this.nimsuggest.finished() and results.len == 0:
+        # the process died before answering — check again after its restart
+        this.diagnosticsDirty = true
+      else:
+        this.applyDiagnostics(results)
+
+  if this.diagnosticsDirty and not this.diagnosticsAwaiting and
+      epochTime() - this.lastDiagnosticsEdit >= DiagnosticsDebounce and
+      not fileSavesPending():
+    this.diagnosticsDirty = false
+    this.diagnosticsAwaiting = true
+    this.nimsuggest.requestCheck(this.path[].absolutePath)
+
+
+proc updateNimCheckDiagnostics(this: CodeEditorContent) =
+  ## polls the nim check process and starts a new one after the debounce
+  if this.nimCheckRun != nil:
+    let (done, results) = this.nimCheckRun.pollResults()
+    if done:
+      this.nimCheckRun.stop()
+      this.nimCheckRun = nil
+      this.diagnosticsAwaiting = false
+      this.applyDiagnostics(results)
+
+  if this.diagnosticsDirty and this.nimCheckRun == nil and
+      epochTime() - this.lastDiagnosticsEdit >= DiagnosticsDebounce and
+      not fileSavesPending():
+    this.diagnosticsDirty = false
+    this.diagnosticsAwaiting = true
+    this.nimCheckRun = startNimCheck(this.path[].absolutePath)
+    if this.nimCheckRun == nil:
+      this.diagnosticsAwaiting = false
+
+
+proc updateDiagnostics(this: CodeEditorContent) =
+  ## drives the diagnostics backend: (re)starts it, polls the results and
+  ## applies them to the editor (called on every frame tick)
+  let backend = config.diagnosticsBackend[]
+  if backend == "off" or this.path[].len == 0 or this.arrangement == nil or
+      this.path[].splitFile.ext != ".nim":
+    if this.nimsuggest != nil or this.nimCheckRun != nil:
+      this.stopDiagnosticsTools()
+    if this.diagnostics.len > 0:
+      this.clearDiagnostics()
+      redraw(this)
+    return
+
+  let absPath = this.path[].absolutePath
+
+  if backend == "nimsuggest":
+    if this.nimCheckRun != nil:
+      this.nimCheckRun.stop()
+      this.nimCheckRun = nil
+
+    if this.nimsuggest != nil and
+        (this.nimsuggest.finished() or this.nimsuggestPath != absPath):
+      # the process died, or another file was opened — restart it
+      this.nimsuggest.stop()
+      this.nimsuggest = nil
+      this.nimsuggestPath = ""
+      this.diagnosticsAwaiting = false
+
+    if this.nimsuggest == nil and
+        epochTime() - this.lastNimsuggestStart >= NimsuggestRestartCooldown:
+      this.nimsuggest = newNimsuggestClient(absPath)
+      this.nimsuggestPath = absPath
+      this.lastNimsuggestStart = epochTime()
+      if this.nimsuggest == nil:
+        # nimsuggest is not installed — fall back to nim check
+        this.updateNimCheckDiagnostics()
+        return
+
+    if this.nimsuggest != nil:
+      this.updateNimsuggestDiagnostics()
+    return
+
+  # backend == "nimCheck"
+  if this.nimsuggest != nil:
+    this.nimsuggest.stop()
+    this.nimsuggest = nil
+    this.nimsuggestPath = ""
+    this.diagnosticsAwaiting = false
+  this.updateNimCheckDiagnostics()
 
 
 proc drawSelectionRange(
@@ -162,6 +424,117 @@ proc drawSelectionRange(
     )
 
 
+proc drawSquiggle(
+  this: CodeEditorContent,
+  ctx: DrawContext,
+  line: CodeArrangementLine,
+  selection: Slice[int],
+  color: Color,
+) =
+  ## wavy underline under the given rune range, following wrapped sub-rows
+  let textOffsetX = this.textOffsetX
+  let scale = this.root.uiScale[]
+  let lineH = this.font[].lineHeightPixels
+  let text = line.arrangement
+
+  let last = min(selection.b, text.runes.len)
+  let first = min(selection.a, last)
+  if last - first <= 0: return
+
+  let amplitude = 1.4'f32 * scale
+  let period = 5'f32 * scale
+  let thickness = 1.2'f32 * scale
+  let bottomGap = 1.2'f32 * scale
+  let waveTopY = lineH - (amplitude * 2 + bottomGap)
+
+  # the mesh is mapped through the projection directly (unlike fillRect,
+  # which applies the clip rect offset), so the origin of the enclosing
+  # clip rect must be subtracted here
+  let riceCtx = RiceDrawContext(ctx)
+  let clipOrigin =
+    if riceCtx.clipStack.len > 0: riceCtx.clipStack[^1].pos
+    else: vec2(0'f32, 0'f32)
+
+  for span in text.lines:
+    let rowFirst = span[0]
+    let rowLast = span[1]
+    if rowFirst > rowLast: continue
+    if first > rowLast: continue
+    if last <= rowFirst: continue
+    let subRowY = line.rect.y + text.selectionRects[rowFirst].y
+    let leftRune = max(first, rowFirst)
+    let startX = text.selectionRects[leftRune].x
+    let rightRune = min(last - 1, rowLast)
+    let endX = text.selectionRects[rightRune].x + text.selectionRects[rightRune].w
+    let w = endX - startX
+    if w <= 1'f32: continue
+
+    var path = newPath()
+    path.moveTo(vec2(0, amplitude))
+    var x = 0'f32
+    var up = true
+    while x < w:
+      let nx = min(x + period / 2, w)
+      path.lineTo(vec2(nx, if up: 0'f32 else: amplitude * 2))
+      up = not up
+      x = nx
+
+    let pos = this.globalXy + vec2(textOffsetX + startX, subRowY + waveTopY) - clipOrigin
+    riceCtx.raw.withPushPopIf blendRgbx, true:
+      riceCtx.raw.fill2dMeshFlat(
+        path.toStrokeMesh(thickness, ButtCap),
+        color,
+        translate(vec3(pos.x, pos.y, 0)),
+      )
+
+
+proc drawDiagnosticMessage(
+  this: CodeEditorContent,
+  ctx: DrawContext,
+  line: CodeArrangementLine,
+  scaledFont: Font,
+  spaceW: float32,
+  message: string,
+  color: Color,
+) =
+  ## the diagnostic message in the severity color at the end of the line,
+  ## over a translucent band of the same color; only the first line of a
+  ## multi-line message is shown, the rest is cut off by the editor edge
+  let text = message.splitLines()
+  if text.len == 0 or text[0].len == 0: return
+
+  let textOffsetX = this.textOffsetX
+  let scale = this.root.uiScale[]
+  let lineH = this.font[].lineHeightPixels
+  let arr = line.arrangement
+
+  # after the end of the line content, on its last wrapped sub-row
+  var endX = 0'f32
+  var subRowY = 0'f32
+  if arr.runes.len > 0:
+    endX = arr.selectionRects[^1].x + arr.selectionRects[^1].w
+    subRowY = arr.selectionRects[arr.lines[^1][0]].y
+
+  let bandW = this.w[] - textOffsetX - endX
+  if bandW > 0:
+    var bandColor = color
+    bandColor.a = bandColor.a * 0.15'f32
+    ctx.fillRect(
+      rect(
+        this.globalXy + vec2(textOffsetX + endX, line.rect.y + subRowY),
+        vec2(bandW, lineH),
+      ),
+      bandColor,
+    )
+
+  ctx.drawRasterText_physicalScale(
+    this.globalXy + vec2(textOffsetX + endX + spaceW * 3, line.rect.y + subRowY),
+    typeset(scaledFont, text[0]),
+    color,
+    origin = vec2(0, 0),
+  )
+
+
 method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   let winRect = rect(vec2(), this.root.wh)
   let textOffsetX = this.textOffsetX
@@ -170,8 +543,13 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
   var scaledFont = copy this.font[]
   scaledFont.size = scaledFont.size * this.root.uiScale[]
 
+  # recompute stale search matches (text or search settings changed);
+  # data-only — the current match selection/scrolling is handled by the panel
+  if this.search.dirty:
+    this.recomputeSearch()
+
   var matchingSelections: seq[CursorPos]
-  if this.arrangement.cursors.len > 0:
+  if this.arrangement.cursors.len > 0 and not this.search.active[]:
     let selected = this.arrangement.selectedText(0)
     if selected.len > 0:
       matchingSelections = this.arrangement.matchingSelections(selected)
@@ -193,7 +571,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
     ctx.drawRasterText_physicalScale(
       this.globalXy + vec2(lineNumberBarOffsetX_r, line.rect.y),
       typeset(scaledFont, $(i + 1)),
-      colorTheme.sLineNumber,
+      colorTheme[].sLineNumber,
       origin=vec2(1, 0),
     )
 
@@ -204,7 +582,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         ctx.drawRasterText_physicalScale(
           this.globalXy + vec2(arrowBarCenterX, line.rect.y),
           typeset(scaledFont, arrowChar),
-          colorTheme.sLineNumber,
+          colorTheme[].sLineNumber,
           origin=vec2(0.5, 0),
         )
 
@@ -212,7 +590,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       let guideX = textOffsetX + offset.float32 * spaceW
       ctx.fillRect(
         rect(this.globalXy + vec2(guideX, line.rect.y), vec2(1'f32, line.rect.h)),
-        color(0.3'f32, 0.3'f32, 0.3'f32),
+        colorTheme[].bgVerticalLine,
       )
 
     for matchSelection in matchingSelections:
@@ -222,8 +600,22 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         i,
         matchSelection,
         this.arrangement.selectionRangeForLine(matchSelection, i),
-        color(0.24'f32, 0.30'f32, 0.38'f32),
+        colorTheme[].sWordHighlight,
       )
+
+    if this.search.active[]:
+      # highlights of all search matches except the current one — the current
+      # match is the real editor selection, drawn below in the selection color
+      for matchI, matchSelection in this.search.matches:
+        if matchI == this.search.currentI: continue
+        this.drawSelectionRange(
+          ctx,
+          line,
+          i,
+          matchSelection,
+          this.arrangement.selectionRangeForLine(matchSelection, i),
+          colorTheme[].sSearchHighlight,
+        )
 
     for c_idx in 0..<this.arrangement.cursors.len:
       if this.arrangement.cursors[c_idx].isDuplicate: continue
@@ -233,7 +625,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
         i,
         this.arrangement.cursors[c_idx],
         this.arrangement.selectionRangeForLine(c_idx, i),
-        color(0.2'f32, 0.4'f32, 0.7'f32),
+        colorTheme[].sSelection,
       )
 
     # the code
@@ -244,6 +636,58 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
       line.kinds,
     )
 
+    # compiler diagnostics: a mark in the left gutter, a squiggle underline
+    # and the message text at the end of the line
+    var primaryDiagI = -1  # the most severe diagnostic of this line
+    block findPrimaryDiagnostic:
+      var firstWarningI = -1
+      for diagI, diag in this.diagnosticsShown:
+        if diag.line != i: continue
+        if diag.severity == dsError:
+          primaryDiagI = diagI
+          break findPrimaryDiagnostic
+        if firstWarningI < 0: firstWarningI = diagI
+      primaryDiagI = firstWarningI
+
+    if primaryDiagI >= 0:
+      let diagColor = case this.diagnosticsShown[primaryDiagI].severity
+        of dsError: colorTheme[].sErrorSquiggle
+        of dsWarning: colorTheme[].sWarningSquiggle
+
+      let lineH = this.font[].lineHeightPixels
+      let markH = min(lineH * 0.6, 10'f32 * this.root.uiScale[])
+      ctx.fillRect(
+        rect(
+          this.globalXy + vec2(3'f32, line.rect.y + (lineH - markH) / 2),
+          vec2(3'f32, markH),
+        ),
+        diagColor,
+      )
+
+    for diag in this.diagnosticsShown:
+      if diag.line != i: continue
+      this.drawSquiggle(
+        ctx,
+        line,
+        diag.range,
+        case diag.severity
+        of dsError: colorTheme[].sErrorSquiggle
+        of dsWarning: colorTheme[].sWarningSquiggle,
+      )
+
+    if primaryDiagI >= 0:
+      let diag = this.diagnosticsShown[primaryDiagI]
+      this.drawDiagnosticMessage(
+        ctx,
+        line,
+        scaledFont,
+        spaceW,
+        diag.message,
+        case diag.severity
+        of dsError: colorTheme[].sErrorSquiggle
+        of dsWarning: colorTheme[].sWarningSquiggle,
+      )
+
     if currentFocus[] == this:
       for cursor in this.arrangement.cursors:
         if cursor.line == i:
@@ -252,7 +696,7 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
           # text cursor
           ctx.fillRect(
             rect(this.globalXy + pos, vec2(cursorW, this.font[].lineHeightPixels)),
-            color(1'f32, 1'f32, 1'f32),
+            colorTheme[].sText,
           )
 
     if line.foldable and i in this.arrangement.foldedLines:
@@ -265,11 +709,11 @@ method drawInner*(this: CodeEditorContent, ctx: DrawContext) =
           this.globalXy + vec2(textOffsetX + rect.x, rect.y + rect.h - lineH),
           vec2(rect.w, lineH),
         ),
-        color(0.3'f32, 0.6'f32, 1.0'f32),
+        colorTheme[].bgSelectionLabel,
       )
 
 
-proc saveFile(this: CodeEditorContent) =
+proc saveFile*(this: CodeEditorContent) =
   if this.path[].len == 0: return
   if this.arrangement == nil: return
   scheduleFileSave(this.path[], this.arrangement.fileContent())
@@ -348,6 +792,7 @@ proc reloadFromDisk(this: CodeEditorContent, text: string) =
   # undoing across an externally rewritten text would silently revert the
   # external change, so the old undo history is dropped
   this.undoHistory.setLen(0)
+  this.search.dirty = true
   this.restoreViewState(cursors, foldedLines, scrollY)
 
 
@@ -412,6 +857,8 @@ proc undo(this: CodeEditorContent): bool =
   if this.undoHistory.len == 0: return
   let previous = this.undoHistory.pop()
   this.wordHighlightSuppressed = true
+  this.search.dirty = true
+  this.markDiagnosticsStale()
   this.arrangement = previous.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.updateHeight()
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -420,7 +867,7 @@ proc undo(this: CodeEditorContent): bool =
   this.saveFile()
   result = true
 
-proc scrollToLine(this: CodeEditor, line: int) =
+proc scrollToLine*(this: CodeEditor, line: int) =
   if this.content.arrangement.lines.len == 0:
     this.scrollArea.targetY[] = 0
   else:
@@ -537,7 +984,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
         w = ContextMenuWidth
         h = ContextMenuHeight
         radius = 4
-        color = colorTheme.bgExplorer
+        color = colorTheme[].bgExplorer
 
       # menu items; enabled state is a property of the menu, so bindings
       # built from it track its changes
@@ -551,7 +998,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           this.fill(parent)
           radius = 2
           color = binding:
-            if parent.hovered[] and root.cutEnabled[]: colorTheme.bgSelection
+            if parent.hovered[] and root.cutEnabled[]: colorTheme[].bgSelection
             else: color(0'f32, 0'f32, 0'f32, 0'f32)
 
         - UiText.new:
@@ -560,8 +1007,8 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           text = tr"Cut"
           font = font_monospace.withSize(12)
           color = binding:
-            if root.cutEnabled[]: colorTheme.sText
-            else: colorTheme.sLineNumber
+            if root.cutEnabled[]: colorTheme[].sText
+            else: colorTheme[].sLineNumber
 
         on this.clicked:
           if root.cutEnabled[]:
@@ -578,7 +1025,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           this.fill(parent)
           radius = 2
           color = binding:
-            if parent.hovered[] and root.copyEnabled[]: colorTheme.bgSelection
+            if parent.hovered[] and root.copyEnabled[]: colorTheme[].bgSelection
             else: color(0'f32, 0'f32, 0'f32, 0'f32)
 
         - UiText.new:
@@ -587,8 +1034,8 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           text = tr"Copy"
           font = font_monospace.withSize(12)
           color = binding:
-            if root.copyEnabled[]: colorTheme.sText
-            else: colorTheme.sLineNumber
+            if root.copyEnabled[]: colorTheme[].sText
+            else: colorTheme[].sLineNumber
 
         on this.clicked:
           if root.copyEnabled[]:
@@ -605,7 +1052,7 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           this.fill(parent)
           radius = 2
           color = binding:
-            if parent.hovered[] and root.pasteEnabled[]: colorTheme.bgSelection
+            if parent.hovered[] and root.pasteEnabled[]: colorTheme[].bgSelection
             else: color(0'f32, 0'f32, 0'f32, 0'f32)
 
         - UiText.new:
@@ -614,8 +1061,8 @@ proc openContextMenu(this: CodeEditorContent, globalPos: Vec2) =
           text = tr"Paste"
           font = font_monospace.withSize(12)
           color = binding:
-            if root.pasteEnabled[]: colorTheme.sText
-            else: colorTheme.sLineNumber
+            if root.pasteEnabled[]: colorTheme[].sText
+            else: colorTheme[].sLineNumber
 
         on this.clicked:
           if root.pasteEnabled[]:
@@ -665,10 +1112,11 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       signal.handled = true
 
   signal.match KeyEvent:
-    if e.pressed and currentFocus[] == this and this.arrangement != nil:
+    # shortcuts (registered below in init) consume their keys before this,
+    # so a `handled` key must not be processed here
+    if e.pressed and not signal.handled and currentFocus[] == this and this.arrangement != nil:
       let shift = (this.modifierKeysDown * {Key.lshift, Key.rshift}).len > 0
       let ctrl = (this.modifierKeysDown * {Key.lcontrol, Key.rcontrol}).len > 0
-      let alt = (this.modifierKeysDown * {Key.lalt, Key.ralt}).len > 0
       
       case e.key
       of Key.left:
@@ -729,72 +1177,14 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
         this.saveFile()
 
       of Key.escape:
-        if this.contextMenuOpen():
+        if this.search.active[]:
+          this.closeSearch()
+        elif this.contextMenuOpen():
           this.closeContextMenu()
         elif this.arrangement.cursors.len > 1:
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
           this.wordHighlightSuppressed = false
           redraw(this)
-
-      of Key.b:
-        if ctrl:
-          this.arrangement.selectionMode = case this.arrangement.selectionMode
-            of LineSelection: BlockSelection
-            of BlockSelection: LineSelection
-          redraw(this)
-
-      of Key.c:
-        if ctrl:
-          let text = this.arrangement.selectedText()
-          if text.len > 0:
-            this.root.clipboardText = text
-          signal.handled = true
-
-      of Key.x:
-        if ctrl:
-          let text = this.arrangement.selectedText()
-          if text.len > 0:
-            this.pushUndoSnapshot()
-            this.wordHighlightSuppressed = true
-            this.root.clipboardText = text
-            this.arrangement.deleteBack()
-            this.updateHeight()
-            redraw(this)
-            this.saveFile()
-          signal.handled = true
-
-      of Key.v:
-        if ctrl:
-          let text = this.root.clipboardText
-          if text.len > 0:
-            this.pushUndoSnapshot()
-            this.wordHighlightSuppressed = true
-            this.arrangement.insert(text)
-            this.discardUnchangedUndoSnapshot()
-            this.updateHeight()
-            redraw(this)
-            this.saveFile()
-          signal.handled = true
-
-      of Key.d:
-        if ctrl and alt:
-          if this.arrangement.addSelectionToNextMatch():
-            redraw(this)
-          signal.handled = true
-        elif ctrl:
-          this.pushUndoSnapshot()
-          this.wordHighlightSuppressed = true
-          this.arrangement.duplicateSelectionsOrLines()
-          this.discardUnchangedUndoSnapshot()
-          this.updateHeight()
-          redraw(this)
-          this.saveFile()
-          signal.handled = true
-
-      of Key.z:
-        if ctrl:
-          discard this.undo()
-          signal.handled = true
 
       else: discard
 
@@ -803,6 +1193,7 @@ proc setArrangement(this: CodeEditorContent, text: string) =
   # todo: if only the width changed, update arrangement instead of regenerating it
   this.arrangement = text.toArrangement(this.font[], this.w[] - this.textOffsetX)
   this.wordHighlightSuppressed = false
+  this.markDiagnosticsStale()
   this.updateHeight()
 
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
@@ -821,10 +1212,37 @@ proc rearrange(this: CodeEditorContent) =
   this.restoreViewState(cursors, foldedLines, scrollY)
 
 
+proc undoLast*(this: CodeEditorContent) =
+  discard this.undo()
+
+proc duplicateSelections(this: CodeEditorContent) =
+  this.pushUndoSnapshot()
+  this.wordHighlightSuppressed = true
+  this.arrangement.duplicateSelectionsOrLines()
+  this.discardUnchangedUndoSnapshot()
+  this.updateHeight()
+  redraw(this)
+  this.saveFile()
+
+proc addSelectionToNextMatch(this: CodeEditorContent) =
+  if this.arrangement.addSelectionToNextMatch():
+    redraw(this)
+
+proc toggleSelectionMode(this: CodeEditorContent) =
+  this.arrangement.selectionMode = case this.arrangement.selectionMode
+    of LineSelection: BlockSelection
+    of BlockSelection: LineSelection
+  redraw(this)
+
+
 method init*(this: CodeEditorContent) =
   procCall this.super.init()
 
   this.font{} = font_monospace.withSize(12)
+
+  # diagnostics of one file must not be shown for another one
+  this.path.changed.connectTo this:
+    this.clearDiagnostics()
 
   this.root.onTick.connectTo this:
     # automatic reload of the file when it is changed on disk by another program
@@ -832,6 +1250,9 @@ method init*(this: CodeEditorContent) =
         epochTime() - this.lastReloadCheck >= FileReloadCheckInterval:
       this.lastReloadCheck = epochTime()
       this.checkExternalChanges()
+
+    # compiler diagnostics: run the backend and apply its results
+    this.updateDiagnostics()
 
     # remember the cursor position for each opened file
     this.recordCursorState()
@@ -950,6 +1371,30 @@ method init*(this: CodeEditorContent) =
                   break foundLine
             root.openContextMenu(this.globalXy + this.mouseXy[])
 
+    # --- editor shortcuts (active only when the editor is focused, also
+    # listed in the "Key combinations" dialog) ---
+
+    - (shortcut(["Ctrl+C"], "edit.copy", "Copy", context = scWidgetWithChildren)):
+      on this.activated: root.copySelection()
+
+    - (shortcut(["Ctrl+X"], "edit.cut", "Cut", context = scWidgetWithChildren)):
+      on this.activated: root.cutSelection()
+
+    - (shortcut(["Ctrl+V"], "edit.paste", "Paste", context = scWidgetWithChildren)):
+      on this.activated: root.pasteClipboard()
+
+    - (shortcut(["Ctrl+Z"], "edit.undo", "Undo", context = scWidgetWithChildren)):
+      on this.activated: root.undoLast()
+
+    - (shortcut(["Ctrl+D"], "edit.duplicate", "Duplicate line or selection", context = scWidgetWithChildren)):
+      on this.activated: root.duplicateSelections()
+
+    - (shortcut(["Ctrl+Alt+D"], "edit.addCursorToNextMatch", "Add cursor to next occurrence", context = scWidgetWithChildren)):
+      on this.activated: root.addSelectionToNextMatch()
+
+    - (shortcut(["Ctrl+B"], "edit.toggleBlockSelection", "Toggle block selection", context = scWidgetWithChildren)):
+      on this.activated: root.toggleSelectionMode()
+
 proc open*(this: CodeEditor, target: Location) =
   setFocus this.content
 
@@ -966,6 +1411,7 @@ proc open*(this: CodeEditor, target: Location) =
       this.scrollToLine(line)
       redraw(this.content)
     # otherwise the cursor stays where the user left it
+    this.openedFile.emit()
     return
 
   this.content.undoHistory.setLen(0)
@@ -984,6 +1430,9 @@ proc open*(this: CodeEditor, target: Location) =
     this.content.path[] = ""
     this.content.setArrangement("Unable to read file: " & target.path & "\n" & exc.msg)
 
+  # emitted after the file is loaded, so handlers see the final content.path
+  this.openedFile.emit()
+
 
 method canOpen(this: CodeEditorFileOpener, target: Location): bool =
   fileExists(target.path)
@@ -999,12 +1448,12 @@ method init*(this: CodeEditor) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme.bgTextArea
+      color = binding: colorTheme[].bgTextArea
 
     - ScrollArea.new as root.scrollArea:
       this.fill(parent)
 
-      color = colorTheme.bgScrollBar
+      color = binding: colorTheme[].bgScrollBar
 
       - CodeEditorContent.new as root.content:
         w = binding: parent.w[] - ScrollBarWidth
@@ -1021,5 +1470,20 @@ method init*(this: CodeEditor) =
         if root.content.arrangement != nil:
           root.content.openContextMenu(this.globalXy + this.mouseXy[])
 
-    root.open(Location(path: config.scriptFile[]))
+    # --- find & replace shortcuts (active anywhere in the editor, including
+    # the find/replace panel itself; the panel is connected in setupApp, see
+    # gui/find_replace.nim; also listed in the "Key combinations" dialog) ---
+
+    - (shortcut(["Ctrl+F"], "edit.find", "Find", context = scWidgetWithChildren)):
+      on this.activated: root.findRequested.emit()
+
+    - (shortcut(["Ctrl+H"], "edit.replace", "Replace", context = scWidgetWithChildren)):
+      on this.activated: root.replaceRequested.emit()
+
+    - (shortcut(["F3"], "edit.findNext", "Find next", context = scWidgetWithChildren)):
+      on this.activated: root.findNavigateRequested.emit(false)
+
+    - (shortcut(["Shift+F3"], "edit.findPrev", "Find previous", context = scWidgetWithChildren)):
+      on this.activated: root.findNavigateRequested.emit(true)
+
     on this.w.changed: root.content.rearrange()

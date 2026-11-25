@@ -1,7 +1,7 @@
 import std/[locks, math]
 import pkg/[ecs]
 import pkg/siwin/platforms/any/window
-import pkg/sigui/[uibase, globalKeybinding, mouseArea, layouts]
+import pkg/sigui/[uibase, mouseArea, layouts]
 import pkg/sigui/rendering/rice_backend
 import pkg/toscel/[button]
 import pkg/rice/contexts as riceContexts except DrawContext
@@ -172,7 +172,7 @@ method drawInner*(this: DocumentView, ctx: DrawContext) =
         glDisable(GL_DEPTH_TEST)
         ctx.fillHatchingRect(
           vec2(-1, -1 * this.h[] / this.w[]), vec2(2, 2 * this.h[] / this.w[]),
-          "#252525".color, "#232323".color,
+          colorTheme[].bgCanvasHatch1, colorTheme[].bgCanvasHatch2,
           vec2(1, 1),
           100 / this.w[], 100 / this.w[],
           transform = scale vec3(1, this.w[] / this.h[], 1)
@@ -274,8 +274,13 @@ method init*(this: DocumentView) =
   this.root.onTick.connectTo this, e:
     let script = this.script[]
     if script != nil:
+      # the assignment must happen outside of the lock: it emits
+      # scriptStage.changed, whose handlers may re-enter the script world
+      # (e.g. the scene tree rebuilds its rows and takes the lock again)
+      var stage: ScriptStage
       withLock script.lock:
-        this.scriptStage[] = script.stage
+        stage = script.stage
+      this.scriptStage[] = stage
       if script.canSendEvents and script.systems.windowEvent_TickEvent != nil:
         let prevActive = activeDocumentView
         activeDocumentView = this
@@ -293,7 +298,7 @@ method init*(this: DocumentView) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = "#282828".color
+      color = binding: colorTheme[].bgWorld
       layer = before root
 
     - MouseArea.new:
@@ -376,9 +381,6 @@ method init*(this: DocumentView) =
           )
           prevDragPos = currentMousePos
 
-    - (globalKeybinding({Key.f5})):
-      on this.activated: root.recompileScript()
-    
     - Layout.row:
       gap = 10
       centerX = parent.center

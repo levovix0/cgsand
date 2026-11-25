@@ -22,14 +22,55 @@
     }
   },
   "src/cgsand/gui/code_editor.nim": {
+    "Find": {
+      "": "Поиск"
+    },
+    "Replace": {
+      "": "Замена"
+    },
     "Copy": {
       "": "Копировать"
+    },
+    "Add cursor to next occurrence": {
+      "": "Добавить курсор к следующему совпадению"
     },
     "Cut": {
       "": "Вырезать"
     },
+    "Toggle block selection": {
+      "": "Переключить блочное выделение"
+    },
+    "Invalid regular expression": {
+      "": "Некорректное регулярное выражение"
+    },
+    "Find next": {
+      "": "Следующее совпадение"
+    },
+    "Undo": {
+      "": "Отменить"
+    },
+    "Duplicate line or selection": {
+      "": "Дублировать строку или выделение"
+    },
+    "No results": {
+      "": "Нет результатов"
+    },
     "Paste": {
       "": "Вставить"
+    },
+    "Find previous": {
+      "": "Предыдущее совпадение"
+    }
+  },
+  "src/cgsand/gui/scene_tree.nim": {
+    "Script is not running": {
+      "": "Скрипт не запущен"
+    },
+    "Scene": {
+      "": "Сцена"
+    },
+    "Scene is empty": {
+      "": "Сцена пуста"
     }
   },
   "src/cgsand/gui/document_view.nim": {
@@ -58,14 +99,41 @@
     }
   },
   "src/cgsand/gui/title_bar.nim": {
+    "Options": {
+      "": "Параметры"
+    },
+    "File": {
+      "": "Файл"
+    },
+    "Open": {
+      "": "Открыть"
+    },
+    "Find": {
+      "": "Найти"
+    },
     "Save as PDF": {
       "": "Сохранить как PDF"
     },
     "Name:": {
       "": "Название:"
     },
-    "Code": {
-      "": "Код"
+    "View": {
+      "": "Вид"
+    },
+    "Replace": {
+      "": "Заменить"
+    },
+    "Libraries:": {
+      "": "Библиотеки:"
+    },
+    "Open file": {
+      "": "Открыть файл"
+    },
+    "Application": {
+      "": "Приложение"
+    },
+    "Save as": {
+      "": "Сохранить как"
     },
     "Select location": {
       "": "Выберите расположение"
@@ -73,19 +141,79 @@
     "Export PDF": {
       "": "Экспорт PDF"
     },
+    "Edit": {
+      "": "Правка"
+    },
     "Terminal": {
       "": "Терминал"
+    },
+    "Editor": {
+      "": "Редактор"
+    },
+    "Help": {
+      "": "Справка"
+    },
+    "Save file as": {
+      "": "Сохранить файл как"
+    },
+    "Maintainers:": {
+      "": "Мейнтейнеры:"
+    },
+    "File tree": {
+      "": "Дерево файлов"
+    },
+    "Key combinations": {
+      "": "Комбинации клавиш"
     },
     "Save": {
       "": "Сохранить"
     },
+    "Exit": {
+      "": "Выход"
+    },
+    "Unable to read file:": {
+      "": "Не удалось открыть файл:"
+    },
     "Cancel": {
       "": "Отмена"
+    },
+    "About": {
+      "": "О программе"
+    }
+  },
+  "src/cgsand/gui/hex_editor.nim": {
+    "Unable to read file:": {
+      "": "Unable to read file:"
+    }
+  },
+  "src/cgsand/gui/breadcrumbs.nim": {
+    "go to symbol...": {
+      "": "перейти к символу..."
     }
   },
   "src/cgsand/gui/terminal.nim": {
+    "Copy": {
+      "": "Копировать"
+    },
     "[process exited]": {
       "": "[процесс завершён]"
+    },
+    "Paste": {
+      "": "Вставить"
+    }
+  },
+  "src/cgsand.nim": {
+    "Open": {
+      "": "Открыть"
+    },
+    "Recompile": {
+      "": "Пересобрать"
+    },
+    "Save as": {
+      "": "Сохранить как"
+    },
+    "Save": {
+      "": "Сохранить"
     }
   },
   "src/cgsand/lib/tutorial/levelmap.nim": {
@@ -97,6 +225,57 @@
     },
     "Text": {
       "": "Текст"
+    }
+  },
+  "src/cgsand/gui/settings.nim": {
+    "Diagnostics": {
+      "": "Диагностика"
+    },
+    "nimsuggest": {
+      "": "nimsuggest"
+    },
+    "Off": {
+      "": "Выкл"
+    },
+    "General": {
+      "": "Общие"
+    },
+    "System": {
+      "": "Системный"
+    },
+    "Language": {
+      "": "Язык"
+    },
+    "nim check": {
+      "": "nim check"
+    },
+    "Theme": {
+      "": "Тема"
+    },
+    "Dark": {
+      "": "Тёмная"
+    },
+    "Light": {
+      "": "Светлая"
+    }
+  },
+  "src/cgsand/gui/find_replace.nim": {
+    "Find": {
+      "": "Найти"
+    },
+    "Replace": {
+      "": "Заменить"
+    },
+    "Close find or replace": {
+      "": "Закрыть поиск и замену"
+    },
+    "All": {
+      "": "Всё"
+    }
+  },
+  "src/cgsand/gui/file_tree.nim": {
+    "Files": {
+      "": "Файлы"
     }
   }
 }

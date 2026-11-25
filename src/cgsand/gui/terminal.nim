@@ -2,7 +2,7 @@ import std/[unicode, terminal, times, strutils]
 import pkg/[vmath, chroma]
 import pkg/toscel/[focus]
 import pkg/sigui/[uibase, window, mouseArea, animations, rendering]
-import ../logic/[configuration, terminal, file_openers]
+import ../logic/[configuration, terminal, file_openers, shortcuts]
 
 
 type
@@ -359,7 +359,7 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
       if x1 < x0: continue
       ctx.fillRect(
         rect(origin + vec2(x0.float32 * cell.x, y.float32 * cell.y), vec2((x1 - x0 + 1).float32 * cell.x, cell.y)),
-        colorTheme.bgSelection,
+        colorTheme[].bgSelection,
       )
 
   # hovered file path: underlined like a link (ctrl+click opens it)
@@ -383,9 +383,9 @@ method drawInner*(this: TerminalContent, ctx: DrawContext) =
     let rect = rect(origin + vec2(arr.cursor.x.float32 * cell.x, arr.cursor.y.float32 * cell.y), cell)
     if currentFocus[] == this:
       if this.cursorBlink[]:
-        ctx.fillRect(rect, "#c1c1c1".color)
+        ctx.fillRect(rect, colorTheme[].sText)
     else:
-      ctx.drawRect(rect, "#c1c1c1".color, thickness = 1)
+      ctx.drawRect(rect, colorTheme[].sText, thickness = 1)
 
   # text
   # note: rune quads take a position in gl coordinates, unlike fillRect
@@ -458,28 +458,15 @@ method recieve*(this: TerminalContent, signal: Signal) =
         signal.handled = true
 
   signal.match KeyEvent:
-    if e.pressed and currentFocus[] == this and this.terminal != nil:
-      # terminal-local clipboard shortcuts; they must not reach the shell
-      let kb = e.window.keyboard
-      let ctrl = kb.modifiers.contains(control)
-      let shift = kb.modifiers.contains(shift)
-
-      if ctrl and shift and e.key == Key.c:
-        this.copySelection()
+    # shortcuts (registered below in init) consume their keys before this,
+    # so a `handled` key must not reach the shell
+    if e.pressed and not signal.handled and currentFocus[] == this and this.terminal != nil:
+      let seq = keyToSequence(e[])
+      if seq.len > 0:
+        this.terminal.sendInput(seq)
+        this.arrangement.scrollToBottom()
+        this.lastActivity = getTime()
         signal.handled = true
-      elif ctrl and shift and e.key == Key.v:
-        this.pasteClipboard()
-        signal.handled = true
-      elif e.key == Key.insert and (ctrl xor shift):
-        if ctrl: this.copySelection() else: this.pasteClipboard()
-        signal.handled = true
-      else:
-        let seq = keyToSequence(e[])
-        if seq.len > 0:
-          this.terminal.sendInput(seq)
-          this.arrangement.scrollToBottom()
-          this.lastActivity = getTime()
-          signal.handled = true
 
 
 method init*(this: TerminalContent) =
@@ -550,6 +537,15 @@ method init*(this: TerminalContent) =
             arr.scrollView(if delta.y < 0: lines else: -lines)
             redraw root
 
+    # --- terminal shortcuts (active only when the terminal is focused, also
+    # listed in the "Key combinations" dialog) ---
+
+    - (shortcut(["Ctrl+Shift+C", "Ctrl+Ins"], "terminal.copy", "Copy", context = scWidgetWithChildren)):
+      on this.activated: root.copySelection()
+
+    - (shortcut(["Ctrl+Shift+V", "Shift+Ins"], "terminal.paste", "Paste", context = scWidgetWithChildren)):
+      on this.activated: root.pasteClipboard()
+
 
 proc drainOutput(this: Terminal) =
   var chunk = ""
@@ -563,6 +559,19 @@ proc drainOutput(this: Terminal) =
   if this.backend != nil and not this.m_exitReported and this.backend.status == backendFinished:
     this.m_exitReported = true
     this.content.feed("\r\n\x1b[90m" & tr"[process exited]" & "\x1b[0m\r\n")
+
+
+proc applyTerminalTheme(this: Terminal) =
+  ## applies the current ui theme colors to the terminal text: recolors the
+  ## already written cells and updates the colors of future ones
+  let arr = this.content.arrangement
+  if arr == nil: return
+  let oldFg = arr.defaultForegroundColor
+  arr.defaultForegroundColor = colorTheme[].sText
+  arr.recolorDefaults(oldFg, colorTheme[].sText)
+  arr.queryForegroundColor = colorTheme[].sText
+  arr.queryBackgroundColor = colorTheme[].bgTextArea
+  redraw(this.content)
 
 
 method init*(this: Terminal) =
@@ -581,17 +590,20 @@ method init*(this: Terminal) =
   this.makeLayout:
     - UiRect.new:
       this.fill(parent)
-      color = colorTheme.bgTextArea
+      color = binding: colorTheme[].bgTextArea
 
     - TerminalContent.new as root.content:
       this.fill(parent, 4)
 
     root.content.terminal = root
 
-    # colors reported to the shell in OSC 10/11 queries (e.g. for fish light/dark syntax themes)
-    root.content.arrangement.queryForegroundColor = colorTheme.sText
-    root.content.arrangement.queryBackgroundColor = colorTheme.bgTextArea
-
     root.content.updateGridSize()
     on this.w.changed: root.content.updateGridSize()
     on this.h.changed: root.content.updateGridSize()
+
+  this.applyTerminalTheme()
+
+  # when the ui theme switches, recolor the text and report the new colors to
+  # newly started shells (fish picks its syntax theme from the OSC 11 answer)
+  colorTheme.changed.connectTo this:
+    this.applyTerminalTheme()

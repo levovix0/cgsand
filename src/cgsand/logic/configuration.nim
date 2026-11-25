@@ -1,6 +1,7 @@
 import std/[json, os, macros]
 import pkg/[localize, chroma, jsony]
 import pkg/sigui/[events, properties, uiobj]
+import pkg/toscel/[colors]
 import ./fonts
 export fonts
 export localize
@@ -18,12 +19,23 @@ type
     bgLineNumbers*: Color
     bgLineNumbersSelect*: Color
     bgTextArea*: Color
+    bgCanvasHatch1*: Color
+      ## the two alternating stripe colors of the document view canvas around the page
+    bgCanvasHatch2*: Color
+    bgWorld*: Color
     bgStatusBar*: Color
     bgExplorer*: Color
     bgSelectionLabel*: Color
     bgSelection*: Color
     bgTitleBar*: Color
     bgTitleBarSelect*: Color
+
+    bgOverlay*: Color
+      ## background of dropdown menus, popovers and dialogs
+    borderOverlay*: Color
+      ## border of dropdown menus, popovers and dialogs
+    fgMuted*: Color
+      ## dimmed foreground text (separators, hints)
 
     sKeyword*: Color
     sOperatorWord*: Color
@@ -38,7 +50,19 @@ type
     sTodoComment*: Color
     sError*: Color
 
+    sErrorSquiggle*: Color
+      ## squiggle underline under lines with errors in the code editor
+    sWarningSquiggle*: Color
+      ## squiggle underline under lines with warnings in the code editor
+
     sLineNumber*: Color
+
+    sSelection*: Color
+      ## fill of the selected text in the code editor
+    sWordHighlight*: Color
+      ## fill under all occurrences of the word or selection under the cursor
+    sSearchHighlight*: Color
+      ## fill under all matches of the find/replace search in the code editor
 
     sText*: Color
 
@@ -119,6 +143,12 @@ macro genconfig(typename, body: untyped) =
 genconfig Config:
   scriptFile: string = "examples/tutorial_use.nim"
 
+  ## interface language: "en", "ru", "" = system language
+  language: string = ""
+
+  ## interface theme: "dark" or "light"
+  uiTheme: string = "dark"
+
   window:
     w: int = 1280
     h: int = 720
@@ -126,6 +156,12 @@ genconfig Config:
 
   codeEditorVisible: bool = true
   terminalVisible: bool = true
+
+  ## show the file tree panel to the left of the code editor
+  fileTreeVisible: bool = true
+
+  ## which view the activity bar shows in the left panel: "files" or "scene"
+  leftPanelView: string = "files"
 
   # todo: make proper attachable and floating panels in toscel
   codeEditorPortion: float = 1
@@ -141,6 +177,9 @@ genconfig Config:
   ## terminal and code editor font: a font file path or a font name
   ## (e.g. "firacode"), empty = auto-detect a monospace system font
   fontMonospace: string = ""
+
+  ## code editor diagnostics backend: "off", "nimsuggest" or "nimCheck"
+  diagnosticsBackend: string = "nimCheck"
 
 
 
@@ -217,8 +256,45 @@ subscribe config
 
 
 const vscodeThemeJson = staticRead("../../../themes/vscode.json")
+const lightThemeJson = staticRead("../../../themes/light.json")
 
-let colorTheme* = vscodeThemeJson.fromJson(ColorTheme)
+let darkColorTheme = vscodeThemeJson.fromJson(ColorTheme)
+let lightColorTheme = lightThemeJson.fromJson(ColorTheme)
+
+var colorTheme* = darkColorTheme.property
+  ## current color theme of the editor and app chrome;
+  ## read as `colorTheme.field` (bindings track it automatically),
+  ## switched by `applyUiTheme`
+
+
+var configEvents: EventHandler
+  ## global event handler for reacting to config property changes
+
+
+proc applyLanguage*() =
+  ## applies the language selected in the config to the global locale
+  if config.language[].len > 0:
+    globalLocale[0] = (config.language[], "")
+  else:
+    globalLocale[0] = systemLocale()
+
+
+proc applyUiTheme*() =
+  ## switches the whole interface (toscel widgets + editor + terminal) to the
+  ## theme selected in the config
+  if config.uiTheme[] == "light":
+    colorTheme[] = lightColorTheme
+    setToscelTheme(ttkLight)
+  else:
+    colorTheme[] = darkColorTheme
+    setToscelTheme(ttkDark)
+
+
+applyLanguage()
+applyUiTheme()
+
+config.language.changed.connectTo configEvents: applyLanguage()
+config.uiTheme.changed.connectTo configEvents: applyUiTheme()
 
 
 let font_monospace* = findMonospaceTypeface(config.fontMonospace[])
