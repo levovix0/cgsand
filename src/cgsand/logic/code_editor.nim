@@ -1,2 +1,3 @@
-import code_editor/[syntax_highlighting, arrangements]
-export syntax_highlighting, arrangements
+import code_editor/[syntax_highlighting, arrangements, selection, editbase, editing, search]
+export syntax_highlighting, arrangements, selection, editbase, editing, search
+export CodeKind

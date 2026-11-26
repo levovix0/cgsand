@@ -154,6 +154,7 @@ proc setupApp*(win: UiWindow): CgsandApp =
         w = activityBarWidth
 
 
+      # todo: use palettes from toscel
       - FileTree.new as app.fileTree:
         this.left = parent.left + activityBarWidth
         top = app.titleBar.bottom

@@ -125,7 +125,7 @@ proc collectRows(this: SceneTree): seq[SceneRow] =
 
 
 method init*(this: SceneTree) =
-  procCall this.super.init()
+  return
 
   this.makeLayout:
     - UiRect.new:

@@ -31,6 +31,29 @@ type
     severity*: DiagnosticSeverity
     message*: string        ## full message of the diagnostic
 
+  SearchState* = object
+    ## user-facing editor search state, shared by the code editor content and
+    ## the find/replace panel; Property fields are tracked by UI bindings,
+    ## plain fields are internal bookkeeping
+    query*: Property[string]
+    replaceQuery*: Property[string]
+    caseSensitive*: Property[bool]
+    wholeWord*: Property[bool]
+    regex*: Property[bool]
+    active*: Property[bool]
+      ## the find/replace panel is open and matches are highlighted
+    resultsCount*: Property[int]
+      ## number of current matches
+    status*: Property[string]
+      ## text for the panel status line, "" when there is nothing to report
+
+    matches*: seq[CursorPos]
+      ## current matches, valid only while active
+    currentI*: int
+      ## index of the current match in matches, -1 when there is none
+    dirty*: bool
+      ## the text changed since the last search, matches need recomputing
+
   CodeEditorContent* = ref object of Uiobj
     font*: Property[Font]
     breakpointBarWidth*: Property[float32] = 20'f32.property
@@ -718,6 +741,28 @@ proc saveFile*(this: CodeEditorContent) =
   scheduleFileSave(this.path[], this.arrangement.fileContent())
 
 
+proc startEdit*(this: CodeEditorContent) =
+  this.pushUndoSnapshot()
+  this.wordHighlightSuppressed = true
+
+proc finishEdit*(this: CodeEditorContent) =
+  finishEdit this.arrangement
+  this.discardUnchangedUndoSnapshot()
+  this.updateHeight()
+  saveFile this
+  redraw this
+
+template edit(this: CodeEditorContent, body: untyped) =
+  startEdit this
+  body
+  finishEdit this
+
+template navigate(this: CodeEditorContent, body: untyped) =
+  body
+  this.wordHighlightSuppressed = false
+  redraw this
+
+
 proc setArrangement(this: CodeEditorContent, text: string)
 
 
@@ -849,7 +894,7 @@ proc restoreSavedState(this: CodeEditorContent, state: FileEditorState) =
   let editor = this.parentCodeEditor()
   if editor != nil:
     editor.scrollArea.targetY[] = state.scrollY.clamp(0, this.maxScrollY())
-  redraw(this)
+  finishEdit this
 
 
 proc undo(this: CodeEditorContent): bool =
@@ -862,8 +907,6 @@ proc undo(this: CodeEditorContent): bool =
   this.updateHeight()
   let lineNumberMaxWidth = typeset(this.font[], $this.arrangement.lines.len).layoutBounds.x
   this.lineNumberBarWidth[] = lineNumberMaxWidth
-  redraw(this)
-  this.saveFile()
   result = true
 
 proc scrollToLine*(this: CodeEditor, line: int) =
@@ -902,25 +945,13 @@ proc cutSelection(this: CodeEditorContent) =
   let text = this.arrangement.selectedText()
   if text.len > 0:
     this.setClipboardText(text)
-    this.pushUndoSnapshot()
-    this.wordHighlightSuppressed = true
-    deleteForward(this.arrangement)
-    this.discardUnchangedUndoSnapshot()
-    this.updateHeight()
-    redraw(this)
-    this.saveFile()
+    edit this: deleteForward(this.arrangement)
 
 
 proc pasteClipboard(this: CodeEditorContent) =
   let text = this.getClipboardText()
   if text.len > 0:
-    this.pushUndoSnapshot()
-    this.wordHighlightSuppressed = true
-    this.arrangement.insert(text)
-    this.discardUnchangedUndoSnapshot()
-    this.updateHeight()
-    redraw(this)
-    this.saveFile()
+    edit this: this.arrangement.insert(text)
 
 
 proc contextMenuItemActivated(this: CodeEditorContent, itemI: int) =
@@ -1101,13 +1132,9 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
 
   signal.match TextInputEvent:
     if currentFocus[] == this and this.arrangement != nil and not e.repeated:
-      this.pushUndoSnapshot()
-      this.wordHighlightSuppressed = true
+      startEdit this
       this.arrangement.insert(e.text)
-      this.discardUnchangedUndoSnapshot()
-      this.updateHeight()
-      redraw(this)
-      this.saveFile()
+      finishEdit this
       signal.handled = true
 
   signal.match KeyEvent:
@@ -1119,61 +1146,31 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
       
       case e.key
       of Key.left:
-        this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
-        this.wordHighlightSuppressed = false
-        redraw(this)
+        navigate this: this.arrangement.moveCursorLeft(extend = shift, prevWord = ctrl)
 
       of Key.right:
-        this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
-        this.wordHighlightSuppressed = false
-        redraw(this)
+        navigate this: this.arrangement.moveCursorRight(extend = shift, nextWord = ctrl)
 
       of Key.up:
-        this.arrangement.moveCursorUp(extend = shift)
-        this.wordHighlightSuppressed = false
-        redraw(this)
+        navigate this: this.arrangement.moveCursorUp(extend = shift)
 
       of Key.down:
-        this.arrangement.moveCursorDown(extend = shift)
-        this.wordHighlightSuppressed = false
-        redraw(this)
+        navigate this: this.arrangement.moveCursorDown(extend = shift)
 
       of Key.home:
-        this.arrangement.moveCursorHome(extend = shift)
-        this.wordHighlightSuppressed = false
-        redraw(this)
+        navigate this: this.arrangement.moveCursorHome(extend = shift)
 
       of Key.End:
-        this.arrangement.moveCursorEnd(extend = shift)
-        this.wordHighlightSuppressed = false
-        redraw(this)
+        navigate this: this.arrangement.moveCursorEnd(extend = shift)
 
       of Key.backspace:
-        this.pushUndoSnapshot()
-        this.wordHighlightSuppressed = true
-        deleteBack(this.arrangement)
-        this.discardUnchangedUndoSnapshot()
-        this.updateHeight()
-        redraw(this)
-        this.saveFile()
+        edit this: deleteBack(this.arrangement)
 
       of Key.del:
-        this.pushUndoSnapshot()
-        this.wordHighlightSuppressed = true
-        deleteForward(this.arrangement)
-        this.discardUnchangedUndoSnapshot()
-        this.updateHeight()
-        redraw(this)
-        this.saveFile()
+        edit this: deleteForward(this.arrangement)
 
       of Key.enter:
-        this.pushUndoSnapshot()
-        this.wordHighlightSuppressed = true
-        insertNewline(this.arrangement)
-        this.discardUnchangedUndoSnapshot()
-        this.updateHeight()
-        redraw(this)
-        this.saveFile()
+        edit this: insertNewline(this.arrangement)
 
       of Key.escape:
         if this.search.active[]:
@@ -1184,6 +1181,14 @@ method recieve*(this: CodeEditorContent, signal: Signal) =
           this.arrangement.cursors = @[this.arrangement.cursors[0]]
           this.wordHighlightSuppressed = false
           redraw(this)
+      
+      of Key.tab:
+        edit this:
+          if shift:
+            this.arrangement.dedent()
+          else:
+            this.arrangement.indent()
+
 
       else: discard
 
@@ -1213,15 +1218,12 @@ proc rearrange(this: CodeEditorContent) =
 
 proc undoLast*(this: CodeEditorContent) =
   discard this.undo()
+  finishEdit this
 
 proc duplicateSelections(this: CodeEditorContent) =
-  this.pushUndoSnapshot()
-  this.wordHighlightSuppressed = true
+  startEdit this
   this.arrangement.duplicateSelectionsOrLines()
-  this.discardUnchangedUndoSnapshot()
-  this.updateHeight()
-  redraw(this)
-  this.saveFile()
+  finishEdit this
 
 proc addSelectionToNextMatch(this: CodeEditorContent) =
   if this.arrangement.addSelectionToNextMatch():
@@ -1372,6 +1374,7 @@ method init*(this: CodeEditorContent) =
 
     # --- editor shortcuts (active only when the editor is focused, also
     # listed in the "Key combinations" dialog) ---
+    # todo: unify this editor shortcuts with Key.Xxx handling in the recieve method
 
     - (shortcut(["Ctrl+C"], "edit.copy", "Copy", context = scWidgetWithChildren)):
       on this.activated: root.copySelection()

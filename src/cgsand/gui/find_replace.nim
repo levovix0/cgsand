@@ -143,13 +143,13 @@ proc replaceAll*(this: FindReplacePanel) =
 
   content.pushUndoSnapshot()
   let options = content.searchOptionsOf()
-  var firstLine = -1
-  try:
-    firstLine = content.arrangement.replaceAllMatches(query, options, content.search.replaceQuery[])
-  except ValueError:
-    discard  # invalid regex — reported by recomputeSearch below
+  let hadMatches =
+    try:
+      content.arrangement.replaceAllMatches(query, options, content.search.replaceQuery[])
+    except ValueError:  # invalid regex — reported by recomputeSearch below
+      false
 
-  if firstLine < 0:
+  if hadMatches:
     # nothing was replaced (no matches or an invalid regex) — drop the snapshot
     content.discardUnchangedUndoSnapshot()
     content.recomputeSearch()
